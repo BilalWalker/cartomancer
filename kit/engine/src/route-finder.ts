@@ -3,7 +3,7 @@
 
 import type { Point } from "./geometry.js";
 import { isNoUsableRoad, snapToRoad } from "./snapping.js";
-import type { Destination, EngineMap, NoWayResult, Route, RoutePart } from "./types.js";
+import type { Destination, EngineMap, NoWayResult, RoadData, Route, RoutePart, SnappedPoint } from "./types.js";
 
 const SAME_POINT_TOLERANCE = 1e-9;
 
@@ -36,31 +36,35 @@ export function findRoute(map: EngineMap, start: Point, destination: Destination
     return { parts: [], lengthWorldUnits: 0, destination };
   }
 
-  const startNodeId = nodeAt(map, from.roadId, from);
-  const endNodeId = nodeAt(map, to.roadId, to);
-  if (startNodeId !== undefined && endNodeId !== undefined) {
-    const parts = shortestNodePath(map, startNodeId, endNodeId);
-    if (parts) {
-      return { parts, lengthWorldUnits: sumLengths(parts), destination };
-    }
+  const nodes = new Map<string, Point>();
+  for (const node of map.nodes) nodes.set(node.id, node);
+  const roadsById = new Map<string, RoadData>();
+  for (const road of map.roads) roadsById.set(road.id, road);
+
+  const parts = shortestPath(map, nodes, roadsById, locate(nodes, roadsById, from), locate(nodes, roadsById, to));
+  if (parts) {
+    return { parts, lengthWorldUnits: sumLengths(parts), destination };
   }
 
-  // Temporary answer until points inside roads and reasons are handled.
+  // Temporary answer until reasons are handled.
   return {
     reason: "separate-parts",
     message: "No way was found between the start and the destination.",
   };
 }
 
-/** The id of an end node of the road when the point lies exactly on it. */
-function nodeAt(map: EngineMap, roadId: string, point: Point): string | undefined {
-  const road = map.roads.find((candidate) => candidate.id === roadId);
-  if (!road) return undefined;
+/** Where a snapped point sits: exactly on a node, or inside a road. */
+type Location =
+  | { kind: "node"; nodeId: string }
+  | { kind: "inside"; roadId: string; distance: number; point: Point };
+
+function locate(nodes: Map<string, Point>, roadsById: Map<string, RoadData>, snapped: SnappedPoint): Location {
+  const road = roadsById.get(snapped.roadId) as RoadData;
   for (const nodeId of [road.fromNodeId, road.toNodeId]) {
-    const node = map.nodes.find((candidate) => candidate.id === nodeId);
-    if (node && Math.hypot(node.x - point.x, node.y - point.y) <= SAME_POINT_TOLERANCE) return nodeId;
+    const node = nodes.get(nodeId) as Point;
+    if (Math.hypot(node.x - snapped.x, node.y - snapped.y) <= SAME_POINT_TOLERANCE) return { kind: "node", nodeId };
   }
-  return undefined;
+  return { kind: "inside", roadId: road.id, distance: snapped.distanceAlongRoad, point: { x: snapped.x, y: snapped.y } };
 }
 
 function sumLengths(parts: RoutePart[]): number {
@@ -74,6 +78,8 @@ interface Edge {
   to: string;
   length: number;
   direction: "forward" | "backward";
+  from: Point;
+  target: Point;
 }
 
 interface HeapItem {
@@ -130,15 +136,25 @@ class MinHeap {
 }
 
 /**
- * Shortest chain of usable roads from one node to another (Dijkstra with a
- * binary heap). One-way roads are used only in their direction. Roads leave a
- * node in lowest-road-id order and a path is replaced only by a strictly
+ * Shortest chain of usable roads between two locations (Dijkstra with a
+ * binary heap). A location is a node or a point inside a road; for a point
+ * inside a road, two virtual nodes get partial edges to the road's ends, and
+ * a one-way road is left or entered only in its allowed direction. Roads leave
+ * a node in lowest-road-id order and a path is replaced only by a strictly
  * shorter one, so equal-length alternatives always resolve the same way.
- * Returns undefined when the end node cannot be reached.
+ * Returns undefined when the end cannot be reached.
  */
-export function shortestNodePath(map: EngineMap, startNodeId: string, endNodeId: string): RoutePart[] | undefined {
-  const nodes = new Map<string, Point>();
-  for (const node of map.nodes) nodes.set(node.id, node);
+function shortestPath(
+  map: EngineMap,
+  nodes: Map<string, Point>,
+  roadsById: Map<string, RoadData>,
+  startAt: Location,
+  endAt: Location,
+): RoutePart[] | undefined {
+  const START = "\u0000start";
+  const END = "\u0000end";
+  const startNodeId = startAt.kind === "node" ? startAt.nodeId : START;
+  const endNodeId = endAt.kind === "node" ? endAt.nodeId : END;
 
   const roads = map.roads.filter((road) => map.usableRoadIds.has(road.id));
   roads.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -154,13 +170,34 @@ export function shortestNodePath(map: EngineMap, startNodeId: string, endNodeId:
     const b = nodes.get(road.toNodeId);
     if (!a || !b) continue;
     const length = Math.hypot(b.x - a.x, b.y - a.y);
-    addEdge(road.fromNodeId, { roadId: road.id, to: road.toNodeId, length, direction: "forward" });
+    addEdge(road.fromNodeId, { roadId: road.id, to: road.toNodeId, length, direction: "forward", from: a, target: b });
     if (road.oneWay !== true) {
-      addEdge(road.toNodeId, { roadId: road.id, to: road.fromNodeId, length, direction: "backward" });
+      addEdge(road.toNodeId, { roadId: road.id, to: road.fromNodeId, length, direction: "backward", from: b, target: a });
     }
   }
 
-  if (!nodes.has(startNodeId) || !nodes.has(endNodeId)) return undefined;
+  // Partial edges for points inside roads.
+  const partial = (roadId: string, from: string, to: string, direction: "forward" | "backward", p: Point, q: Point) =>
+    addEdge(from, { roadId, to, length: Math.hypot(q.x - p.x, q.y - p.y), direction, from: p, target: q });
+  if (startAt.kind === "inside") {
+    const road = roadsById.get(startAt.roadId) as RoadData;
+    const a = nodes.get(road.fromNodeId) as Point;
+    const b = nodes.get(road.toNodeId) as Point;
+    partial(road.id, START, road.toNodeId, "forward", startAt.point, b);
+    if (road.oneWay !== true) partial(road.id, START, road.fromNodeId, "backward", startAt.point, a);
+  }
+  if (endAt.kind === "inside") {
+    const road = roadsById.get(endAt.roadId) as RoadData;
+    const a = nodes.get(road.fromNodeId) as Point;
+    const b = nodes.get(road.toNodeId) as Point;
+    partial(road.id, road.fromNodeId, END, "forward", a, endAt.point);
+    if (road.oneWay !== true) partial(road.id, road.toNodeId, END, "backward", b, endAt.point);
+  }
+  if (startAt.kind === "inside" && endAt.kind === "inside" && startAt.roadId === endAt.roadId) {
+    const road = roadsById.get(startAt.roadId) as RoadData;
+    if (endAt.distance > startAt.distance) partial(road.id, START, END, "forward", startAt.point, endAt.point);
+    else if (road.oneWay !== true) partial(road.id, START, END, "backward", startAt.point, endAt.point);
+  }
 
   const dist = new Map<string, number>([[startNodeId, 0]]);
   const via = new Map<string, { prev: string; edge: Edge }>();
@@ -192,13 +229,11 @@ export function shortestNodePath(map: EngineMap, startNodeId: string, endNodeId:
   let at = endNodeId;
   while (at !== startNodeId) {
     const step = via.get(at) as { prev: string; edge: Edge };
-    const startPoint = nodes.get(step.prev) as Point;
-    const endPoint = nodes.get(at) as Point;
     parts.push({
       roadId: step.edge.roadId,
       direction: step.edge.direction,
-      start: { x: startPoint.x, y: startPoint.y },
-      end: { x: endPoint.x, y: endPoint.y },
+      start: { x: step.edge.from.x, y: step.edge.from.y },
+      end: { x: step.edge.target.x, y: step.edge.target.y },
     });
     at = step.prev;
   }

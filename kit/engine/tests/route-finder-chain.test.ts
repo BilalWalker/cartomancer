@@ -107,6 +107,74 @@ describe("shortest path between nodes", () => {
     expect(asRoute(first).parts.map((part) => part.roadId)).toEqual(["r1", "r2"]);
   });
 
+  it("goes round when both points are on the same one-way road and the destination is behind", () => {
+    // Square a(0,0) -> b(10,0) one-way, then b -> d(10,10) -> c(0,10) -> a.
+    const map = load(
+      [
+        ["a", 0, 0],
+        ["b", 10, 0],
+        ["c", 0, 10],
+        ["d", 10, 10],
+      ],
+      [
+        ["r1", "a", "b", true],
+        ["r2", "b", "d"],
+        ["r3", "d", "c"],
+        ["r4", "c", "a"],
+      ],
+    );
+    const forward = asRoute(findRoute(map, { x: 2, y: 0 }, { point: { x: 8, y: 0 } }));
+    expect(forward.parts).toEqual([{ roadId: "r1", direction: "forward", start: { x: 2, y: 0 }, end: { x: 8, y: 0 } }]);
+
+    const round = asRoute(findRoute(map, { x: 8, y: 0 }, { point: { x: 2, y: 0 } }));
+    expect(round.parts.map((part) => part.roadId)).toEqual(["r1", "r2", "r3", "r4", "r1"]);
+    expect(round.parts[0].start).toEqual({ x: 8, y: 0 });
+    expect(round.parts[0].end).toEqual({ x: 10, y: 0 });
+    expect(round.parts[4].start).toEqual({ x: 0, y: 0 });
+    expect(round.parts[4].end).toEqual({ x: 2, y: 0 });
+    expect(round.lengthWorldUnits).toBeCloseTo(2 + 10 + 10 + 10 + 2, 9);
+    for (let i = 1; i < round.parts.length; i++) expect(round.parts[i].start).toEqual(round.parts[i - 1].end);
+  });
+
+  it("starts inside a one-way road and ends inside another road", () => {
+    const map = load(
+      [
+        ["a", 0, 0],
+        ["b", 10, 0],
+        ["c", 20, 0],
+      ],
+      [
+        ["r1", "a", "b", true],
+        ["r2", "b", "c"],
+      ],
+    );
+    const route = asRoute(findRoute(map, { x: 4, y: 0 }, { point: { x: 15, y: 0 } }));
+    expect(route.parts).toEqual([
+      { roadId: "r1", direction: "forward", start: { x: 4, y: 0 }, end: { x: 10, y: 0 } },
+      { roadId: "r2", direction: "forward", start: { x: 10, y: 0 }, end: { x: 15, y: 0 } },
+    ]);
+    expect(route.lengthWorldUnits).toBeCloseTo(11, 9);
+  });
+
+  it("ends inside a one-way road that can only be entered from its start", () => {
+    const map = load(
+      [
+        ["a", 0, 0],
+        ["b", 10, 0],
+        ["c", 10, 10],
+      ],
+      [
+        ["r1", "a", "b", true],
+        ["r2", "b", "c"],
+        ["r3", "c", "a"],
+      ],
+    );
+    const route = asRoute(findRoute(map, { x: 10, y: 10 }, { point: { x: 6, y: 0 } }));
+    expect(route.parts.map((part) => part.roadId)).toEqual(["r3", "r1"]);
+    expect(route.parts[1].end).toEqual({ x: 6, y: 0 });
+    expect(route.lengthWorldUnits).toBeCloseTo(Math.hypot(10, 10) + 6, 9);
+  });
+
   it("still returns no route when the parts are separate", () => {
     const map = load(
       [

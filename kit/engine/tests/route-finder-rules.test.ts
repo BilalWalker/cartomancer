@@ -66,9 +66,67 @@ describe("findRoute entry cases", () => {
     expect(result).toMatchObject({ lengthWorldUnits: 0, parts: [] });
   });
 
-  it("returns the temporary separate-parts answer for other cases", () => {
-    const result = findRoute(load([road]), { x: 10, y: 0 }, { point: { x: 90, y: 0 } });
+  it("returns the temporary separate-parts answer when the parts are not joined", () => {
+    const text = JSON.stringify({
+      formatVersion: 1,
+      nodes: [
+        { id: "a", x: 0, y: 0 },
+        { id: "b", x: 100, y: 0 },
+        { id: "c", x: 0, y: 50 },
+        { id: "d", x: 100, y: 50 },
+      ],
+      roads: [
+        { id: "r1", fromNodeId: "a", toNodeId: "b", width: 6, kind: "main" },
+        { id: "r2", fromNodeId: "c", toNodeId: "d", width: 6, kind: "main" },
+      ],
+      places: [],
+      blockedAreas: [],
+      props: [],
+      style: { colors: {}, lineStyles: {} },
+    });
+    const loaded = parseMap(text);
+    if (!("map" in loaded)) throw new Error("expected a map");
+    const result = findRoute(loaded.map, { x: 10, y: 0 }, { point: { x: 90, y: 50 } });
     expect(result).toMatchObject({ reason: "separate-parts" });
     expect("message" in result && result.message).not.toContain("at ");
+  });
+});
+
+describe("points inside roads", () => {
+  const oneWay = { ...road, oneWay: true };
+
+  it("routes between two points on the same two-way road in both directions", () => {
+    const map = load([road]);
+    expect(findRoute(map, { x: 20, y: 0 }, { point: { x: 70, y: 0 } })).toMatchObject({
+      lengthWorldUnits: 50,
+      parts: [{ roadId: "r1", direction: "forward", start: { x: 20, y: 0 }, end: { x: 70, y: 0 } }],
+    });
+    expect(findRoute(map, { x: 70, y: 0 }, { point: { x: 20, y: 0 } })).toMatchObject({
+      lengthWorldUnits: 50,
+      parts: [{ roadId: "r1", direction: "backward", start: { x: 70, y: 0 }, end: { x: 20, y: 0 } }],
+    });
+  });
+
+  it("leaves a one-way road from a start inside it only in the allowed direction", () => {
+    const map = load([oneWay]);
+    expect(findRoute(map, { x: 30, y: 0 }, { point: { x: 100, y: 0 } })).toMatchObject({
+      lengthWorldUnits: 70,
+      parts: [{ roadId: "r1", direction: "forward", start: { x: 30, y: 0 }, end: { x: 100, y: 0 } }],
+    });
+    expect("parts" in findRoute(map, { x: 30, y: 0 }, { point: { x: 0, y: 0 } })).toBe(false);
+  });
+
+  it("enters a one-way road to a destination inside it only in the allowed direction", () => {
+    const map = load([oneWay]);
+    expect(findRoute(map, { x: 0, y: 0 }, { point: { x: 60, y: 0 } })).toMatchObject({
+      lengthWorldUnits: 60,
+      parts: [{ roadId: "r1", direction: "forward", start: { x: 0, y: 0 }, end: { x: 60, y: 0 } }],
+    });
+    expect("parts" in findRoute(map, { x: 100, y: 0 }, { point: { x: 60, y: 0 } })).toBe(false);
+  });
+
+  it("gives no route against a one-way road when there is no way round", () => {
+    const result = findRoute(load([oneWay]), { x: 70, y: 0 }, { point: { x: 20, y: 0 } });
+    expect("parts" in result).toBe(false);
   });
 });
