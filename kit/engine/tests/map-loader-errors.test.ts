@@ -6,6 +6,7 @@ import {
   checkPlaces,
   checkProps,
   checkRoads,
+  checkStyle,
 } from "../src/map-loader-checks.js";
 
 describe("checkNodes", () => {
@@ -770,5 +771,127 @@ describe("checkBackgroundPicture", () => {
   it("reports every problem in one picture", () => {
     const errors = checkBackgroundPicture({ ref: "", scale: 0, opacity: 2 });
     expect(errors.map((e) => e.field)).toEqual(["ref", "scale", "opacity"]);
+  });
+});
+
+describe("checkStyle", () => {
+  const good = {
+    colors: { road: "#333333", water: "blue" },
+    lineStyles: { main: { width: 4 }, dashed: { width: 2, dash: [4, 2] } },
+  };
+
+  function expectPlain(message: string | undefined): void {
+    expect(message).toBeDefined();
+    expect(message).not.toContain("at ");
+  }
+
+  it("accepts a good style, empty groups, and an empty or zero dash", () => {
+    expect(checkStyle(good)).toEqual([]);
+    expect(checkStyle({ colors: {}, lineStyles: {} })).toEqual([]);
+    expect(
+      checkStyle({
+        colors: {},
+        lineStyles: { a: { width: 1, dash: [] }, b: { width: 1, dash: [0, 3] } },
+      }),
+    ).toEqual([]);
+  });
+
+  it("rejects a missing style and a style that is not an object", () => {
+    const missing = checkStyle(undefined);
+    expect(missing).toHaveLength(1);
+    expect(missing[0]?.field).toBe("style");
+    expectPlain(missing[0]?.message);
+    for (const bad of ["dark", null, [good], 4]) {
+      const errors = checkStyle(bad);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("style");
+      expectPlain(errors[0]?.message);
+    }
+  });
+
+  it("rejects missing or mistyped colors and lineStyles groups", () => {
+    const missing = checkStyle({});
+    expect(missing.map((e) => e.field)).toEqual(["colors", "lineStyles"]);
+    for (const bad of ["red", null, [], 3]) {
+      const errors = checkStyle({ ...good, colors: bad });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("colors");
+      expectPlain(errors[0]?.message);
+      const errors2 = checkStyle({ ...good, lineStyles: bad });
+      expect(errors2).toHaveLength(1);
+      expect(errors2[0]?.field).toBe("lineStyles");
+      expectPlain(errors2[0]?.message);
+    }
+  });
+
+  it("rejects colour values that are not text, naming the colour", () => {
+    const errors = checkStyle({
+      ...good,
+      colors: { road: 5, water: "blue", wall: null },
+    });
+    expect(errors).toHaveLength(2);
+    expect(errors.map((e) => e.item)).toEqual(["road", "wall"]);
+    for (const error of errors) {
+      expect(error.field).toBe("colors");
+      expectPlain(error.message);
+    }
+  });
+
+  it("rejects a line style that is not an object", () => {
+    for (const bad of ["thick", null, [1], 2]) {
+      const errors = checkStyle({ ...good, lineStyles: { main: bad } });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("lineStyles");
+      expect(errors[0]?.item).toBe("main");
+      expectPlain(errors[0]?.message);
+    }
+  });
+
+  it("rejects a missing, mistyped, zero, negative or non-finite width", () => {
+    const bads = [
+      {},
+      { width: "4" },
+      { width: 0 },
+      { width: -1 },
+      { width: Number.POSITIVE_INFINITY },
+      { width: Number.NaN },
+    ];
+    for (const bad of bads) {
+      const errors = checkStyle({ ...good, lineStyles: { main: bad } });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("width");
+      expect(errors[0]?.item).toBe("main");
+      expectPlain(errors[0]?.message);
+    }
+  });
+
+  it("rejects a dash that is not a list or holds bad numbers", () => {
+    const bads = [
+      "4 2",
+      null,
+      { 0: 1 },
+      [4, "2"],
+      [4, -1],
+      [Number.POSITIVE_INFINITY],
+      [Number.NaN],
+    ];
+    for (const dash of bads) {
+      const errors = checkStyle({
+        ...good,
+        lineStyles: { dashed: { width: 2, dash } },
+      });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("dash");
+      expect(errors[0]?.item).toBe("dashed");
+      expectPlain(errors[0]?.message);
+    }
+  });
+
+  it("reports every problem in one style", () => {
+    const errors = checkStyle({
+      colors: { road: 1 },
+      lineStyles: { main: { width: 0, dash: [-1] } },
+    });
+    expect(errors.map((e) => e.field)).toEqual(["colors", "width", "dash"]);
   });
 });

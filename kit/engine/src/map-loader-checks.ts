@@ -380,3 +380,72 @@ export function checkBackgroundPicture(raw: unknown): EngineError[] {
   }
   return errors;
 }
+
+/**
+ * Checks the style. It must be an object with two objects: `colors`, where
+ * every value is a text, and `lineStyles`, where every value is an object
+ * with a finite `width` greater than 0 and, when present, a `dash` list of
+ * finite numbers, each 0 or more (an empty list is accepted). The item of
+ * each error is the name of the colour or line style.
+ */
+export function checkStyle(raw: unknown): EngineError[] {
+  if (raw === undefined) {
+    return [missingField("style")];
+  }
+  if (!isRecord(raw)) {
+    return [notAnObject("style")];
+  }
+  const errors: EngineError[] = [];
+
+  const colors = raw["colors"];
+  if (colors === undefined) {
+    errors.push(missingField("colors", "style"));
+  } else if (!isRecord(colors)) {
+    errors.push(wrongType("colors", "an object of colour names", "style"));
+  } else {
+    for (const [name, value] of Object.entries(colors)) {
+      if (typeof value !== "string") {
+        errors.push(wrongType("colors", "a text for each colour", name));
+      }
+    }
+  }
+
+  const lineStyles = raw["lineStyles"];
+  if (lineStyles === undefined) {
+    errors.push(missingField("lineStyles", "style"));
+  } else if (!isRecord(lineStyles)) {
+    errors.push(
+      wrongType("lineStyles", "an object of line style names", "style"),
+    );
+  } else {
+    for (const [name, entry] of Object.entries(lineStyles)) {
+      if (!isRecord(entry)) {
+        errors.push(notAnObject("lineStyles", name));
+        continue;
+      }
+      const width = entry["width"];
+      if (width === undefined) {
+        errors.push(missingField("width", name));
+      } else if (typeof width !== "number") {
+        errors.push(wrongType("width", "a number", name));
+      } else if (!isFiniteNumber(width) || width <= 0) {
+        errors.push(outOfRange("width", "a finite number greater than 0", name));
+      }
+
+      const dash = entry["dash"];
+      if (dash === undefined) {
+        continue;
+      }
+      if (!Array.isArray(dash)) {
+        errors.push(wrongType("dash", "a list of numbers", name));
+      } else if (
+        dash.some((v: unknown) => !isFiniteNumber(v) || v < 0)
+      ) {
+        errors.push(
+          outOfRange("dash", "a list of finite numbers, each 0 or more", name),
+        );
+      }
+    }
+  }
+  return errors;
+}
