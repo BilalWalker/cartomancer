@@ -6,6 +6,8 @@ This document covers Block A of `docs/brief.md`: the engine core of Cartomancer,
 
 The engine core is pure logic. It runs in Node without a browser and has no runtime dependency. It knows a map, a position with a heading, and a destination. It knows nothing about cars, missions, hospitals or rooms.
 
+All geometry in the Engine follows the Screen_Convention: x grows to the right, y grows downward as on a screen, and a heading is measured in degrees clockwise from the positive x axis, so a heading of 0 points right and a heading of 90 points down the screen. Left and right are as seen on the screen by someone travelling along the Route.
+
 Out of scope: map views (Block B), the kit's `.kiro/` folder (Block C), City Run (Block D), Room Finder (Block E), the maker (Block F), and the landing page and docs (Block G). The `mount a view on a canvas` part of the brief's API is part of Block B. Block A tests use hand-written map files and generated maps.
 
 ## Glossary
@@ -26,19 +28,24 @@ Out of scope: map views (Block B), the kit's `.kiro/` folder (Block C), City Run
 - **Background_Picture**: An optional picture reference with a scale and an opacity, used for tracing a floor plan.
 - **Style**: The colours and line styles stored in a Map_File.
 - **Notice**: A plain-worded message from the Engine that tells the caller about a condition that is not an error, such as a Road left out of routing.
-- **Position**: An x and y location in world units together with a heading in degrees.
+- **Screen_Convention**: The rule that x grows to the right, y grows downward, a heading is in degrees clockwise from the positive x axis (0 is right, 90 is down the screen), and left and right are as seen on the screen by someone travelling along the Route. A change of heading that is clockwise on the screen is a right change, and a change that is counter-clockwise is a left change.
+- **Position**: An x and y location in world units together with a heading in degrees under the Screen_Convention.
 - **Destination**: A Place or a clicked point that the player wants to reach.
 - **Snapped_Point**: The point on a Usable_Road that is nearest to a given point.
 - **Route**: An ordered chain of Usable_Roads, with the Snapped_Point of the start and of the Destination, that leads from the player's Position to the Destination.
 - **Route_Finder**: The Engine component that computes a Route.
 - **No_Way_Result**: The result the Route_Finder returns when no Route exists. It carries a plain-worded reason and no Route.
 - **Route_Follower**: The Engine component that trims the travelled part of the Route as the player moves.
+- **Progress**: The distance in world units along the Route from the start of the Route to the last point the Route_Follower accepted as the player's place on the Route. Progress never decreases.
+- **Search_Window**: The distance in world units ahead of the Progress within which the Route_Follower looks for the point nearest to the Position. Default 100 world units.
 - **Rerouter**: The Engine component that decides when the player has left the Route and requests a new Route.
-- **Reroute_Margin**: The distance in world units from the Route beyond which the player counts as off the Route. Default 15 world units.
+- **Reroute_Margin**: The distance in world units, measured from the edge of the Road in use and not from its centre line, beyond which the player counts as off the Route. Default 15 world units.
+- **Off_Route_Distance**: The distance from the Position to the remaining Route's nearest point, minus half the width of the Road in use at that point. A player is beyond the Reroute_Margin when the Off_Route_Distance is greater than the Reroute_Margin, which is when the distance from the centre line is greater than half the Road width plus the Reroute_Margin.
 - **Reroute_Delay**: The time in milliseconds the player must stay beyond the Reroute_Margin before a new Route is requested. Default 1000 ms.
 - **Guidance**: The data and the plain words that describe the remaining Route: distance left, next turn with distance to it, and arrival.
-- **Turn**: One of left, right, straight on or turn back.
-- **Arrival_Radius**: The distance in world units from the Destination within which the player counts as arrived. Default 10 world units.
+- **Turn**: One of left, right, straight on or turn back, classified at a turn point of the Route.
+- **Next_Turn**: The first Turn ahead on the remaining Route that is classified as left, right or turn back. Turn points classified as straight on are skipped and are never a Next_Turn.
+- **Arrival_Radius**: The distance in world units along the remaining Route from the player to the Destination within which the player counts as arrived. Default 10 world units.
 - **Engine_API**: The small documented set of functions and types an application uses: load a map, set a destination, feed the position each frame, and read route and guidance.
 - **Default_Suite**: The set of tests that runs with the default test command, excluding browser checks.
 - **Large_Generated_Map**: A generated Map with 5,000 Roads.
@@ -189,11 +196,14 @@ Out of scope: map views (Block B), the kit's `.kiro/` folder (Block C), City Run
 
 #### Acceptance Criteria
 
-1. WHEN a new Position is fed to the Engine while a Route is active, THE Route_Follower SHALL find the point on the remaining Route that is nearest to the Position.
-2. WHEN the player is on the Route, THE Route_Follower SHALL remove the part of the Route that lies before that nearest point.
+1. WHEN a new Position is fed to the Engine while a Route is active, THE Route_Follower SHALL find the point nearest to the Position only among the points of the Route from the current Progress forward to the current Progress plus the Search_Window.
+2. WHEN the player is on the Route, THE Route_Follower SHALL remove the part of the Route that lies before that nearest point and SHALL set the Progress to the distance along the Route of that nearest point.
 3. THE Route_Follower SHALL keep the removed part removed when the player moves back, so that the remaining Route only shrinks while the player is on the Route.
 4. THE Route_Follower SHALL report the remaining Route to the caller after each Position is fed.
-5. FOR ALL generated Maps, Routes and sequences of Positions that move along the Route, THE distance left SHALL never be greater than the distance left after the previous Position (monotonic property).
+5. WHERE the caller supplies a Search_Window, THE Engine_API SHALL use the supplied value and not the default.
+6. WHEN a later part of the Route lies closer to the Position than the part at the Progress but lies beyond the Search_Window, THE Route_Follower SHALL keep the Progress within the Search_Window and SHALL NOT remove any Route part that lies beyond the Search_Window.
+7. FOR ALL generated Maps, Routes and sequences of Positions that move along the Route, THE distance left SHALL never be greater than the distance left after the previous Position (monotonic property).
+8. FOR ALL generated Routes that loop back to pass within the Reroute_Margin of an earlier or later stretch of the same Route, and sequences of Positions that move along the Route, THE Progress after each Position SHALL be at most the Progress before it plus the Search_Window, and THE remaining Route SHALL still contain every untravelled stretch of the Route (no-jump-ahead property).
 
 ### Requirement 13: Rerouting without flicker
 
@@ -201,16 +211,17 @@ Out of scope: map views (Block B), the kit's `.kiro/` folder (Block C), City Run
 
 #### Acceptance Criteria
 
-1. WHEN the distance from the Position to the remaining Route is greater than the Reroute_Margin, THE Rerouter SHALL start measuring the time the player has stayed beyond the Reroute_Margin.
+1. WHEN the Off_Route_Distance is greater than the Reroute_Margin, THE Rerouter SHALL start measuring the time the player has stayed beyond the Reroute_Margin.
 2. WHEN the player has stayed beyond the Reroute_Margin for the Reroute_Delay without returning within the Reroute_Margin, THE Rerouter SHALL request a new Route from the current Position to the same Destination.
-3. WHEN the distance from the Position to the remaining Route becomes less than or equal to the Reroute_Margin before the Reroute_Delay has passed, THE Rerouter SHALL cancel the measured time.
-4. WHILE the distance from the Position to the remaining Route is less than or equal to the Reroute_Margin, THE Rerouter SHALL request no new Route.
+3. WHEN the Off_Route_Distance becomes less than or equal to the Reroute_Margin before the Reroute_Delay has passed, THE Rerouter SHALL cancel the measured time.
+4. WHILE the Off_Route_Distance is less than or equal to the Reroute_Margin, THE Rerouter SHALL request no new Route, so that a player at any point of the Road in use up to half the Road width from its centre line plus the Reroute_Margin counts as on the Route.
 5. WHEN a new Route has been requested, THE Rerouter SHALL request no further new Route until the player has again stayed beyond the Reroute_Margin for the Reroute_Delay.
 6. WHERE the caller supplies a Reroute_Margin or a Reroute_Delay, THE Engine_API SHALL use the supplied values and not the defaults.
 7. IF the Rerouter requests a new Route and the Route_Finder returns a No_Way_Result, THEN THE Engine SHALL clear the active Route and report the No_Way_Result to the caller in plain words.
 8. THE Engine SHALL take time from the timestamp supplied with each Position and SHALL NOT read the system clock, so that rerouting is repeatable in tests.
-9. FOR ALL generated Maps, Routes and sequences of Positions that stay within the Reroute_Margin of the Route, THE Rerouter SHALL request no new Route (no-flicker property).
+9. FOR ALL generated Maps, Routes with Roads of differing widths, and sequences of Positions whose Off_Route_Distance stays less than or equal to the Reroute_Margin, THE Rerouter SHALL request no new Route (no-flicker property).
 10. FOR ALL generated Maps, Routes and sequences of Positions that move along the Route, THE Rerouter SHALL request no new Route and THE distance left SHALL not increase (on-route property).
+11. FOR ALL generated Maps, Routes with Roads of differing widths, and sequences of Positions whose Off_Route_Distance stays greater than the Reroute_Margin for longer than the Reroute_Delay, THE Rerouter SHALL request exactly one new Route for each such stay (edge-measure property).
 
 ### Requirement 14: Result of a reroute
 
@@ -229,13 +240,19 @@ Out of scope: map views (Block B), the kit's `.kiro/` folder (Block C), City Run
 #### Acceptance Criteria
 
 1. WHILE a Route is active, THE Engine SHALL provide Guidance data with the distance left along the remaining Route in world units.
-2. WHILE a Route is active and a Turn remains on the Route, THE Engine SHALL provide in the Guidance data the next Turn and the distance along the Route to that Turn.
-3. WHEN a Turn is classified, THE Engine SHALL compare the heading of the Route part before the Turn point with the heading of the part after it, and SHALL classify an absolute change of up to 30 degrees as straight on, a change of more than 30 and up to 150 degrees to the left as left, a change of more than 30 and up to 150 degrees to the right as right, and an absolute change of more than 150 degrees as turn back.
-4. WHEN the first part of the Route points more than 150 degrees away from the player's heading, THE Engine SHALL provide turn back as the next Turn at distance zero.
-5. WHEN the distance from the Position to the Destination is less than or equal to the Arrival_Radius, THE Engine SHALL set the Guidance arrived flag.
-6. WHILE the Guidance arrived flag is set, THE Engine SHALL provide a distance left of zero and no next Turn.
+2. WHILE a Route is active and the remaining Route holds a Next_Turn, THE Engine SHALL provide in the Guidance data the Next_Turn and the distance along the remaining Route to its turn point.
+3. WHEN a Turn is classified, THE Engine SHALL compute the change of heading under the Screen_Convention as the heading of the Route part after the turn point minus the heading of the Route part before it, normalised to the range from -180 degrees (exclusive) to 180 degrees (inclusive), and SHALL classify an absolute change of up to 30 degrees as straight on, a positive (clockwise on the screen) change of more than 30 and up to 150 degrees as right, a negative (counter-clockwise on the screen) change of more than 30 and up to 150 degrees as left, and an absolute change of more than 150 degrees as turn back.
+4. WHEN the first part of the Route points more than 150 degrees away from the player's heading, THE Engine SHALL provide turn back as the Next_Turn at distance zero.
+5. WHEN the distance left along the remaining Route is less than or equal to the Arrival_Radius AND the Off_Route_Distance is less than or equal to the Reroute_Margin, THE Engine SHALL set the Guidance arrived flag.
+6. WHILE the Guidance arrived flag is set, THE Engine SHALL provide a distance left of zero and no Next_Turn.
 7. WHEN no Route is active, THE Engine SHALL provide Guidance data that states there is no active Route and that holds no distance and no Turn.
 8. FOR ALL generated Maps and Routes, THE distance left at the start of a Route SHALL be equal, within a tolerance of 0.000001 world units, to the Route length.
+9. WHEN the remaining Route holds turn points, THE Engine SHALL skip every turn point classified as straight on and SHALL provide as the Next_Turn the first later turn point classified as left, right or turn back.
+10. WHEN the remaining Route holds no turn point classified as left, right or turn back, THE Engine SHALL provide Guidance data that holds a distance left and no Next_Turn.
+11. FOR ALL generated Routes, THE Next_Turn in the Guidance data SHALL never be straight on (next-turn property).
+12. THE Engine SHALL NOT set the Guidance arrived flag from the straight-line distance between the Position and the Destination.
+13. THE Default_Suite SHALL include a hand-written example test in which the Destination lies just behind a Blocked_Area, within the Arrival_Radius of the Position in a straight line and further than the Arrival_Radius along the Route, and in which the Guidance arrived flag is not set.
+14. THE Default_Suite SHALL include hand-written example tests under the Screen_Convention in which a player travelling right (heading 0) meets a Road that goes up the screen and the Engine classifies the Turn as left, and meets a Road that goes down the screen and the Engine classifies the Turn as right.
 
 ### Requirement 16: Guidance in plain words
 
@@ -243,9 +260,9 @@ Out of scope: map views (Block B), the kit's `.kiro/` folder (Block C), City Run
 
 #### Acceptance Criteria
 
-1. WHEN Guidance data holds a next Turn, THE Engine SHALL produce a sentence that names the Turn in the words "turn left", "turn right", "go straight on" or "turn back" and states the distance to it rounded to the nearest whole world unit.
+1. WHEN Guidance data holds a Next_Turn, THE Engine SHALL produce a sentence that names the Turn in the words "turn left", "turn right" or "turn back" and states the distance to it rounded to the nearest whole world unit.
 2. WHEN the Guidance arrived flag is set, THE Engine SHALL produce the sentence "You have arrived."
-3. WHEN Guidance data holds a distance left and no next Turn, THE Engine SHALL produce a sentence that states the distance left rounded to the nearest whole world unit.
+3. WHEN Guidance data holds a distance left and no Next_Turn, THE Engine SHALL produce a sentence that states the distance left rounded to the nearest whole world unit and uses the words "go straight on" for that distance.
 4. WHEN no Route is active, THE Engine SHALL produce a sentence that states there is no route and, when a No_Way_Result exists, includes the plain reason of the No_Way_Result.
 5. THE Engine SHALL produce every guidance sentence from the Guidance data alone, so that identical Guidance data produces identical text.
 6. WHERE a Place is the Destination, THE Engine SHALL include the Place name in the arrival sentence.
@@ -257,7 +274,8 @@ Out of scope: map views (Block B), the kit's `.kiro/` folder (Block C), City Run
 #### Acceptance Criteria
 
 1. THE Engine SHALL provide, for test use, a function that mirrors a Map horizontally by negating the x value of every Node, Place, Prop, Blocked_Area point, and Background_Picture position, and by negating the Prop rotation.
-2. FOR ALL generated Maps, starts and Destinations, THE Guidance of the Route on the mirrored Map SHALL contain the same sequence of Turns as the Guidance of the Route on the original Map with every left replaced by right and every right replaced by left, and with straight on and turn back unchanged (mirror property).
+2. FOR ALL generated Maps, starts and Destinations, THE sequence of Next_Turns that the Guidance reports along the Route on the mirrored Map SHALL equal the sequence on the original Map with every left replaced by right and every right replaced by left and with turn back unchanged, and THE sequence SHALL never contain straight on (mirror property).
+5. THE mirror of Requirement 17.1 SHALL map a heading h to 180 minus h degrees under the Screen_Convention, so that a left change of heading becomes a right change of the same size.
 3. FOR ALL generated Maps, starts and Destinations, THE Route length, the distance to each Turn and the sequence of Road identifiers on the mirrored Map SHALL be equal to those on the original Map, within a tolerance of 0.000001 world units for lengths and distances (mirror property).
 4. WHEN a Map is mirrored twice, THE result SHALL equal the original Map (mirror involution property).
 
@@ -311,9 +329,9 @@ Out of scope: map views (Block B), the kit's `.kiro/` folder (Block C), City Run
 #### Acceptance Criteria
 
 1. THE Default_Suite SHALL complete in under 60 seconds on the development machine.
-2. THE Default_Suite SHALL contain one property-based test, written with Vitest and fast-check, for each of the following properties: chain, optimality, unreachable, rules (blocked and one-way), snapping, monotonic distance left, no reroute while on the Route, reroute start and destination, mirror, and save-then-load round trip.
+2. THE Default_Suite SHALL contain one property-based test, written with Vitest and fast-check, for each of the following properties: chain, optimality, unreachable, rules (blocked and one-way), snapping, monotonic distance left, no jump ahead on looping Routes, no reroute while on the Route (including Roads of differing widths measured from the road edge), next turn is never straight on, reroute start and destination, mirror, and save-then-load round trip.
 3. THE Default_Suite SHALL run each property-based test with at least 100 generated cases.
 4. THE Default_Suite SHALL contain no skipped test, no test with a raised time limit, and no loosened threshold to make a test pass.
 5. IF a property cannot be made to pass, THEN THE checkpoint report SHALL state the failing property and its counterexample and SHALL NOT weaken the test.
-6. THE Default_Suite SHALL include example-based tests with a hand-written Map_File that cover each error message of Requirements 1 to 4, each Turn class of Requirement 15, and each sentence form of Requirement 16.
+6. THE Default_Suite SHALL include example-based tests with a hand-written Map_File that cover each error message of Requirements 1 to 4, each Turn class of Requirement 15, each sentence form of Requirement 16, the Screen_Convention check that a player travelling right (heading 0) meets a left turn on a Road that goes up the screen and a right turn on a Road that goes down the screen, the skipping of straight on turn points in the Next_Turn, and the arrival example of Requirement 15.13.
 7. WHEN a property-based test fails, THE Default_Suite SHALL print the seed and the shrunk counterexample so that the failure can be repeated.
