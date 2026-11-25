@@ -2,9 +2,11 @@
 
 ## Overview
 
-This plan builds the engine core in `kit/engine/` in TypeScript (the design names TypeScript, Vitest and fast-check). The order is: scaffolding, types and errors, geometry, loader checks (one field group per task), loader, blocked roads, saver, snapping, route finder, test helpers, route properties, follower, rerouter, guidance, mirror, Engine class, docs, benchmark, final checkpoint.
+This plan builds the engine core in `kit/engine/` in TypeScript (the design names TypeScript, Vitest and fast-check). The order is: scaffolding, types and errors, geometry (with the Screen_Convention), loader checks (one field group per task), loader, blocked roads, saver, snapping, route finder, test helpers, route properties, first checkpoint, follower (progress and search window, off-route distance), rerouter (margin measured from the road edge), guidance (route-based arrival, next turn skips straight on), mirror, Engine class, docs, benchmark, final checkpoint.
 
-Each task is small (1-3 files) and ends with its own commit. Each task adds its tests together with its code, so every commit builds and passes the default suite. Property tests are required tasks, not optional.
+All geometry follows the Screen_Convention: x grows right, y grows down, a heading is in degrees clockwise from the positive x axis (0 is right, 90 is down the screen), and a signed angle change is positive for a right turn and negative for a left turn.
+
+Each task is small (1-3 files) and ends with its own commit. Each task adds its tests together with its code, so every commit builds and passes the default suite, and no task uses code from a later task. Property tests are required tasks, not optional.
 
 ## Working rules for every task
 
@@ -38,10 +40,11 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
 
 - [ ] 2. Types and errors
   - [ ] 2.1 Define shared types and the format version constant
-    - Create `kit/engine/src/types.ts` with the data models from the design (MapFile pieces, EngineMap, Position, Destination, SnappedPoint, Route, RoutePart, NoWayResult, Notice, Turn, Guidance, EngineError, LoadResult) and `kit/engine/src/format.ts` exporting the supported format version list `[1]`.
-    - Verify with `npm run build`; add a small type-level test file `tests/types.test.ts` that builds one value of each type so the file is exercised.
+    - Create `kit/engine/src/types.ts` with the data models from the design: the map file pieces, `EngineMap` (with `usableRoadIds` and `blockedRoads`), `Position` (x, y and `headingDegrees`, with a comment stating the Screen_Convention: y down, heading clockwise from +x), `Destination`, `SnappedPoint`, `Route`, `RoutePart`, `NoWayResult`, `Notice`, `Turn`, `NextTurn` (`Turn` without `straight-on`), `Guidance` (with `nextTurn?: NextTurn`), `FollowerState` (`progress`), `EngineOptions` (`searchWindow` 100, `rerouteMargin` 15, `rerouteDelayMs` 1000, `arrivalRadius` 10), `OffRouteDistance`, `EngineError`, `LoadResult`.
+    - Create `kit/engine/src/format.ts` exporting the supported format version list `[1]`.
+    - Verify with `npm run build`; add `tests/types.test.ts` that builds one value of each type, and asserts at type level that `"straight-on"` is not assignable to `NextTurn`.
     - Commit subject: `Engine: add shared types and format version constant`
-    - _Requirements: 1.1, 1.3_
+    - _Requirements: 1.1, 1.3, 12.1, 13.6, 15.11_
   - [ ] 2.2 Add plain-worded error factories
     - Create `kit/engine/src/errors.ts` with `notValidJson`, `notAnObject`, `missingField`, `wrongType`, `duplicateId`, `unknownReference`, `outOfRange`, `unsupportedVersion`, `noMapLoaded`, `badInput`, each returning an `EngineError` with message, field, item and optional position.
     - Create `tests/errors.test.ts`: each factory's message contains the field or item name and none of the denylist markers (`undefined`, `NaN`, `at `, `Error:`, `stack`).
@@ -57,10 +60,15 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
     - Add `segmentCrossesPolygon` to `geometry.ts` (true when the segment touches, crosses or lies inside the polygon), plus `tests/geometry-polygon.test.ts` with examples: fully outside, crossing an edge, touching a corner, fully inside, collinear with an edge.
     - Commit subject: `Engine: add segment-polygon crossing test`
     - _Requirements: 5.1_
-  - [ ] 3.3 Heading and angle difference helpers
-    - Add `headingOfSegment` and signed `angleDifference` (result in -180..180, wraparound handled) to `geometry.ts`, plus `tests/geometry-angle.test.ts` with examples including the 30 and 150 degree boundaries and wraparound at 0/360.
-    - Commit subject: `Engine: add heading and angle difference helpers`
+  - [ ] 3.3 Heading, signed angle difference and turn classification
+    - Add to `geometry.ts`, under the Screen_Convention: `headingOfSegment(a, b)` = `atan2(b.y - a.y, b.x - a.x)` in degrees (y down, so headings grow clockwise on the screen); `signedAngleDifference(before, after)` = `after - before` normalised to (-180, 180], positive for a right (clockwise) change and negative for a left change; `classifyTurn(delta)` returning `straight-on` for `|delta| <= 30`, `right` for `30 < delta <= 150`, `left` for `-150 <= delta < -30`, `turn-back` for `|delta| > 150`.
+    - Add `tests/geometry-angle.test.ts` with examples: the 30 and 150 degree boundaries on both signs, wraparound at 180, and 0, 90 and -90 headings from segments.
+    - Commit subject: `Engine: add heading, signed angle and turn classification`
     - _Requirements: 15.3, 15.4_
+  - [ ] 3.4 Screen convention example tests
+    - Create `tests/screen-convention.test.ts` with hand-written examples built from `headingOfSegment`, `signedAngleDifference` and `classifyTurn`: a player travelling right (heading 0) onto a road that goes up the screen (heading -90) gets a left turn; onto a road that goes down the screen (heading 90) gets a right turn; each case again with x negated (heading `180 - h`) gives the swapped turn.
+    - Commit subject: `Engine tests: add screen convention turn examples`
+    - _Requirements: 15.3, 15.14, 21.6_
 
 - [ ] 4. Loader field checks
   - [ ] 4.1 Check nodes
@@ -103,7 +111,7 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
     - Commit subject: `Engine: report all loader errors in one result`
     - _Requirements: 4.3, 4.6, 4.7_
   - [ ] 5.3 Add map arbitraries
-    - Create `kit/engine/tests/helpers/arbitraries.ts` with fast-check generators for valid `MapFile` values (nodes, roads of every kind with optional one-way, places, blocked areas of every kind, props, optional background picture, style), plus a helper `loadValid(file)` that runs `parseMap` and throws if the result has errors. Add `tests/helpers/arbitraries.test.ts` asserting that every generated file loads without errors over 100 runs.
+    - Create `kit/engine/tests/helpers/arbitraries.ts` with fast-check generators for valid `MapFile` values (nodes, roads of every kind with optional one-way and differing widths, places, blocked areas of every kind, props, optional background picture, style), plus a helper `loadValid(file)` that runs `parseMap` and throws if the result has errors. Add `tests/helpers/arbitraries.test.ts` asserting that every generated file loads without errors over 100 runs.
     - Commit subject: `Engine tests: add generators for valid map files`
     - _Requirements: 6.5, 21.2_
   - [ ] 5.4 Add a fault injector and Property 1
@@ -201,7 +209,7 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
 
 - [ ] 11. Route properties
   - [ ] 11.1 Property 8: route is an unbroken chain
-    - Create `tests/route-finder-chain.test.ts` property (add to the existing file): first part starts at the snapped start, each part ends where the next starts, every part lies on a usable road, last part ends at the snapped destination.
+    - Add a property to `tests/route-finder-chain.test.ts`: first part starts at the snapped start, each part ends where the next starts, every part lies on a usable road, last part ends at the snapped destination.
     - **Property 8: A returned route is an unbroken chain of usable roads**
     - **Validates: Requirements 8.1, 8.2, 8.6, 8.7**
     - Commit subject: `Engine tests: add property test for route chain`
@@ -241,85 +249,126 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
   - Run `npm run build` and `npm test` in `kit/engine`, each as its own call. Ensure all tests pass, ask the user if questions arise. No commit unless a fix was needed (then one commit per fix).
 
 - [ ] 13. Route follower
-  - [ ] 13.1 Trim the travelled part of the route
-    - Create `kit/engine/src/route-follower.ts` with `advance(route, position)`: find the nearest point on the remaining route and return a new route without the part before it. Add `tests/route-follower.test.ts` with examples: on route, ahead, stepping back keeps the removed part removed, position far away.
-    - Commit subject: `Engine: add route follower`
-    - _Requirements: 12.1, 12.2, 12.3, 12.4_
-  - [ ] 13.2 Position sequence generators
+  - [ ] 13.1 Follow the route with progress and a search window
+    - Create `kit/engine/src/route-follower.ts` with `advance(route, progress, position, searchWindow = 100)` returning `{ remaining, progress }`. It looks for the point nearest to the position only among route points whose distance along the route is in `[progress, progress + searchWindow]`, sets the new progress to that point's distance along the route, and removes the part before it. Progress never decreases, so stepping back keeps the removed part removed.
+    - Add `tests/route-follower.test.ts` examples: on route, ahead, stepping back keeps the removed part removed, position far away, a caller-supplied window replaces the default 100, and a hand-written loop where a later stretch lies closer than the stretch at the progress but beyond the window (progress stays within the window, nothing beyond it is removed).
+    - Commit subject: `Engine: add route follower with progress and search window`
+    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
+  - [ ] 13.2 Off-route distance measured from the road edge
+    - Add `offRouteDistance(remaining, position, roadWidthOf)` to `route-follower.ts`: the distance from the position to the nearest point of the remaining route minus half the width of the road in use at that point (negative or zero on the road surface). Add examples to `tests/route-follower.test.ts`: on the centre line, at the road edge, exactly half width plus margin away from the centre line on a wide road and on a narrow road (same margin test gives different centre-line distances).
+    - Commit subject: `Engine: add off-route distance measured from the road edge`
+    - _Requirements: 13.1, 13.4_
+  - [ ] 13.3 Position sequence generators
     - Add to `tests/helpers/arbitraries.ts` generators for position sequences along a route (forward, with small backward steps) with timestamps. Extend `tests/helpers/arbitraries.test.ts` to check the sequences stay within a small distance of the route.
     - Commit subject: `Engine tests: add position sequence generators`
-    - _Requirements: 12.5, 13.10_
-  - [ ] 13.3 Property 14: distance left never grows
-    - Add to `tests/route-follower.test.ts` a property: along generated sequences the remaining length never exceeds the previous remaining length, and the removed part does not return.
+    - _Requirements: 12.7, 13.10_
+  - [ ] 13.4 Property 14: distance left never grows
+    - Add to `tests/route-follower.test.ts` a property over generated maps, routes and position sequences that move along the route (including momentary backward steps): the remaining length never exceeds the previous remaining length, progress never decreases, and the removed part does not return.
     - **Property 14: Following the route never increases the distance left**
-    - **Validates: Requirements 12.1, 12.2, 12.3, 12.4, 12.5**
+    - **Validates: Requirements 12.1, 12.2, 12.3, 12.4, 12.7**
     - Commit subject: `Engine tests: add property test for route following`
-    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
+    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.7_
+  - [ ] 13.5 Looping route generator
+    - Add to `tests/helpers/arbitraries.ts` a generator for routes that loop back to pass within the reroute margin of an earlier or later stretch of themselves, position sequences along them, and a caller-supplied search window. Extend `tests/helpers/arbitraries.test.ts` to check the loop property (some later stretch lies within the margin of an earlier stretch) and that sequences move along the route.
+    - Commit subject: `Engine tests: add looping route generator`
+    - _Requirements: 12.8_
+  - [ ] 13.6 Property 15: no jump ahead on looping routes
+    - Create `tests/route-follower-looping.test.ts` with a property over looping routes and position sequences moving along them, with default and caller-supplied search windows: progress after each position is at most the previous progress plus the window, no part beyond the window is removed, and the remaining route still contains every untravelled stretch.
+    - **Property 15: The follower never jumps ahead on a looping route**
+    - **Validates: Requirements 12.1, 12.2, 12.5, 12.6, 12.8**
+    - Commit subject: `Engine tests: add property test for no jump ahead on loops`
+    - _Requirements: 12.1, 12.2, 12.5, 12.6, 12.8_
 
 - [ ] 14. Rerouter
-  - [ ] 14.1 Rerouter with margin and delay
-    - Create `kit/engine/src/rerouter.ts` with `class Rerouter` (options `margin` default 15, `delayMs` default 1000) and `update(remainingRoute, position, timestampMs)` returning `{ requestReroute }`: start timing beyond the margin, cancel on return, fire once after the delay, then wait for a fresh overstay. It never reads the system clock. Add `tests/rerouter.test.ts` examples: default values, custom margin and delay honoured, cancel before delay, one request only, second request after a fresh overstay.
-    - Commit subject: `Engine: add rerouter with margin and delay`
+  - [ ] 14.1 Rerouter with margin from the road edge and delay
+    - Create `kit/engine/src/rerouter.ts` with `class Rerouter` (options `margin` default 15, `delayMs` default 1000) and `update(remainingRoute, position, timestampMs, roadWidthOf)` returning `{ requestReroute }`. It computes `offRouteDistance` (from `route-follower.ts`); beyond the margin when that value is greater than the margin. It starts timing beyond the margin, cancels on return within the margin, fires once after the delay, then waits for a fresh overstay. It never reads the system clock.
+    - Add `tests/rerouter.test.ts` examples: default values, custom margin and delay honoured, cancel before delay, one request only, second request after a fresh overstay.
+    - Commit subject: `Engine: add rerouter with edge-measured margin and delay`
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.8_
-  - [ ] 14.2 Wobble and off-route sequence generators
-    - Add to `tests/helpers/arbitraries.ts` generators for sequences that stay within the margin (wobbling near it), and sequences that leave and stay beyond it for at least the delay. Extend `tests/helpers/arbitraries.test.ts` to check both shapes.
+  - [ ] 14.2 Edge margin example tests
+    - Create `tests/rerouter-edge-margin.test.ts` with hand-written examples: on a wide road a position at half the width plus the margin from the centre line never triggers a reroute; one world unit further, held for the delay, triggers exactly one; the same centre-line distance triggers on a narrow road but not on a wide one.
+    - Commit subject: `Engine tests: add edge-measured margin examples for rerouter`
+    - _Requirements: 13.4, 13.9, 13.11_
+  - [ ] 14.3 Wobble and off-route sequence generators
+    - Add to `tests/helpers/arbitraries.ts` generators, on routes whose roads have differing widths, for sequences whose off-route distance stays within the margin (wobbling near it, including exactly at half the width plus the margin from the centre line), and for sequences that leave and stay beyond it for at least the delay, with returns in between. Extend `tests/helpers/arbitraries.test.ts` to check both shapes against `offRouteDistance`.
     - Commit subject: `Engine tests: add reroute sequence generators`
-    - _Requirements: 13.9, 13.10_
-  - [ ] 14.3 Property 15: no reroute within the margin
-    - Add to `tests/rerouter.test.ts` a property: sequences that stay within the margin never request a reroute, for any duration.
-    - **Property 15: Staying within the margin never triggers a reroute**
+    - _Requirements: 13.9, 13.11_
+  - [ ] 14.4 Property 16: no reroute within the margin
+    - Add to `tests/rerouter-edge-margin.test.ts` a property: sequences whose off-route distance (measured from the road edge, differing widths) stays at or below the margin never request a reroute, for any duration.
+    - **Property 16: Staying within the margin measured from the road edge never triggers a reroute**
     - **Validates: Requirements 13.1, 13.3, 13.4, 13.9**
     - Commit subject: `Engine tests: add property test for no reroute within margin`
     - _Requirements: 13.1, 13.3, 13.4, 13.9_
-  - [ ] 14.4 Property 16: exactly one reroute per overstay
-    - Create `tests/reroute-result.test.ts` with a property: sequences that go beyond the margin for at least the delay request exactly one reroute until the player returns and overstays again; sequences moving along the route (fed through the follower) request none and never increase the distance left.
-    - **Property 16: Leaving the margin for the full delay triggers exactly one reroute until the player leaves again**
-    - **Validates: Requirements 13.2, 13.5, 13.10**
+  - [ ] 14.5 Property 17: exactly one reroute per overstay
+    - Add to `tests/rerouter-edge-margin.test.ts` a property: sequences that stay beyond the margin for at least the delay request exactly one reroute per stay and no more until the player returns within the margin and overstays again; a stay shorter than the delay requests none.
+    - **Property 17: Overstaying the margin for the full delay triggers exactly one reroute**
+    - **Validates: Requirements 13.2, 13.3, 13.5, 13.11**
     - Commit subject: `Engine tests: add property test for reroute timing`
-    - _Requirements: 13.2, 13.5, 13.10_
+    - _Requirements: 13.2, 13.3, 13.5, 13.11_
+  - [ ] 14.6 Property 18: moving along the route never reroutes
+    - Add to `tests/rerouter.test.ts` a property: sequences that move along the route (fed through `advance` and the rerouter) request no reroute and never increase the distance left.
+    - **Property 18: Moving along the route never triggers a reroute**
+    - **Validates: Requirements 13.10**
+    - Commit subject: `Engine tests: add property test for on-route rerouter`
+    - _Requirements: 13.10_
 
 - [ ] 15. Guidance
   - [ ] 15.1 Distance left and no-route guidance
-    - Create `kit/engine/src/guidance.ts` with `computeGuidance(remainingRoute, position, heading, destination, arrivalRadius = 10)`: distance left equals the remaining route length, and an undefined route gives the fixed inactive guidance with no distance and no turn. Add `tests/guidance-turn.test.ts` examples for both.
+    - Create `kit/engine/src/guidance.ts` with `computeGuidance(remainingRoute, position, destination, offRouteDistance, margin = 15, arrivalRadius = 10)`: distance left equals the remaining route length, and an undefined route gives the fixed inactive guidance (`active: false`, no distance, no turn). Add `tests/guidance-turn.test.ts` examples for both.
     - Commit subject: `Engine: add guidance distance left and inactive state`
     - _Requirements: 15.1, 15.7_
-  - [ ] 15.2 Next turn along the route
-    - Extend `computeGuidance` to find the first turn point on the remaining route, classify it with the 30/150 degree bands (straight on, left, right, turn back) and report the distance to it. Add examples to `tests/guidance-turn.test.ts`: one hand-written route per turn class and each boundary value 30 and 150.
-    - Commit subject: `Engine: classify the next turn in guidance`
-    - _Requirements: 15.2, 15.3_
-  - [ ] 15.3 Turn back from the player's heading
-    - Extend `computeGuidance` so when the player's heading differs from the first route part by more than 150 degrees, the next turn is turn back at distance zero. Add examples to `tests/guidance-turn.test.ts` at 150 and 151 degrees.
+  - [ ] 15.2 Next turn, skipping straight-on points
+    - Extend `computeGuidance`: turn points are the joints between consecutive route parts, each classified with `signedAngleDifference` and `classifyTurn` from `geometry.ts`. The next turn is the first turn point ahead classified left, right or turn back, with the distance along the remaining route to it; every straight-on point is skipped and never reported; when none remains, guidance holds a distance left and no next turn.
+    - Add to `tests/guidance-turn.test.ts` one hand-written route per turn class, and to `tests/screen-convention.test.ts` guidance-level examples: a route heading right then up the screen reports left, then down the screen reports right.
+    - Commit subject: `Engine: report the next turn and skip straight on points`
+    - _Requirements: 15.2, 15.3, 15.9, 15.10, 15.11, 15.14_
+  - [ ] 15.3 Straight-on skipping examples
+    - Create `tests/guidance-next-turn.test.ts` with hand-written routes: several straight-on points before a left turn report the left turn at its distance; a route with only straight-on points reports a distance left and no next turn; a point at exactly 30 degrees is skipped and one just above 30 is reported.
+    - Commit subject: `Engine tests: add straight on skipping examples`
+    - _Requirements: 15.9, 15.10, 21.6_
+  - [ ] 15.4 Turn back from the player's heading
+    - Extend `computeGuidance` so when the player's heading (`position.headingDegrees`) differs from the first route part's heading by more than 150 degrees, the next turn is turn back at distance zero. Add examples to `tests/guidance-turn.test.ts` at 150 and 151 degrees.
     - Commit subject: `Engine: report turn back from the player heading`
     - _Requirements: 15.4_
-  - [ ] 15.4 Arrival
-    - Extend `computeGuidance` so within the arrival radius of the destination the arrived flag is set, distance left is zero and there is no next turn. Add `tests/guidance-arrival.test.ts` examples: just inside, exactly on the radius, just outside, custom radius.
-    - Commit subject: `Engine: add arrival to guidance`
-    - _Requirements: 15.5, 15.6_
-  - [ ] 15.5 Guidance sentences
-    - Create `kit/engine/src/guidance-text.ts` with `toSentence(guidance, noWayResult?)` using the fixed templates: turn words ("turn left", "turn right", "go straight on", "turn back") with the distance rounded to a whole unit, "You have arrived." (with the place name when the destination is a place), distance-only, and no-route with the plain reason when present. Add `tests/guidance-text.test.ts` with one example per template.
+  - [ ] 15.5 Arrival along the route
+    - Extend `computeGuidance` so the arrived flag is set when the distance left along the remaining route is at most the arrival radius AND the off-route distance is at most the margin, never from the straight-line distance to the destination. While arrived, distance left is zero and there is no next turn. Add `tests/guidance-arrival.test.ts` examples: just inside, exactly on the radius, just outside, custom radius, within the radius but beyond the margin (not arrived).
+    - Commit subject: `Engine: add route-based arrival to guidance`
+    - _Requirements: 15.5, 15.6, 15.12_
+  - [ ] 15.6 Arrival example with a destination behind a blocked area
+    - Create `tests/guidance-arrival-blocked.test.ts` with a hand-written map file in which the destination lies just behind a blocked area, within the arrival radius of the position in a straight line but further than the radius along the route. Load it with `parseMap`, find the route with `findRoute`, compute guidance, and assert the arrived flag is not set and distance left is the route distance.
+    - Commit subject: `Engine tests: add blocked area arrival example`
+    - _Requirements: 15.12, 15.13, 21.6_
+  - [ ] 15.7 Guidance sentences
+    - Create `kit/engine/src/guidance-text.ts` with `toSentence(guidance, noWayResult?)` using the fixed templates: "turn left in N", "turn right in N", "turn back in N" (N rounded to a whole unit), "You have arrived." (with the place name when the destination is a place), "go straight on" for the rounded distance left when there is a distance and no next turn, and the no-route sentence with the plain reason when present. There is no sentence for a straight-on turn, since it cannot be reported. Add `tests/guidance-text.test.ts` with one example per template.
     - Commit subject: `Engine: add guidance sentences`
-    - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.6_
-  - [ ] 15.6 Property 18: turn bands
-    - Add to `tests/guidance-turn.test.ts` a property over generated heading pairs (including exactly 30 and 150 degrees, both signs): straight on up to 30, left or right strictly above 30 up to 150, turn back above 150; the same bands apply to player heading versus first route part.
-    - **Property 18: Turn classification follows the angle bands**
+    - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.6, 21.6_
+  - [ ] 15.8 Property 20: turn bands
+    - Add to `tests/guidance-turn.test.ts` a property over generated heading pairs (including exactly 30 and 150 degrees, both signs, wrap-around at 180): the change is `after - before` normalised to (-180, 180], and the class is straight on up to 30, right above 30 up to 150, left below -30 down to -150, turn back above 150; the same bands apply to player heading versus first route part.
+    - **Property 20: Turn classification follows the signed angle bands**
     - **Validates: Requirements 15.3, 15.4**
     - Commit subject: `Engine tests: add property test for turn classification`
     - _Requirements: 15.3, 15.4_
-  - [ ] 15.7 Property 19: arrival radius
-    - Add to `tests/guidance-arrival.test.ts` a property over generated maps, routes and positions: the arrived flag is set exactly when the distance to the destination is at most the radius, and then distance left is zero and no turn is reported.
-    - **Property 19: Arrival radius controls the arrived flag and clears guidance**
-    - **Validates: Requirements 15.5, 15.6**
+  - [ ] 15.9 Property 21: next turn is never straight on
+    - Add to `tests/guidance-next-turn.test.ts` a property over generated routes: the next turn is never straight on, equals the first turn point ahead classified left, right or turn back, and when none remains guidance holds a distance left and no next turn.
+    - **Property 21: The next turn is never straight on**
+    - **Validates: Requirements 15.2, 15.9, 15.10, 15.11**
+    - Commit subject: `Engine tests: add property test for next turn never straight on`
+    - _Requirements: 15.2, 15.9, 15.10, 15.11_
+  - [ ] 15.10 Property 22: arrival along the route
+    - Add to `tests/guidance-arrival.test.ts` a property over generated maps, routes and positions: the arrived flag is set exactly when distance left along the remaining route is at most the arrival radius and the off-route distance is at most the margin; straight-line distance to the destination never decides it; when set, distance left is zero and no next turn is reported.
+    - **Property 22: Arrival depends on distance along the route and on being on the route**
+    - **Validates: Requirements 15.5, 15.6, 15.12**
     - Commit subject: `Engine tests: add property test for arrival`
-    - _Requirements: 15.5, 15.6_
-  - [ ] 15.8 Property 20: distance left starts at route length
+    - _Requirements: 15.5, 15.6, 15.12_
+  - [ ] 15.11 Property 23: distance left starts at route length
     - Add to `tests/guidance-turn.test.ts` a property over generated maps and routes: guidance computed at the route start has distance left equal to the route length within 0.000001.
-    - **Property 20: Guidance distance left starts equal to route length**
-    - **Validates: Requirements 15.1, 15.2, 15.8**
+    - **Property 23: Guidance distance left starts equal to route length**
+    - **Validates: Requirements 15.1, 15.8**
     - Commit subject: `Engine tests: add property test for starting distance left`
-    - _Requirements: 15.1, 15.2, 15.8_
-  - [ ] 15.9 Property 21: sentences depend on guidance data only
+    - _Requirements: 15.1, 15.8_
+  - [ ] 15.12 Property 24: sentences depend on guidance data only
     - Add to `tests/guidance-text.test.ts` a property: two structurally equal guidance values (and equal optional No_Way_Result values), built separately, give identical sentences.
-    - **Property 21: Guidance sentences are a pure function of guidance data**
+    - **Property 24: Guidance sentences are a pure function of guidance data**
     - **Validates: Requirements 16.5**
     - Commit subject: `Engine tests: add property test for sentence purity`
     - _Requirements: 16.5_
@@ -328,22 +377,22 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
   - Run `npm run build` and `npm test` in `kit/engine`, each as its own call. Ensure all tests pass, ask the user if questions arise. No commit unless a fix was needed.
 
 - [ ] 17. Mirror
-  - [ ] 17.1 Mirror a map
-    - Create `kit/engine/src/mirror.ts` with `mirrorMap(map)`: negate x of nodes, places, props, blocked area points and background picture position, negate prop rotation, leave everything else unchanged and keep derived fields consistent. Add `tests/mirror.test.ts` with a hand-written example.
-    - Commit subject: `Engine: add map mirroring`
-    - _Requirements: 17.1_
-  - [ ] 17.2 Property 23: mirroring twice restores the map
-    - Add to `tests/mirror.test.ts` a property over generated maps: `mirrorMap(mirrorMap(map))` equals the map.
-    - **Property 23: Mirroring twice restores the original map**
-    - **Validates: Requirements 17.4**
+  - [ ] 17.1 Mirror a map and a heading
+    - Create `kit/engine/src/mirror.ts` with `mirrorMap(map)`: negate x of nodes, places, props, blocked area points and background picture position, negate prop rotation, leave everything else unchanged and keep derived fields consistent. Also export `mirrorHeading(h)` = `180 - h`. Add `tests/mirror.test.ts` with hand-written examples for the map and for headings (0 becomes 180, 90 stays 90, -90 stays -90).
+    - Commit subject: `Engine: add map and heading mirroring`
+    - _Requirements: 17.1, 17.5_
+  - [ ] 17.2 Property 26: mirroring twice restores the map
+    - Add to `tests/mirror.test.ts` a property over generated maps and headings: `mirrorMap(mirrorMap(map))` equals the map and `mirrorHeading(mirrorHeading(h))` equals h.
+    - **Property 26: Mirroring twice restores the original map**
+    - **Validates: Requirements 17.4, 17.5**
     - Commit subject: `Engine tests: add property test for mirror involution`
-    - _Requirements: 17.4_
-  - [ ] 17.3 Property 22: mirrored guidance swaps turns
-    - Add to `tests/mirror.test.ts` a property over generated maps, starts and destinations: walk each route (test helper that feeds positions along the route and records the turn sequence), then check the mirrored route has the same turns with left and right swapped, and equal route length, distances to turns and road id sequence within 0.000001.
-    - **Property 22: Mirroring swaps turns and preserves lengths**
-    - **Validates: Requirements 17.2, 17.3**
+    - _Requirements: 17.4, 17.5_
+  - [ ] 17.3 Property 25: mirrored guidance swaps turns
+    - Create `tests/helpers/turn-sequence.ts` that finds a route with `findRoute`, walks positions along it with `advance`, and records the next turn and its distance from `computeGuidance` (without the Engine class). Add to `tests/mirror.test.ts` a property over generated maps, starts and destinations: the mirrored turn sequence equals the original with left and right swapped and turn back unchanged, neither contains straight on, a heading h maps to `180 - h` so a left change becomes a right change of the same size, and route length, distances to turns and road id sequence are equal within 0.000001.
+    - **Property 25: Mirroring swaps turns and preserves lengths**
+    - **Validates: Requirements 17.2, 17.3, 17.5**
     - Commit subject: `Engine tests: add property test for mirrored guidance`
-    - _Requirements: 17.2, 17.3_
+    - _Requirements: 17.2, 17.3, 17.5_
 
 - [ ] 18. Engine class
   - [ ] 18.1 Engine: load a map and read places and blocked roads
@@ -351,45 +400,45 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
     - Commit subject: `Engine: add Engine class with loadMap and place access`
     - _Requirements: 5.4, 18.1, 18.4, 18.6_
   - [ ] 18.2 Engine: set and clear a destination
-    - Add `setDestination({ placeId } | { point })`, `clearDestination()`, `getRoute()`, `getRemainingRoute()` and `getLastNoWayResult()` to `engine.ts`. Setting a destination returns the route with its length or the No_Way_Result and stores it. Add examples to `tests/engine-api.test.ts`, including an unknown place id.
+    - Add `setDestination({ placeId } | { point })`, `clearDestination()`, `getRoute()`, `getRemainingRoute()` and `getLastNoWayResult()` to `engine.ts`. Setting a destination returns the route with its length or the No_Way_Result and stores it, and resets the follower progress to zero. Add examples to `tests/engine-api.test.ts`, including an unknown place id.
     - Commit subject: `Engine: add destination handling to Engine`
     - _Requirements: 10.3, 18.2, 18.4, 18.5_
-  - [ ] 18.3 Engine: feed positions and follow the route
-    - Add `feedPosition(position, timestampMs)` to `engine.ts`: with a map loaded it trims the remaining route with `advance`; before a map is loaded it returns the plain "no map is loaded" error. Add examples to `tests/engine-api.test.ts`.
+  - [ ] 18.3 Engine: feed positions, follow the route and configure options
+    - Add `feedPosition(position, timestampMs)` and `configure({ searchWindow, rerouteMargin, rerouteDelayMs, arrivalRadius })` to `engine.ts`. Feeding keeps a follower progress, calls `advance` with the configured search window (default 100) and stores the remaining route and last position; before a map is loaded it returns the plain "no map is loaded" error. Add examples to `tests/engine-api.test.ts`, including that a caller-supplied search window is used.
     - Commit subject: `Engine: follow the route when a position is fed`
-    - _Requirements: 12.4, 18.3, 18.9_
+    - _Requirements: 12.4, 12.5, 13.6, 18.3, 18.9_
   - [ ] 18.4 Engine: guidance data and sentence
-    - Add `getGuidance()` and `getGuidanceSentence()` to `engine.ts`, computed from the remaining route, last position, destination and last No_Way_Result. Add examples to `tests/engine-api.test.ts`: a route in progress, arrival with a place name, no route.
+    - Add `getGuidance()` and `getGuidanceSentence()` to `engine.ts`, computed from the remaining route, last position, destination, `offRouteDistance` (using road widths from the map), the configured margin and arrival radius, and the last No_Way_Result. Add examples to `tests/engine-api.test.ts`: a route in progress, arrival with a place name, no route.
     - Commit subject: `Engine: expose guidance data and sentence`
-    - _Requirements: 15.1, 15.7, 16.1, 16.2, 16.3, 16.4, 18.4_
+    - _Requirements: 15.1, 15.5, 15.7, 16.1, 16.2, 16.3, 16.4, 18.4_
   - [ ] 18.5 Engine: rerouting
-    - Wire `Rerouter` into `feedPosition` (options `reroute margin` and `delay` accepted by the Engine constructor, defaults 15 and 1000 ms). On a request, find a new route from the position to the same destination; when the finder returns a No_Way_Result, clear the route and keep the result for `getLastNoWayResult` and the sentence. Time comes only from the supplied timestamp. Add examples to `tests/engine-api.test.ts`: reroute after the delay, no reroute on a wobble, no-way after a reroute.
+    - Wire `Rerouter` into `feedPosition` using the configured margin and delay and the road width lookup from the map. On a request, find a new route from the position to the same destination and reset the follower progress; when the finder returns a No_Way_Result, clear the route and keep the result for `getLastNoWayResult` and the sentence. Time comes only from the supplied timestamp. Add examples to `tests/engine-api.test.ts`: reroute after the delay, no reroute on a wobble, no-way after a reroute.
     - Commit subject: `Engine: reroute when the player leaves the route`
     - _Requirements: 13.2, 13.6, 13.7, 13.8, 14.1, 14.2_
-  - [ ] 18.6 Property 17: reroute starts at the player and keeps the destination
-    - Add to `tests/reroute-result.test.ts` a property over generated maps and off-route positions where a new route is found: the new route starts at the snapped point of the position at the time of the request and ends at the snapped point of the same destination as the old route.
-    - **Property 17: A reroute starts where the player is and keeps the destination**
+  - [ ] 18.6 Property 19: reroute starts at the player and keeps the destination
+    - Create `tests/reroute-result.test.ts` with a property over generated maps and off-route positions where a new route is found: the new route starts at the snapped point of the position at the time of the request and ends at the snapped point of the same destination as the old route.
+    - **Property 19: A reroute starts where the player is and keeps the destination**
     - **Validates: Requirements 14.1, 14.2, 14.3**
     - Commit subject: `Engine tests: add property test for reroute result`
     - _Requirements: 14.1, 14.2, 14.3_
   - [ ] 18.7 Engine: input guards on every method
-    - Add type and finiteness checks at the start of every public Engine method using the `badInput` factory, so a rejected call returns a plain error naming the input and changes no state. Add examples to `tests/engine-api.test.ts` for NaN, Infinity and wrong types on each method.
+    - Add type and finiteness checks at the start of every public Engine method (including `configure`) using the `badInput` factory, so a rejected call returns a plain error naming the input and changes no state. Add examples to `tests/engine-api.test.ts` for NaN, Infinity and wrong types on each method.
     - Commit subject: `Engine: reject malformed input without changing state`
     - _Requirements: 18.8_
-  - [ ] 18.8 Property 24: malformed input leaves state unchanged
+  - [ ] 18.8 Property 27: malformed input leaves state unchanged
     - Add to `tests/engine-api.test.ts` a property over malformed inputs (wrong type, NaN, Infinity) passed to each Engine method: the call returns an error naming the input, and route, remaining route, guidance and loaded map are equal to their values before the call.
-    - **Property 24: The API rejects malformed input without changing state**
+    - **Property 27: The API rejects malformed input without changing state**
     - **Validates: Requirements 18.8**
     - Commit subject: `Engine tests: add property test for input rejection`
     - _Requirements: 18.8_
 
 - [ ] 19. Public surface and docs
   - [ ] 19.1 Public exports and map file format doc
-    - Fill `kit/engine/src/index.ts` with re-exports of `Engine`, the documented types and `mirrorMap` only. Create `kit/engine/docs/map-file-format.md` describing every field, type and allowed value, the supported format version, and the style rules from `checkStyle`. Add to `tests/engine-api.test.ts` a check that the doc mentions every field name the loader reads.
+    - Fill `kit/engine/src/index.ts` with re-exports of `Engine`, the documented types and `mirrorMap` only (plus `mirrorHeading`). Create `kit/engine/docs/map-file-format.md` describing every field, type and allowed value, the supported format version, the Screen_Convention, and the style rules from `checkStyle`. Add to `tests/engine-api.test.ts` a check that the doc mentions every field name the loader reads.
     - Commit subject: `Engine: add public exports and map file format doc`
     - _Requirements: 1.5, 18.10_
   - [ ] 19.2 API doc and export list test
-    - Create `kit/engine/docs/api.md` with one entry per exported function and type: description, inputs, outputs and one usage example. Add to `tests/engine-api.test.ts` a test that the export list of `src/index.ts` matches the entries in `docs/api.md` exactly.
+    - Create `kit/engine/docs/api.md` with one entry per exported function and type (including `configure` and `mirrorHeading`): description, inputs, outputs and one usage example. Add to `tests/engine-api.test.ts` a test that the export list of `src/index.ts` matches the entries in `docs/api.md` exactly.
     - Commit subject: `Engine: add API reference doc`
     - _Requirements: 18.7, 18.10_
 
@@ -411,6 +460,7 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
 ## Notes
 
 - Property tests are required tasks and carry no `*` marker.
+- Property numbers 1 to 27 match the numbered properties in `design.md`.
 - Each task is one commit; a task that grows is committed in several working steps, each building and passing the suite.
 - Waves below hold one task each because every task is its own commit on the same branch and later tasks edit files earlier tasks created.
 
@@ -427,70 +477,79 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
     { "id": 5, "tasks": ["3.1"] },
     { "id": 6, "tasks": ["3.2"] },
     { "id": 7, "tasks": ["3.3"] },
-    { "id": 8, "tasks": ["4.1"] },
-    { "id": 9, "tasks": ["4.2"] },
-    { "id": 10, "tasks": ["4.3"] },
-    { "id": 11, "tasks": ["4.4"] },
-    { "id": 12, "tasks": ["4.5"] },
-    { "id": 13, "tasks": ["4.6"] },
-    { "id": 14, "tasks": ["4.7"] },
-    { "id": 15, "tasks": ["5.1"] },
-    { "id": 16, "tasks": ["5.2"] },
-    { "id": 17, "tasks": ["5.3"] },
-    { "id": 18, "tasks": ["5.4"] },
-    { "id": 19, "tasks": ["5.5"] },
-    { "id": 20, "tasks": ["5.6"] },
-    { "id": 21, "tasks": ["6.1"] },
-    { "id": 22, "tasks": ["6.2"] },
-    { "id": 23, "tasks": ["6.3"] },
-    { "id": 24, "tasks": ["7.1"] },
-    { "id": 25, "tasks": ["7.2"] },
-    { "id": 26, "tasks": ["7.3"] },
-    { "id": 27, "tasks": ["8.1"] },
-    { "id": 28, "tasks": ["8.2"] },
-    { "id": 29, "tasks": ["9.1"] },
-    { "id": 30, "tasks": ["9.2"] },
-    { "id": 31, "tasks": ["9.3"] },
-    { "id": 32, "tasks": ["9.4"] },
-    { "id": 33, "tasks": ["10.1"] },
-    { "id": 34, "tasks": ["10.2"] },
-    { "id": 35, "tasks": ["11.1"] },
-    { "id": 36, "tasks": ["11.2"] },
-    { "id": 37, "tasks": ["11.3"] },
-    { "id": 38, "tasks": ["11.4"] },
-    { "id": 39, "tasks": ["11.5"] },
-    { "id": 40, "tasks": ["11.6"] },
-    { "id": 41, "tasks": ["13.1"] },
-    { "id": 42, "tasks": ["13.2"] },
-    { "id": 43, "tasks": ["13.3"] },
-    { "id": 44, "tasks": ["14.1"] },
-    { "id": 45, "tasks": ["14.2"] },
-    { "id": 46, "tasks": ["14.3"] },
-    { "id": 47, "tasks": ["14.4"] },
-    { "id": 48, "tasks": ["15.1"] },
-    { "id": 49, "tasks": ["15.2"] },
-    { "id": 50, "tasks": ["15.3"] },
-    { "id": 51, "tasks": ["15.4"] },
-    { "id": 52, "tasks": ["15.5"] },
-    { "id": 53, "tasks": ["15.6"] },
-    { "id": 54, "tasks": ["15.7"] },
-    { "id": 55, "tasks": ["15.8"] },
-    { "id": 56, "tasks": ["15.9"] },
-    { "id": 57, "tasks": ["17.1"] },
-    { "id": 58, "tasks": ["17.2"] },
-    { "id": 59, "tasks": ["17.3"] },
-    { "id": 60, "tasks": ["18.1"] },
-    { "id": 61, "tasks": ["18.2"] },
-    { "id": 62, "tasks": ["18.3"] },
-    { "id": 63, "tasks": ["18.4"] },
-    { "id": 64, "tasks": ["18.5"] },
-    { "id": 65, "tasks": ["18.6"] },
-    { "id": 66, "tasks": ["18.7"] },
-    { "id": 67, "tasks": ["18.8"] },
-    { "id": 68, "tasks": ["19.1"] },
-    { "id": 69, "tasks": ["19.2"] },
-    { "id": 70, "tasks": ["20.1"] },
-    { "id": 71, "tasks": ["20.2"] }
+    { "id": 8, "tasks": ["3.4"] },
+    { "id": 9, "tasks": ["4.1"] },
+    { "id": 10, "tasks": ["4.2"] },
+    { "id": 11, "tasks": ["4.3"] },
+    { "id": 12, "tasks": ["4.4"] },
+    { "id": 13, "tasks": ["4.5"] },
+    { "id": 14, "tasks": ["4.6"] },
+    { "id": 15, "tasks": ["4.7"] },
+    { "id": 16, "tasks": ["5.1"] },
+    { "id": 17, "tasks": ["5.2"] },
+    { "id": 18, "tasks": ["5.3"] },
+    { "id": 19, "tasks": ["5.4"] },
+    { "id": 20, "tasks": ["5.5"] },
+    { "id": 21, "tasks": ["5.6"] },
+    { "id": 22, "tasks": ["6.1"] },
+    { "id": 23, "tasks": ["6.2"] },
+    { "id": 24, "tasks": ["6.3"] },
+    { "id": 25, "tasks": ["7.1"] },
+    { "id": 26, "tasks": ["7.2"] },
+    { "id": 27, "tasks": ["7.3"] },
+    { "id": 28, "tasks": ["8.1"] },
+    { "id": 29, "tasks": ["8.2"] },
+    { "id": 30, "tasks": ["9.1"] },
+    { "id": 31, "tasks": ["9.2"] },
+    { "id": 32, "tasks": ["9.3"] },
+    { "id": 33, "tasks": ["9.4"] },
+    { "id": 34, "tasks": ["10.1"] },
+    { "id": 35, "tasks": ["10.2"] },
+    { "id": 36, "tasks": ["11.1"] },
+    { "id": 37, "tasks": ["11.2"] },
+    { "id": 38, "tasks": ["11.3"] },
+    { "id": 39, "tasks": ["11.4"] },
+    { "id": 40, "tasks": ["11.5"] },
+    { "id": 41, "tasks": ["11.6"] },
+    { "id": 42, "tasks": ["13.1"] },
+    { "id": 43, "tasks": ["13.2"] },
+    { "id": 44, "tasks": ["13.3"] },
+    { "id": 45, "tasks": ["13.4"] },
+    { "id": 46, "tasks": ["13.5"] },
+    { "id": 47, "tasks": ["13.6"] },
+    { "id": 48, "tasks": ["14.1"] },
+    { "id": 49, "tasks": ["14.2"] },
+    { "id": 50, "tasks": ["14.3"] },
+    { "id": 51, "tasks": ["14.4"] },
+    { "id": 52, "tasks": ["14.5"] },
+    { "id": 53, "tasks": ["14.6"] },
+    { "id": 54, "tasks": ["15.1"] },
+    { "id": 55, "tasks": ["15.2"] },
+    { "id": 56, "tasks": ["15.3"] },
+    { "id": 57, "tasks": ["15.4"] },
+    { "id": 58, "tasks": ["15.5"] },
+    { "id": 59, "tasks": ["15.6"] },
+    { "id": 60, "tasks": ["15.7"] },
+    { "id": 61, "tasks": ["15.8"] },
+    { "id": 62, "tasks": ["15.9"] },
+    { "id": 63, "tasks": ["15.10"] },
+    { "id": 64, "tasks": ["15.11"] },
+    { "id": 65, "tasks": ["15.12"] },
+    { "id": 66, "tasks": ["17.1"] },
+    { "id": 67, "tasks": ["17.2"] },
+    { "id": 68, "tasks": ["17.3"] },
+    { "id": 69, "tasks": ["18.1"] },
+    { "id": 70, "tasks": ["18.2"] },
+    { "id": 71, "tasks": ["18.3"] },
+    { "id": 72, "tasks": ["18.4"] },
+    { "id": 73, "tasks": ["18.5"] },
+    { "id": 74, "tasks": ["18.6"] },
+    { "id": 75, "tasks": ["18.7"] },
+    { "id": 76, "tasks": ["18.8"] },
+    { "id": 77, "tasks": ["19.1"] },
+    { "id": 78, "tasks": ["19.2"] },
+    { "id": 79, "tasks": ["20.1"] },
+    { "id": 80, "tasks": ["20.2"] }
   ]
 }
 ```
