@@ -333,3 +333,50 @@ export function checkProps(raw: unknown): EngineError[] {
   });
   return errors;
 }
+
+const BACKGROUND_ITEM = "background picture";
+
+/**
+ * Checks the optional background picture. Absent (undefined) is accepted.
+ * When present it must be an object with a non-empty text `ref`, a finite
+ * `scale` greater than 0 and a finite `opacity` from 0 to 1 inclusive.
+ */
+export function checkBackgroundPicture(raw: unknown): EngineError[] {
+  if (raw === undefined) {
+    return [];
+  }
+  if (!isRecord(raw)) {
+    return [notAnObject("backgroundPicture", BACKGROUND_ITEM)];
+  }
+  const errors: EngineError[] = [];
+
+  const ref = raw["ref"];
+  if (ref === undefined) {
+    errors.push(missingField("ref", BACKGROUND_ITEM));
+  } else if (typeof ref !== "string" || ref === "") {
+    errors.push(wrongType("ref", "a non-empty text", BACKGROUND_ITEM));
+  }
+
+  const scale = raw["scale"];
+  if (scale === undefined) {
+    errors.push(missingField("scale", BACKGROUND_ITEM));
+  } else if (typeof scale !== "number") {
+    errors.push(wrongType("scale", "a number", BACKGROUND_ITEM));
+  } else if (!isFiniteNumber(scale) || scale <= 0) {
+    errors.push(
+      outOfRange("scale", "a finite number greater than 0", BACKGROUND_ITEM),
+    );
+  }
+
+  const opacity = raw["opacity"];
+  if (opacity === undefined) {
+    errors.push(missingField("opacity", BACKGROUND_ITEM));
+  } else if (typeof opacity !== "number") {
+    errors.push(wrongType("opacity", "a number", BACKGROUND_ITEM));
+  } else if (!isFiniteNumber(opacity) || opacity < 0 || opacity > 1) {
+    errors.push(
+      outOfRange("opacity", "a number from 0 to 1", BACKGROUND_ITEM),
+    );
+  }
+  return errors;
+}

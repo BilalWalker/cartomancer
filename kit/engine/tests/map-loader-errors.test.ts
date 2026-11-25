@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkBackgroundPicture,
   checkBlockedAreas,
   checkNodes,
   checkPlaces,
@@ -689,5 +690,85 @@ describe("checkProps", () => {
       },
     ]);
     expect(errors).toHaveLength(4);
+  });
+});
+
+describe("checkBackgroundPicture", () => {
+  const good = { ref: "plan.png", scale: 2, opacity: 0.5 };
+
+  function expectPlain(message: string | undefined): void {
+    expect(message).toBeDefined();
+    expect(message).not.toContain("at ");
+  }
+
+  it("accepts an absent picture", () => {
+    expect(checkBackgroundPicture(undefined)).toEqual([]);
+  });
+
+  it("accepts a good picture and opacity of exactly 0 and 1", () => {
+    expect(checkBackgroundPicture(good)).toEqual([]);
+    expect(checkBackgroundPicture({ ...good, opacity: 0 })).toEqual([]);
+    expect(checkBackgroundPicture({ ...good, opacity: 1 })).toEqual([]);
+  });
+
+  it("rejects a picture that is not an object", () => {
+    for (const bad of ["plan.png", null, [good], 4]) {
+      const errors = checkBackgroundPicture(bad);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("backgroundPicture");
+      expectPlain(errors[0]?.message);
+    }
+  });
+
+  it("rejects a missing, empty or mistyped reference", () => {
+    const { ref: _r, ...noRef } = good;
+    for (const bad of [noRef, { ...good, ref: "" }, { ...good, ref: 3 }]) {
+      const errors = checkBackgroundPicture(bad);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("ref");
+      expect(errors[0]?.item).toBe("background picture");
+      expectPlain(errors[0]?.message);
+    }
+  });
+
+  it("rejects a missing, mistyped, zero, negative or non-finite scale", () => {
+    const { scale: _s, ...noScale } = good;
+    const bads = [
+      noScale,
+      { ...good, scale: "2" },
+      { ...good, scale: 0 },
+      { ...good, scale: -1 },
+      { ...good, scale: Number.POSITIVE_INFINITY },
+    ];
+    for (const bad of bads) {
+      const errors = checkBackgroundPicture(bad);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("scale");
+      expect(errors[0]?.item).toBe("background picture");
+      expectPlain(errors[0]?.message);
+    }
+  });
+
+  it("rejects a missing, mistyped, out of range or non-finite opacity", () => {
+    const { opacity: _o, ...noOpacity } = good;
+    const bads = [
+      noOpacity,
+      { ...good, opacity: "0.5" },
+      { ...good, opacity: -0.1 },
+      { ...good, opacity: 1.1 },
+      { ...good, opacity: Number.NaN },
+    ];
+    for (const bad of bads) {
+      const errors = checkBackgroundPicture(bad);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("opacity");
+      expect(errors[0]?.item).toBe("background picture");
+      expectPlain(errors[0]?.message);
+    }
+  });
+
+  it("reports every problem in one picture", () => {
+    const errors = checkBackgroundPicture({ ref: "", scale: 0, opacity: 2 });
+    expect(errors.map((e) => e.field)).toEqual(["ref", "scale", "opacity"]);
   });
 });
