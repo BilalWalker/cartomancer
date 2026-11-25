@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { checkNodes, checkPlaces, checkRoads } from "../src/map-loader-checks.js";
+import {
+  checkBlockedAreas,
+  checkNodes,
+  checkPlaces,
+  checkRoads,
+} from "../src/map-loader-checks.js";
 
 describe("checkNodes", () => {
   it("accepts a good node list and an empty list", () => {
@@ -379,5 +384,158 @@ describe("checkPlaces", () => {
       { ...good, name: "", category: "", x: Number.NaN },
     ]);
     expect(errors).toHaveLength(4);
+  });
+});
+
+describe("checkBlockedAreas", () => {
+  const good = {
+    id: "b1",
+    kind: "water",
+    polygon: [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ],
+  };
+
+  function expectPlain(message: string | undefined): void {
+    expect(message).toBeDefined();
+    expect(message).not.toContain("at ");
+  }
+
+  it("accepts every kind and an empty list", () => {
+    expect(
+      checkBlockedAreas([
+        good,
+        { ...good, id: "b2", kind: "mountain" },
+        { ...good, id: "b3", kind: "wall" },
+      ]),
+    ).toEqual([]);
+    expect(checkBlockedAreas([])).toEqual([]);
+  });
+
+  it("rejects a list that is not a list", () => {
+    const errors = checkBlockedAreas(good);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("blockedAreas");
+  });
+
+  it("rejects an area that is not an object", () => {
+    const errors = checkBlockedAreas([good, 7]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("blockedAreas");
+    expect(errors[0]?.item).toBe("blocked area 2");
+  });
+
+  it("names a missing id and an id of the wrong type", () => {
+    const { id: _id, ...noId } = good;
+    const errors = checkBlockedAreas([noId, { ...good, id: 3 }]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("id");
+    expect(errors[0]?.item).toBe("blocked area 1");
+    expect(errors[1]?.field).toBe("id");
+    expect(errors[1]?.item).toBe("blocked area 2");
+  });
+
+  it("names a duplicated area id", () => {
+    const errors = checkBlockedAreas([good, { ...good }]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("blockedAreas");
+    expect(errors[0]?.item).toBe("b1");
+    expect(errors[0]?.message).toContain('"b1"');
+    expectPlain(errors[0]?.message);
+  });
+
+  it("rejects a missing or unknown kind", () => {
+    const { kind: _k, ...noKind } = good;
+    const errors = checkBlockedAreas([
+      noKind,
+      { ...good, id: "b2", kind: "lava" },
+      { ...good, id: "b3", kind: 4 },
+    ]);
+    expect(errors).toHaveLength(3);
+    for (const [i, item] of ["b1", "b2", "b3"].entries()) {
+      expect(errors[i]?.field).toBe("kind");
+      expect(errors[i]?.item).toBe(item);
+      expectPlain(errors[i]?.message);
+    }
+  });
+
+  it("rejects a missing polygon and a polygon that is not a list", () => {
+    const { polygon: _p, ...noPolygon } = good;
+    const errors = checkBlockedAreas([
+      noPolygon,
+      { ...good, id: "b2", polygon: "square" },
+    ]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("polygon");
+    expect(errors[0]?.item).toBe("b1");
+    expect(errors[1]?.field).toBe("polygon");
+    expect(errors[1]?.item).toBe("b2");
+    expectPlain(errors[1]?.message);
+  });
+
+  it("rejects a polygon with fewer than three points", () => {
+    const errors = checkBlockedAreas([
+      { ...good, id: "b1", polygon: [] },
+      { ...good, id: "b2", polygon: good.polygon.slice(0, 2) },
+    ]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("polygon");
+    expect(errors[0]?.item).toBe("b1");
+    expect(errors[1]?.field).toBe("polygon");
+    expect(errors[1]?.item).toBe("b2");
+    expectPlain(errors[0]?.message);
+  });
+
+  it("rejects a polygon point that is not an object", () => {
+    const errors = checkBlockedAreas([
+      { ...good, polygon: [...good.polygon, null] },
+    ]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("polygon");
+    expect(errors[0]?.item).toBe("b1");
+    expectPlain(errors[0]?.message);
+  });
+
+  it("names a polygon point with a missing or mistyped coordinate", () => {
+    const errors = checkBlockedAreas([
+      {
+        ...good,
+        polygon: [{ y: 0 }, { x: 10, y: "0" }, { x: 10, y: 10 }],
+      },
+    ]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("x");
+    expect(errors[0]?.item).toBe("b1, point 1 of polygon");
+    expect(errors[1]?.field).toBe("y");
+    expect(errors[1]?.item).toBe("b1, point 2 of polygon");
+    expectPlain(errors[0]?.message);
+    expectPlain(errors[1]?.message);
+  });
+
+  it("rejects polygon coordinates that are not finite", () => {
+    const errors = checkBlockedAreas([
+      {
+        ...good,
+        polygon: [
+          { x: Number.NaN, y: 0 },
+          { x: 10, y: Number.POSITIVE_INFINITY },
+          { x: 10, y: 10 },
+        ],
+      },
+    ]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("x");
+    expect(errors[1]?.field).toBe("y");
+    expectPlain(errors[0]?.message);
+  });
+
+  it("reports every problem in one call", () => {
+    const errors = checkBlockedAreas([
+      good,
+      { ...good, kind: "lava", polygon: [{ x: 0, y: 0 }] },
+    ]);
+    expect(errors).toHaveLength(3);
   });
 });

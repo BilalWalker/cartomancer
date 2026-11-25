@@ -194,3 +194,79 @@ export function checkPlaces(raw: unknown): EngineError[] {
   });
   return errors;
 }
+
+const BLOCKED_AREA_KINDS = ["mountain", "water", "wall"];
+
+/**
+ * Checks the blocked area list: every area has a unique non-empty string id,
+ * a kind of mountain, water or wall, and a polygon of at least three points,
+ * each an object with finite numeric x and y.
+ */
+export function checkBlockedAreas(raw: unknown): EngineError[] {
+  if (!Array.isArray(raw)) {
+    return [wrongType("blockedAreas", "a list")];
+  }
+  const errors: EngineError[] = [];
+  const seen = new Set<string>();
+  raw.forEach((entry: unknown, index: number) => {
+    const label = `blocked area ${index + 1}`;
+    if (!isRecord(entry)) {
+      errors.push(notAnObject("blockedAreas", label));
+      return;
+    }
+    const id = entry["id"];
+    let item = label;
+    if (id === undefined) {
+      errors.push(missingField("id", label));
+    } else if (typeof id !== "string" || id === "") {
+      errors.push(wrongType("id", "a non-empty text", label));
+    } else {
+      item = id;
+      if (seen.has(id)) {
+        errors.push(duplicateId("blockedAreas", id));
+      }
+      seen.add(id);
+    }
+
+    const kind = entry["kind"];
+    if (kind === undefined) {
+      errors.push(missingField("kind", item));
+    } else if (
+      typeof kind !== "string" ||
+      !BLOCKED_AREA_KINDS.includes(kind)
+    ) {
+      errors.push(outOfRange("kind", "one of mountain, water or wall", item));
+    }
+
+    const polygon = entry["polygon"];
+    if (polygon === undefined) {
+      errors.push(missingField("polygon", item));
+    } else if (!Array.isArray(polygon)) {
+      errors.push(wrongType("polygon", "a list of points", item));
+    } else {
+      if (polygon.length < 3) {
+        errors.push(outOfRange("polygon", "a list of three or more points", item));
+      }
+      polygon.forEach((point: unknown, pointIndex: number) => {
+        const pointLabel = `point ${pointIndex + 1} of polygon`;
+        if (!isRecord(point)) {
+          errors.push(wrongType("polygon", `an object in ${pointLabel}`, item));
+          return;
+        }
+        for (const axis of ["x", "y"] as const) {
+          const value = point[axis];
+          if (value === undefined) {
+            errors.push(missingField(axis, `${item}, ${pointLabel}`));
+          } else if (typeof value !== "number") {
+            errors.push(wrongType(axis, "a number", `${item}, ${pointLabel}`));
+          } else if (!isFiniteNumber(value)) {
+            errors.push(
+              outOfRange(axis, "a finite number", `${item}, ${pointLabel}`),
+            );
+          }
+        }
+      });
+    }
+  });
+  return errors;
+}
