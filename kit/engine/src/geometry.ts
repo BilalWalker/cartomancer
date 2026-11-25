@@ -1,5 +1,7 @@
 // Geometry helpers. Screen convention: x grows right, y grows down.
 
+import type { Turn } from "./types";
+
 export interface Point {
   x: number;
   y: number;
@@ -81,4 +83,30 @@ export function segmentCrossesPolygon(a: Point, b: Point, polygon: readonly Poin
     if (segmentsIntersect(a, b, polygon[i], polygon[(i + 1) % n])) return true;
   }
   return pointInPolygon(a, polygon);
+}
+
+/**
+ * Heading of the segment a-b in degrees, under the screen convention:
+ * y grows down, so headings grow clockwise on the screen (0 is right, 90 is down).
+ */
+export function headingOfSegment(a: Point, b: Point): number {
+  return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+}
+
+/**
+ * Change of heading from `before` to `after` in degrees, normalised to (-180, 180].
+ * Positive is a right (clockwise) change, negative is a left change.
+ */
+export function signedAngleDifference(before: number, after: number): number {
+  let delta = (((after - before) % 360) + 360) % 360;
+  if (delta > 180) delta -= 360;
+  return delta;
+}
+
+/** Classify a signed heading change: straight-on up to 30 degrees, turn-back beyond 150. */
+export function classifyTurn(delta: number): Turn {
+  const size = Math.abs(delta);
+  if (size <= 30) return "straight-on";
+  if (size > 150) return "turn-back";
+  return delta > 0 ? "right" : "left";
 }
