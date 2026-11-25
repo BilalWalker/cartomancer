@@ -28,3 +28,7 @@ Full context is in #[[file:docs/brief.md]]. Where the brief and a Kiroween hacka
 
 ## Order of work
 Blocks A (engine core), B (views, with a gate on the 5,000-road map), C (kit `.kiro/`), D (City Run), E (Room Finder), F (maker), G (landing page and docs). Stop after each checkpoint and report; the reviewer reruns the checks before the next block.
+
+## Shell use
+- Run one command per call. No multi-line scripts, no chains with `;` or `&&`, no pipes.
+- Create and edit files with file tools, never with shell commands.
