@@ -8,6 +8,7 @@ import {
   checkRoads,
   checkStyle,
 } from "../src/map-loader-checks.js";
+import { parseMap } from "../src/map-loader.js";
 
 describe("checkNodes", () => {
   it("accepts a good node list and an empty list", () => {
@@ -893,5 +894,85 @@ describe("checkStyle", () => {
       lineStyles: { main: { width: 0, dash: [-1] } },
     });
     expect(errors.map((e) => e.field)).toEqual(["colors", "width", "dash"]);
+  });
+});
+
+const validFile = {
+  formatVersion: 1,
+  nodes: [],
+  roads: [{ id: "r1" }, { id: "r2" }],
+  places: [],
+  blockedAreas: [],
+  props: [],
+  style: { colors: {}, lineStyles: {} },
+};
+
+function loadErrors(text: string) {
+  const result = parseMap(text);
+  if (!("errors" in result)) throw new Error("expected errors");
+  expect("map" in result).toBe(false);
+  return result.errors;
+}
+
+describe("parseMap top level and version", () => {
+  it("rejects text that is not JSON and gives the position", () => {
+    const errors = loadErrors('{\n  "formatVersion": 1,\n  oops\n}');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toContain("not valid JSON");
+    expect(errors[0]?.position?.line).toBe(3);
+    expect(errors[0]?.message).not.toContain("at ");
+  });
+
+  it("rejects empty text", () => {
+    expect(loadErrors("")[0]?.message).toContain("not valid JSON");
+  });
+
+  it("rejects a top level that is an array, a number or null", () => {
+    for (const text of ["[]", "5", "null"]) {
+      const errors = loadErrors(text);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.message).toContain("must be an object");
+      expect(errors[0]?.message).not.toContain("at ");
+    }
+  });
+
+  it("names every missing top-level field", () => {
+    const { nodes: _n, style: _s, ...rest } = validFile;
+    const errors = loadErrors(JSON.stringify(rest));
+    expect(errors.map((e) => e.field)).toEqual(["nodes", "style"]);
+    expect(errors[0]?.message).toContain("nodes");
+  });
+
+  it("reports a missing format version alone, before other fields", () => {
+    const { formatVersion: _v, nodes: _n, ...rest } = validFile;
+    const errors = loadErrors(JSON.stringify(rest));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("formatVersion");
+  });
+
+  it("rejects a format version of the wrong type", () => {
+    for (const version of ["1", 1.5, null, true]) {
+      const errors = loadErrors(
+        JSON.stringify({ ...validFile, formatVersion: version }),
+      );
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.field).toBe("formatVersion");
+    }
+  });
+
+  it("rejects an unsupported version and lists the supported ones", () => {
+    const errors = loadErrors(JSON.stringify({ ...validFile, formatVersion: 2 }));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("formatVersion");
+    expect(errors[0]?.message).toContain("Supported versions: 1");
+    expect(errors[0]?.message).not.toContain("at ");
+  });
+
+  it("returns a map with all road ids usable and none blocked", () => {
+    const result = parseMap(JSON.stringify(validFile));
+    if (!("map" in result)) throw new Error("expected a map");
+    expect([...result.map.usableRoadIds]).toEqual(["r1", "r2"]);
+    expect(result.map.blockedRoads).toEqual([]);
+    expect(result.notices).toEqual([]);
   });
 });
