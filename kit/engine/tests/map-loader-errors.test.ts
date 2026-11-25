@@ -899,9 +899,23 @@ describe("checkStyle", () => {
 
 const validFile = {
   formatVersion: 1,
-  nodes: [],
-  roads: [{ id: "r1" }, { id: "r2" }],
-  places: [],
+  nodes: [
+    { id: "n1", x: 0, y: 0 },
+    { id: "n2", x: 10, y: 0 },
+    { id: "n3", x: 10, y: 10 },
+  ],
+  roads: [
+    { id: "r1", fromNodeId: "n1", toNodeId: "n2", width: 4, kind: "main" },
+    {
+      id: "r2",
+      fromNodeId: "n2",
+      toNodeId: "n3",
+      width: 2,
+      kind: "side",
+      oneWay: true,
+    },
+  ],
+  places: [{ id: "p1", name: "Bank", category: "shop", x: 5, y: 0 }],
   blockedAreas: [],
   props: [],
   style: { colors: {}, lineStyles: {} },
@@ -974,5 +988,48 @@ describe("parseMap top level and version", () => {
     expect([...result.map.usableRoadIds]).toEqual(["r1", "r2"]);
     expect(result.map.blockedRoads).toEqual([]);
     expect(result.notices).toEqual([]);
+  });
+});
+
+describe("parseMap field checks", () => {
+  it("loads a valid hand-written map file", () => {
+    const result = parseMap(JSON.stringify(validFile));
+    if (!("map" in result)) throw new Error("expected a map");
+    expect(result.map.nodes).toHaveLength(3);
+    expect(result.map.roads).toHaveLength(2);
+    expect(result.map.places[0]?.name).toBe("Bank");
+  });
+
+  it("reports problems from two groups together", () => {
+    const broken = {
+      ...validFile,
+      nodes: [...validFile.nodes, { id: "n1", x: 1, y: 1 }],
+      places: [{ id: "p1", name: "", category: "shop", x: 5, y: 0 }],
+    };
+    const errors = loadErrors(JSON.stringify(broken));
+    expect(errors.map((e) => e.field)).toEqual(["nodes", "name"]);
+    for (const error of errors) {
+      expect(error.message).not.toContain("at ");
+    }
+  });
+
+  it("reports a road that points at a missing node and a bad prop", () => {
+    const broken = {
+      ...validFile,
+      roads: [
+        { id: "r1", fromNodeId: "n1", toNodeId: "zz", width: 4, kind: "main" },
+      ],
+      props: [{ id: "t1", kind: "tree", x: 0, y: 0, width: 0, height: 1, rotationDegrees: 0 }],
+    };
+    const errors = loadErrors(JSON.stringify(broken));
+    expect(errors.map((e) => e.field)).toEqual(["toNodeId", "width"]);
+  });
+
+  it("returns no map when there are errors", () => {
+    const result = parseMap(
+      JSON.stringify({ ...validFile, style: { colors: { a: 1 }, lineStyles: {} } }),
+    );
+    expect("errors" in result).toBe(true);
+    expect("map" in result).toBe(false);
   });
 });

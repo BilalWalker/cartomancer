@@ -9,6 +9,15 @@ import {
   wrongType,
 } from "./errors.js";
 import { SUPPORTED_FORMAT_VERSIONS } from "./format.js";
+import {
+  checkBackgroundPicture,
+  checkBlockedAreas,
+  checkNodes,
+  checkPlaces,
+  checkProps,
+  checkRoads,
+  checkStyle,
+} from "./map-loader-checks.js";
 import type { EngineError, EngineMap, LoadResult, MapFile } from "./types.js";
 
 /** Top-level fields every map file must carry (the background picture is optional). */
@@ -96,7 +105,28 @@ export function parseMap(text: string): LoadResult {
   }
   if (errors.length > 0) return { errors };
 
-  // Field checks arrive in a later step; roads are all usable for now.
+  const nodeIds = new Set<string>();
+  if (Array.isArray(data["nodes"])) {
+    for (const node of data["nodes"] as unknown[]) {
+      const id =
+        typeof node === "object" && node !== null
+          ? (node as Record<string, unknown>)["id"]
+          : undefined;
+      if (typeof id === "string" && id !== "") nodeIds.add(id);
+    }
+  }
+  errors.push(
+    ...checkNodes(data["nodes"]),
+    ...checkRoads(data["roads"], nodeIds),
+    ...checkPlaces(data["places"]),
+    ...checkBlockedAreas(data["blockedAreas"]),
+    ...checkProps(data["props"]),
+    ...checkBackgroundPicture(data["backgroundPicture"]),
+    ...checkStyle(data["style"]),
+  );
+  if (errors.length > 0) return { errors };
+
+  // Blocked roads are classified in a later step; roads are all usable for now.
   const file = data as unknown as MapFile;
   const map: EngineMap = {
     ...file,
