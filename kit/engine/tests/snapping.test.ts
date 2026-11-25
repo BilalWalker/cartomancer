@@ -128,9 +128,10 @@ describe("snapToRoad properties", () => {
         mapFileArbitrary().filter((file) => file.roads.length > 0),
         pointArbitrary(),
         (file, point) => {
-          // Add a copy of the first road, reversed, with an id that sorts before all others.
+          // Add a same-direction copy of the first road, with an id that sorts before all others.
+          // Same direction makes the two distances bit-identical (a reversed copy rounds differently).
           const first = file.roads[0]!;
-          const duplicate = { ...first, id: "!dup", fromNodeId: first.toNodeId, toNodeId: first.fromNodeId };
+          const duplicate = { ...first, id: "!dup" };
           const map = loadValid({ ...file, roads: [...file.roads, duplicate] });
           const snapped = snapToRoad(map, point);
           if (isNoUsableRoad(snapped)) {
