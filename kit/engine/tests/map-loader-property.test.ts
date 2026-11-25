@@ -48,4 +48,41 @@ describe("map loader properties", () => {
       { numRuns: 200 },
     );
   });
+
+  it("Property 2: Loader never returns a map together with errors", () => {
+    // Feature: engine-core, Property 2: Loader never returns a map together with errors
+    // **Validates: Requirements 4.3, 4.7**
+    const textArbitrary = fc.oneof(
+      // Valid texts.
+      mapFileArbitrary().map((file) => JSON.stringify(file)),
+      // Faulty texts.
+      fc
+        .tuple(
+          mapFileArbitrary(),
+          fc.constantFrom(...FAULT_NAMES),
+          fc.nat({ max: 20 }),
+        )
+        .map(([file, fault, choice]) => injectFault(file, fault, choice).text),
+      // Arbitrary strings, and arbitrary JSON values as text.
+      fc.string(),
+      fc.json(),
+    );
+    fc.assert(
+      fc.property(textArbitrary, (text) => {
+        const result = parseMap(text);
+        const hasMap = "map" in result;
+        const hasErrors = "errors" in result;
+        expect(hasMap !== hasErrors).toBe(true);
+        if (hasErrors) {
+          expect(hasMap).toBe(false);
+          expect("map" in result).toBe(false);
+          expect(Object.keys(result)).toEqual(["errors"]);
+          expect(result.errors.length).toBeGreaterThan(0);
+        } else {
+          expect("errors" in result).toBe(false);
+        }
+      }),
+      { numRuns: 200 },
+    );
+  });
 });
