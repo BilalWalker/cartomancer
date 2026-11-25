@@ -2,7 +2,12 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { parseMap } from "../src/map-loader.js";
 import { mapFileArbitrary } from "./helpers/arbitraries.js";
-import { FAULT_NAMES, injectFault } from "./helpers/fault-injection.js";
+import {
+  COEXISTING_FAULT_GROUPS,
+  FAULT_NAMES,
+  injectFault,
+  injectFaults,
+} from "./helpers/fault-injection.js";
 
 describe("map loader properties", () => {
   it("Property 1: Loader validation matches injected faults", () => {
@@ -80,6 +85,50 @@ describe("map loader properties", () => {
           expect(result.errors.length).toBeGreaterThan(0);
         } else {
           expect("errors" in result).toBe(false);
+        }
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it("Property 3: Multiple independent faults are all reported", () => {
+    // Feature: engine-core, Property 3: Multiple independent faults are all reported
+    // **Validates: Requirements 4.6**
+    const groupNames = Object.keys(COEXISTING_FAULT_GROUPS);
+    const faultsArbitrary = fc
+      .subarray(groupNames, { minLength: 2 })
+      .chain((groups) =>
+        fc.tuple(
+          ...groups.map((group) =>
+            fc.record({
+              fault: fc.constantFrom(...(COEXISTING_FAULT_GROUPS[group] ?? [])),
+              choice: fc.nat({ max: 20 }),
+            }),
+          ),
+        ),
+      );
+    fc.assert(
+      fc.property(mapFileArbitrary(), faultsArbitrary, (file, faults) => {
+        const { text, expected } = injectFaults(file, faults);
+        const result = parseMap(text);
+        if (!("errors" in result)) {
+          throw new Error("A file with several faults was accepted.");
+        }
+        expect("map" in result).toBe(false);
+        for (const [index, want] of expected.entries()) {
+          const named = result.errors.some(
+            (error) =>
+              error.field === want.field &&
+              (want.item === undefined || error.item === want.item),
+          );
+          if (!named) {
+            throw new Error(
+              `Fault "${faults[index]?.fault}": expected an error for field ` +
+                `"${want.field}"` +
+                (want.item === undefined ? "" : ` and item "${want.item}"`) +
+                `, got: ${JSON.stringify(result.errors)}`,
+            );
+          }
         }
       }),
       { numRuns: 200 },

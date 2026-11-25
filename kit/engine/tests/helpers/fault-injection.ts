@@ -130,6 +130,44 @@ function ensureStyleEntries(file: Loose): void {
   file["style"]["lineStyles"]["extra-line"] = { width: 2 };
 }
 
+/** Faults that leave the loader able to check every other group. */
+export const COEXISTING_FAULT_GROUPS: Record<string, readonly FaultName[]> = {
+  nodes: ["duplicate-node-id"],
+  roads: [
+    "dangling-road-reference",
+    "equal-road-endpoints",
+    "non-positive-road-width",
+    "unknown-road-kind",
+    "non-boolean-one-way",
+  ],
+  places: ["place-empty-name", "place-duplicate-id", "place-text-coordinate"],
+  areas: ["area-unknown-kind", "area-short-polygon"],
+  props: ["prop-zero-width", "prop-text-rotation"],
+  background: ["background-opacity-too-high", "background-scale-zero"],
+  style: ["style-colour-not-text", "style-line-width-zero"],
+};
+
+/**
+ * Break a valid map file with several faults, one after the other. The faults
+ * must come from different groups of COEXISTING_FAULT_GROUPS. Returns the
+ * final text and one expected field/item per fault.
+ */
+export function injectFaults(
+  file: MapFile,
+  faults: readonly { fault: FaultName; choice: number }[],
+): { text: string; expected: InjectedFault[] } {
+  let current = file;
+  const expected: InjectedFault[] = [];
+  let text = JSON.stringify(file);
+  for (const { fault, choice } of faults) {
+    const injected = injectFault(current, fault, choice);
+    expected.push(injected);
+    text = injected.text;
+    current = JSON.parse(text) as MapFile;
+  }
+  return { text, expected };
+}
+
 /**
  * Break a valid map file with one named fault. `choice` picks which item of
  * its kind is damaged (taken modulo the number of items).
