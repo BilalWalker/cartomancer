@@ -162,3 +162,24 @@ describe("zero-length route property", () => {
     expect(checked).toBeGreaterThan(0);
   });
 });
+
+describe("determinism property", () => {
+  // Feature: engine-core, Property 10: Route finding is deterministic
+  // **Validates: Requirements 8.5**
+  it("two calls with the same inputs return equal routes, also on grids with equal-length alternatives", () => {
+    let routesFound = 0;
+    fc.assert(
+      fc.property(
+        fc.oneof(gridRouteArbitrary(), gridRouteArbitrary(), smallMapRouteArbitrary()),
+        ({ map, start, destination }) => {
+          const first = findRoute(map, start, destination);
+          const second = findRoute(map, start, destination);
+          expect(second).toEqual(first);
+          if ("parts" in first) routesFound++;
+        },
+      ),
+      { numRuns: 200 },
+    );
+    expect(routesFound).toBeGreaterThan(0);
+  });
+});
