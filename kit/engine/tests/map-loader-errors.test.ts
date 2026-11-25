@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkNodes, checkRoads } from "../src/map-loader-checks.js";
+import { checkNodes, checkPlaces, checkRoads } from "../src/map-loader-checks.js";
 
 describe("checkNodes", () => {
   it("accepts a good node list and an empty list", () => {
@@ -269,6 +269,115 @@ describe("checkRoads", () => {
       [{ ...good, toNodeId: "zz", width: 0, kind: "x", oneWay: "no" }],
       nodeIds,
     );
+    expect(errors).toHaveLength(4);
+  });
+});
+
+describe("checkPlaces", () => {
+  const good = { id: "p1", name: "Bank", category: "shop", x: 1, y: 2 };
+
+  function expectPlain(message: string | undefined): void {
+    expect(message).toBeDefined();
+    expect(message).not.toContain("at ");
+  }
+
+  it("accepts good places and an empty list", () => {
+    expect(checkPlaces([good, { ...good, id: "p2", name: "Room 214" }])).toEqual(
+      [],
+    );
+    expect(checkPlaces([])).toEqual([]);
+  });
+
+  it("rejects a place list that is not a list", () => {
+    const errors = checkPlaces(good);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("places");
+  });
+
+  it("rejects a place that is not an object", () => {
+    const errors = checkPlaces([good, null]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("places");
+    expect(errors[0]?.item).toBe("place 2");
+  });
+
+  it("names a missing id and an id of the wrong type", () => {
+    const { id: _id, ...noId } = good;
+    const errors = checkPlaces([noId, { ...good, id: 4 }]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("id");
+    expect(errors[0]?.item).toBe("place 1");
+    expect(errors[1]?.field).toBe("id");
+    expect(errors[1]?.item).toBe("place 2");
+  });
+
+  it("names a duplicated place id", () => {
+    const errors = checkPlaces([good, { ...good }]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("places");
+    expect(errors[0]?.item).toBe("p1");
+    expect(errors[0]?.message).toContain('"p1"');
+    expectPlain(errors[0]?.message);
+  });
+
+  it("rejects an empty or missing name", () => {
+    const { name: _n, ...noName } = good;
+    const errors = checkPlaces([
+      { ...good, id: "p1", name: "" },
+      { ...noName, id: "p2" },
+      { ...good, id: "p3", name: 5 },
+    ]);
+    expect(errors).toHaveLength(3);
+    for (const [i, item] of ["p1", "p2", "p3"].entries()) {
+      expect(errors[i]?.field).toBe("name");
+      expect(errors[i]?.item).toBe(item);
+      expectPlain(errors[i]?.message);
+    }
+  });
+
+  it("rejects an empty or missing category", () => {
+    const { category: _c, ...noCategory } = good;
+    const errors = checkPlaces([
+      { ...good, id: "p1", category: "" },
+      { ...noCategory, id: "p2" },
+      { ...good, id: "p3", category: false },
+    ]);
+    expect(errors).toHaveLength(3);
+    for (const [i, item] of ["p1", "p2", "p3"].entries()) {
+      expect(errors[i]?.field).toBe("category");
+      expect(errors[i]?.item).toBe(item);
+      expectPlain(errors[i]?.message);
+    }
+  });
+
+  it("names a missing x and a y of the wrong type", () => {
+    const { x: _x, ...noX } = good;
+    const errors = checkPlaces([noX, { ...good, id: "p2", y: "2" }]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("x");
+    expect(errors[0]?.item).toBe("p1");
+    expect(errors[1]?.field).toBe("y");
+    expect(errors[1]?.item).toBe("p2");
+  });
+
+  it("rejects x and y that are not finite", () => {
+    const errors = checkPlaces([
+      { ...good, id: "p1", x: Number.NaN },
+      { ...good, id: "p2", y: Number.NEGATIVE_INFINITY },
+    ]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("x");
+    expect(errors[0]?.item).toBe("p1");
+    expect(errors[1]?.field).toBe("y");
+    expect(errors[1]?.item).toBe("p2");
+    expectPlain(errors[0]?.message);
+  });
+
+  it("reports every problem in one call", () => {
+    const errors = checkPlaces([
+      good,
+      { ...good, name: "", category: "", x: Number.NaN },
+    ]);
     expect(errors).toHaveLength(4);
   });
 });

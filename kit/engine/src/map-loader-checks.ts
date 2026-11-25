@@ -143,3 +143,54 @@ export function checkRoads(
   });
   return errors;
 }
+
+/**
+ * Checks the place list: every place has a unique non-empty string id, a
+ * non-empty text name and category, and finite numeric x and y.
+ */
+export function checkPlaces(raw: unknown): EngineError[] {
+  if (!Array.isArray(raw)) {
+    return [wrongType("places", "a list")];
+  }
+  const errors: EngineError[] = [];
+  const seen = new Set<string>();
+  raw.forEach((entry: unknown, index: number) => {
+    const label = `place ${index + 1}`;
+    if (!isRecord(entry)) {
+      errors.push(notAnObject("places", label));
+      return;
+    }
+    const id = entry["id"];
+    let item = label;
+    if (id === undefined) {
+      errors.push(missingField("id", label));
+    } else if (typeof id !== "string" || id === "") {
+      errors.push(wrongType("id", "a non-empty text", label));
+    } else {
+      item = id;
+      if (seen.has(id)) {
+        errors.push(duplicateId("places", id));
+      }
+      seen.add(id);
+    }
+    for (const field of ["name", "category"] as const) {
+      const value = entry[field];
+      if (value === undefined) {
+        errors.push(missingField(field, item));
+      } else if (typeof value !== "string" || value === "") {
+        errors.push(wrongType(field, "a non-empty text", item));
+      }
+    }
+    for (const axis of ["x", "y"] as const) {
+      const value = entry[axis];
+      if (value === undefined) {
+        errors.push(missingField(axis, item));
+      } else if (typeof value !== "number") {
+        errors.push(wrongType(axis, "a number", item));
+      } else if (!isFiniteNumber(value)) {
+        errors.push(outOfRange(axis, "a finite number", item));
+      }
+    }
+  });
+  return errors;
+}
