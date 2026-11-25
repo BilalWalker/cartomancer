@@ -41,16 +41,40 @@ export function findRoute(map: EngineMap, start: Point, destination: Destination
   const roadsById = new Map<string, RoadData>();
   for (const road of map.roads) roadsById.set(road.id, road);
 
-  const parts = shortestPath(map, nodes, roadsById, locate(nodes, roadsById, from), locate(nodes, roadsById, to));
+  const startAt = locate(nodes, roadsById, from);
+  const endAt = locate(nodes, roadsById, to);
+  const parts = shortestPath(map, nodes, roadsById, startAt, endAt, {});
   if (parts) {
     return { parts, lengthWorldUnits: sumLengths(parts), destination };
   }
 
-  // Temporary answer until reasons are handled.
+  // No way. Work out why by relaxing one rule at a time. When both a one-way
+  // road and blocked roads would each explain it, the one-way reason is given.
+  if (shortestPath(map, nodes, roadsById, startAt, endAt, { ignoreOneWay: true })) {
+    return {
+      reason: "one-way-blocks-the-way",
+      message:
+        "There is no way to the destination because a one-way road points the wrong direction. The roads are joined, but only against the arrows.",
+    };
+  }
+  if (shortestPath(map, nodes, roadsById, startAt, endAt, { allowBlocked: true })) {
+    return {
+      reason: "blocked-roads-cut-the-way",
+      message:
+        "There is no way to the destination because blocked roads cut the way. The roads would be joined if the blocked areas were not in the way.",
+    };
+  }
   return {
     reason: "separate-parts",
-    message: "No way was found between the start and the destination.",
+    message: "There is no way to the destination because the start and the destination are in separate parts of the map, and no road joins them.",
   };
+}
+
+interface SearchOptions {
+  /** Treat every one-way road as two-way (used only to explain a failure). */
+  ignoreOneWay?: boolean;
+  /** Allow blocked roads (used only to explain a failure). */
+  allowBlocked?: boolean;
 }
 
 /** Where a snapped point sits: exactly on a node, or inside a road. */
@@ -150,13 +174,15 @@ function shortestPath(
   roadsById: Map<string, RoadData>,
   startAt: Location,
   endAt: Location,
+  options: SearchOptions,
 ): RoutePart[] | undefined {
+  const oneWay = (road: RoadData): boolean => options.ignoreOneWay !== true && road.oneWay === true;
   const START = "\u0000start";
   const END = "\u0000end";
   const startNodeId = startAt.kind === "node" ? startAt.nodeId : START;
   const endNodeId = endAt.kind === "node" ? endAt.nodeId : END;
 
-  const roads = map.roads.filter((road) => map.usableRoadIds.has(road.id));
+  const roads = map.roads.filter((road) => options.allowBlocked === true || map.usableRoadIds.has(road.id));
   roads.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   const adjacency = new Map<string, Edge[]>();
@@ -171,7 +197,7 @@ function shortestPath(
     if (!a || !b) continue;
     const length = Math.hypot(b.x - a.x, b.y - a.y);
     addEdge(road.fromNodeId, { roadId: road.id, to: road.toNodeId, length, direction: "forward", from: a, target: b });
-    if (road.oneWay !== true) {
+    if (!oneWay(road)) {
       addEdge(road.toNodeId, { roadId: road.id, to: road.fromNodeId, length, direction: "backward", from: b, target: a });
     }
   }
@@ -184,19 +210,19 @@ function shortestPath(
     const a = nodes.get(road.fromNodeId) as Point;
     const b = nodes.get(road.toNodeId) as Point;
     partial(road.id, START, road.toNodeId, "forward", startAt.point, b);
-    if (road.oneWay !== true) partial(road.id, START, road.fromNodeId, "backward", startAt.point, a);
+    if (!oneWay(road)) partial(road.id, START, road.fromNodeId, "backward", startAt.point, a);
   }
   if (endAt.kind === "inside") {
     const road = roadsById.get(endAt.roadId) as RoadData;
     const a = nodes.get(road.fromNodeId) as Point;
     const b = nodes.get(road.toNodeId) as Point;
     partial(road.id, road.fromNodeId, END, "forward", a, endAt.point);
-    if (road.oneWay !== true) partial(road.id, road.toNodeId, END, "backward", b, endAt.point);
+    if (!oneWay(road)) partial(road.id, road.toNodeId, END, "backward", b, endAt.point);
   }
   if (startAt.kind === "inside" && endAt.kind === "inside" && startAt.roadId === endAt.roadId) {
     const road = roadsById.get(startAt.roadId) as RoadData;
     if (endAt.distance > startAt.distance) partial(road.id, START, END, "forward", startAt.point, endAt.point);
-    else if (road.oneWay !== true) partial(road.id, START, END, "backward", startAt.point, endAt.point);
+    else if (!oneWay(road)) partial(road.id, START, END, "backward", startAt.point, endAt.point);
   }
 
   const dist = new Map<string, number>([[startNodeId, 0]]);
