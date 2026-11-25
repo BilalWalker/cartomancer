@@ -7,10 +7,12 @@ import type {
   BackgroundPictureData,
   BlockedAreaData,
   BlockedAreaKind,
+  Destination,
   EngineMap,
   MapFile,
   NodeData,
   PlaceData,
+  Position,
   PropData,
   RoadData,
   RoadKind,
@@ -202,4 +204,223 @@ export function loadValid(file: MapFile): EngineMap {
     );
   }
   return result.map;
+}
+
+/** Most nodes a small map has; the exhaustive search stays fast below this. */
+export const SMALL_MAP_MAX_NODES = 12;
+
+/** A coordinate for small maps: a multiple of 5 from -100 to 100. */
+const smallCoordinate = fc.integer({ min: -20, max: 20 }).map((n) => n * 5 + 0);
+
+/**
+ * Generates a valid small map file: 2 to 12 nodes, each node after the first
+ * joined to an earlier node (so most routes are found), extra roads, some
+ * one-way, and a few small blocked areas. Node positions are distinct.
+ */
+export function smallMapFileArbitrary(): fc.Arbitrary<MapFile> {
+  return fc
+    .integer({ min: 2, max: SMALL_MAP_MAX_NODES })
+    .chain((nodeCount) => {
+      const positions = fc.uniqueArray(fc.tuple(smallCoordinate, smallCoordinate), {
+        minLength: nodeCount,
+        maxLength: nodeCount,
+        selector: ([x, y]) => `${x},${y}`,
+      });
+      const links = fc.tuple(
+        ...Array.from({ length: nodeCount - 1 }, (_, i) =>
+          fc.record({
+            to: fc.integer({ min: 0, max: i }),
+            oneWay: fc.integer({ min: 0, max: 5 }).map((n) => n === 0),
+            reversed: fc.boolean(),
+            width: positiveSize,
+            kind: fc.constantFrom(...ROAD_KINDS),
+          }),
+        ),
+      );
+      const extras = fc.array(
+        fc.record({
+          a: fc.integer({ min: 0, max: nodeCount - 1 }),
+          offset: fc.integer({ min: 1, max: nodeCount - 1 }),
+          oneWay: fc.integer({ min: 0, max: 2 }).map((n) => n === 0),
+          width: positiveSize,
+          kind: fc.constantFrom(...ROAD_KINDS),
+        }),
+        { maxLength: 8 },
+      );
+      const areas = fc.array(
+        fc.record({
+          kind: fc.constantFrom(...AREA_KINDS),
+          cx: smallCoordinate,
+          cy: smallCoordinate,
+          half: fc.integer({ min: 1, max: 6 }).map((n) => n * 2),
+        }),
+        { maxLength: 2 },
+      );
+      return fc.record({
+        positions,
+        links,
+        extras,
+        areas,
+        places: fc.array(placeArb, { maxLength: 4 }),
+        style: styleArb,
+      });
+    })
+    .map(({ positions, links, extras, areas, places, style }) => {
+      const nodes: NodeData[] = positions.map(([x, y], i) => ({ id: `n${i}`, x, y }));
+      const roads: RoadData[] = [];
+      const add = (
+        from: number,
+        to: number,
+        width: number,
+        kind: RoadKind,
+        oneWay: boolean,
+      ) => {
+        const road: RoadData = {
+          id: `r${roads.length}`,
+          fromNodeId: `n${from}`,
+          toNodeId: `n${to}`,
+          width,
+          kind,
+        };
+        if (oneWay) road.oneWay = true;
+        roads.push(road);
+      };
+      links.forEach((l, i) => {
+        // Node i+1 joins an earlier node; direction varies for one-way roads.
+        if (l.reversed) add(i + 1, l.to, l.width, l.kind, l.oneWay);
+        else add(l.to, i + 1, l.width, l.kind, l.oneWay);
+      });
+      for (const e of extras) {
+        add(e.a, (e.a + e.offset) % nodes.length, e.width, e.kind, e.oneWay);
+      }
+      return {
+        formatVersion: 1,
+        nodes,
+        roads,
+        places: places.map((p, i) => ({ id: `p${i}`, ...p })),
+        blockedAreas: areas.map((a, i) => ({
+          id: `a${i}`,
+          kind: a.kind,
+          polygon: [
+            { x: a.cx - a.half, y: a.cy - a.half },
+            { x: a.cx + a.half, y: a.cy - a.half },
+            { x: a.cx + a.half, y: a.cy + a.half },
+            { x: a.cx - a.half, y: a.cy + a.half },
+          ],
+        })),
+        props: [],
+        style,
+      } satisfies MapFile;
+    });
+}
+
+/**
+ * Generates a valid grid map of `columns` by `rows` nodes (2 to 4 each) with
+ * unit spacing of 10, equal widths and no one-way roads, so many routes have
+ * equal-length alternatives. Each node carries a place at its position.
+ */
+export function gridMapFileArbitrary(): fc.Arbitrary<MapFile> {
+  return fc
+    .record({
+      columns: fc.integer({ min: 2, max: 4 }),
+      rows: fc.integer({ min: 2, max: 4 }),
+      kind: fc.constantFrom(...ROAD_KINDS),
+    })
+    .map(({ columns, rows, kind }) => {
+      const nodes: NodeData[] = [];
+      const roads: RoadData[] = [];
+      const id = (c: number, r: number) => `n${r * columns + c}`;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < columns; c++) {
+          nodes.push({ id: id(c, r), x: c * 10, y: r * 10 });
+        }
+      }
+      const link = (a: string, b: string) =>
+        roads.push({ id: `r${roads.length}`, fromNodeId: a, toNodeId: b, width: 4, kind });
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < columns; c++) {
+          if (c + 1 < columns) link(id(c, r), id(c + 1, r));
+          if (r + 1 < rows) link(id(c, r), id(c, r + 1));
+        }
+      }
+      return {
+        formatVersion: 1,
+        nodes,
+        roads,
+        places: nodes.map((n, i) => ({
+          id: `p${i}`,
+          name: `Place ${i}`,
+          category: "spot",
+          x: n.x,
+          y: n.y,
+        })),
+        blockedAreas: [],
+        props: [],
+        style: { colors: {}, lineStyles: {} },
+      } satisfies MapFile;
+    });
+}
+
+/** A start position for a route: an arbitrary point with a heading. */
+export function startArbitrary(): fc.Arbitrary<Position> {
+  return fc
+    .record({
+      x: fc.integer({ min: -120, max: 120 }).map((n) => n + 0),
+      y: fc.integer({ min: -120, max: 120 }).map((n) => n + 0),
+      headingDegrees: fc.integer({ min: -179, max: 180 }).map((n) => n + 0),
+    });
+}
+
+/**
+ * A destination for `map`: a point, or (when the map has places) a place id.
+ * About one in five place destinations names a place that does not exist.
+ */
+export function destinationArbitrary(map: EngineMap): fc.Arbitrary<Destination> {
+  const pointDestination: fc.Arbitrary<Destination> = fc
+    .record({
+      x: fc.integer({ min: -120, max: 120 }).map((n) => n + 0),
+      y: fc.integer({ min: -120, max: 120 }).map((n) => n + 0),
+    })
+    .map((point) => ({ point }));
+  if (map.places.length === 0) return pointDestination;
+  const placeDestination: fc.Arbitrary<Destination> = fc
+    .integer({ min: 0, max: map.places.length - 1 })
+    .map((i) => ({ placeId: map.places[i]!.id }));
+  return fc.oneof(
+    { arbitrary: pointDestination, weight: 3 },
+    { arbitrary: placeDestination, weight: 2 },
+  );
+}
+
+/** A small loaded map with a start and a destination for it. */
+export interface SmallMapRouteCase {
+  map: EngineMap;
+  start: Position;
+  destination: Destination;
+}
+
+/** Generates small maps (at most 12 nodes) with a start and a destination. */
+export function smallMapRouteArbitrary(): fc.Arbitrary<SmallMapRouteCase> {
+  return smallMapFileArbitrary()
+    .map((file) => loadValid(file))
+    .chain((map) =>
+      fc.record({
+        map: fc.constant(map),
+        start: startArbitrary(),
+        destination: destinationArbitrary(map),
+      }),
+    );
+}
+
+/** A grid map with a start and a destination, for equal-length alternatives. */
+export function gridRouteArbitrary(): fc.Arbitrary<SmallMapRouteCase> {
+  return gridMapFileArbitrary()
+    .map((file) => loadValid(file))
+    .chain((map) =>
+      fc.record({
+        map: fc.constant(map),
+        start: startArbitrary(),
+        destination: destinationArbitrary(map),
+      }),
+    );
 }
