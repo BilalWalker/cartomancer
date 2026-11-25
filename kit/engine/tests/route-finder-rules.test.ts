@@ -1,7 +1,10 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { parseMap } from "../src/map-loader.js";
 import { findRoute } from "../src/route-finder.js";
+import { isNoUsableRoad, snapToRoad } from "../src/snapping.js";
 import type { EngineMap } from "../src/types.js";
+import { gridRouteArbitrary, smallMapRouteArbitrary } from "./helpers/arbitraries.js";
 
 function load(roads: unknown[], blockedAreas: unknown[] = []): EngineMap {
   const text = JSON.stringify({
@@ -128,5 +131,34 @@ describe("points inside roads", () => {
   it("gives no route against a one-way road when there is no way round", () => {
     const result = findRoute(load([oneWay]), { x: 70, y: 0 }, { point: { x: 20, y: 0 } });
     expect("parts" in result).toBe(false);
+  });
+});
+
+describe("zero-length route property", () => {
+  // Feature: engine-core, Property 9: Same-point start and destination give a zero-length route
+  // **Validates: Requirements 8.4**
+  it("a start and a destination that snap to the same point give a route of length zero", () => {
+    let checked = 0;
+    fc.assert(
+      fc.property(fc.oneof(smallMapRouteArbitrary(), gridRouteArbitrary()), ({ map, start }) => {
+        const snapped = snapToRoad(map, start);
+        if (isNoUsableRoad(snapped)) return;
+        checked++;
+
+        // Destination 1: the very same raw point as the start.
+        const sameRaw = findRoute(map, start, { point: { x: start.x, y: start.y } });
+        // Destination 2: the snapped point itself, which snaps to itself.
+        const sameSnapped = findRoute(map, start, { point: { x: snapped.x, y: snapped.y } });
+
+        for (const result of [sameRaw, sameSnapped]) {
+          expect("parts" in result).toBe(true);
+          if (!("parts" in result)) return;
+          expect(result.lengthWorldUnits).toBe(0);
+          expect(result.parts).toHaveLength(0);
+        }
+      }),
+      { numRuns: 200 },
+    );
+    expect(checked).toBeGreaterThan(0);
   });
 });
