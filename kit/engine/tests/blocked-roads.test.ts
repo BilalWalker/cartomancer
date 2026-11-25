@@ -1,6 +1,8 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { classifyBlockedRoads } from "../src/blocked-roads.js";
 import { parseMap } from "../src/map-loader.js";
+import { mapFileArbitrary } from "./helpers/arbitraries.js";
 
 const nodes = [
   { id: "a", x: 0, y: 0 },
@@ -128,5 +130,99 @@ describe("classifyBlockedRoads", () => {
     });
     expect([...result.blockedRoadIds]).toEqual(["r1"]);
     expect(result.notices).toHaveLength(1);
+  });
+});
+
+// An independent exact oracle. Generated coordinates are multiples of 0.5, so
+// doubling them gives small integers and every product below is exact.
+interface P {
+  x: number;
+  y: number;
+}
+
+const dbl = (p: { x: number; y: number }): P => ({ x: p.x * 2, y: p.y * 2 });
+
+function orient(a: P, b: P, c: P): number {
+  return Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+}
+
+/** Closed segments share a point: boxes overlap and each straddles the other's line. */
+function closedSegmentsMeet(a: P, b: P, c: P, d: P): boolean {
+  const boxesOverlap =
+    Math.max(Math.min(a.x, b.x), Math.min(c.x, d.x)) <= Math.min(Math.max(a.x, b.x), Math.max(c.x, d.x)) &&
+    Math.max(Math.min(a.y, b.y), Math.min(c.y, d.y)) <= Math.min(Math.max(a.y, b.y), Math.max(c.y, d.y));
+  return (
+    boxesOverlap &&
+    orient(a, b, c) * orient(a, b, d) <= 0 &&
+    orient(c, d, a) * orient(c, d, b) <= 0
+  );
+}
+
+/** Even-odd test for a point; points on the boundary are handled by the edge test. */
+function strictlyInside(pt: P, polygon: P[]): boolean {
+  let inside = false;
+  for (let i = 0; i < polygon.length; i++) {
+    const p = polygon[i];
+    const q = polygon[(i + 1) % polygon.length];
+    if (p.y > pt.y === q.y > pt.y) continue;
+    const side = orient(p, q, pt);
+    if (q.y > p.y ? side > 0 : side < 0) inside = !inside;
+  }
+  return inside;
+}
+
+function oracleTouches(from: P, to: P, polygon: P[]): boolean {
+  for (let i = 0; i < polygon.length; i++) {
+    if (closedSegmentsMeet(from, to, polygon[i], polygon[(i + 1) % polygon.length])) return true;
+  }
+  return strictlyInside(from, polygon) || strictlyInside(to, polygon);
+}
+
+describe("Property 4: blocked roads are classified and noticed exactly", () => {
+  // Feature: engine-core, Property 4: Blocked roads are classified and noticed exactly
+  // Validates: Requirements 5.1, 5.2, 5.5
+  it("blocks exactly the roads whose centre line touches or crosses an area, one notice each", () => {
+    let blockedSeen = 0;
+    let clearSeen = 0;
+    fc.assert(
+      fc.property(mapFileArbitrary(8), (file) => {
+        const nodesById = new Map(file.nodes.map((n) => [n.id, dbl(n)]));
+        const expectedBlocked = new Set<string>();
+        const meeting = new Map<string, Set<string>>();
+        for (const road of file.roads) {
+          const from = nodesById.get(road.fromNodeId)!;
+          const to = nodesById.get(road.toNodeId)!;
+          const areas = new Set<string>();
+          for (const area of file.blockedAreas) {
+            if (oracleTouches(from, to, area.polygon.map(dbl))) areas.add(area.id);
+          }
+          meeting.set(road.id, areas);
+          if (areas.size > 0) expectedBlocked.add(road.id);
+        }
+        blockedSeen += expectedBlocked.size;
+        clearSeen += file.roads.length - expectedBlocked.size;
+
+        const result = parseMap(JSON.stringify(file));
+        if (!("map" in result)) throw new Error("generated map did not load");
+
+        const blocked = new Set(result.map.blockedRoads.map((b) => b.roadId));
+        expect(blocked).toEqual(expectedBlocked);
+        expect(result.map.blockedRoads).toHaveLength(expectedBlocked.size);
+        expect(new Set(result.map.usableRoadIds)).toEqual(
+          new Set(file.roads.map((r) => r.id).filter((id) => !expectedBlocked.has(id))),
+        );
+
+        expect(result.notices).toHaveLength(expectedBlocked.size);
+        expect(new Set(result.notices.map((n) => n.roadId))).toEqual(expectedBlocked);
+        for (const notice of result.notices) {
+          expect(meeting.get(notice.roadId)!.has(notice.blockedAreaId)).toBe(true);
+          expect(notice.message).toContain(notice.roadId);
+          expect(notice.message).toContain(notice.blockedAreaId);
+        }
+      }),
+      { numRuns: 300 },
+    );
+    expect(blockedSeen).toBeGreaterThan(0);
+    expect(clearSeen).toBeGreaterThan(0);
   });
 });
