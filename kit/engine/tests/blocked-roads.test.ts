@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyBlockedRoads } from "../src/blocked-roads.js";
+import { parseMap } from "../src/map-loader.js";
 
 const nodes = [
   { id: "a", x: 0, y: 0 },
@@ -25,6 +26,40 @@ const road = (id: string, fromNodeId: string, toNodeId: string) => ({
   toNodeId,
   width: 6,
   kind: "main" as const,
+});
+
+const styleFile = { colors: {}, lineStyles: {} };
+
+function mapText(blockedAreas: unknown[]): string {
+  return JSON.stringify({
+    formatVersion: 1,
+    nodes,
+    roads: [road("r1", "a", "b"), road("r2", "c", "d")],
+    places: [],
+    blockedAreas,
+    props: [],
+    style: styleFile,
+  });
+}
+
+describe("parseMap with blocked roads", () => {
+  it("exposes the blocked list, usable roads and notices", () => {
+    const result = parseMap(mapText([square("lake", 40, -10, 60, 10)]));
+    if (!("map" in result)) throw new Error("expected a map");
+    expect(result.map.blockedRoads).toEqual([{ roadId: "r1", blockedAreaId: "lake" }]);
+    expect([...result.map.usableRoadIds]).toEqual(["r2"]);
+    expect(result.notices).toHaveLength(1);
+    expect(result.notices[0].roadId).toBe("r1");
+    expect(result.notices[0].message).toContain("lake");
+  });
+
+  it("has no blocked roads and no notices for a clear map", () => {
+    const result = parseMap(mapText([square("far", 40, 100, 60, 120)]));
+    if (!("map" in result)) throw new Error("expected a map");
+    expect(result.map.blockedRoads).toEqual([]);
+    expect([...result.map.usableRoadIds]).toEqual(["r1", "r2"]);
+    expect(result.notices).toEqual([]);
+  });
 });
 
 describe("classifyBlockedRoads", () => {

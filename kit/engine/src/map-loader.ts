@@ -8,6 +8,7 @@ import {
   unsupportedVersion,
   wrongType,
 } from "./errors.js";
+import { classifyBlockedRoads } from "./blocked-roads.js";
 import { SUPPORTED_FORMAT_VERSIONS } from "./format.js";
 import {
   checkBackgroundPicture,
@@ -126,14 +127,17 @@ export function parseMap(text: string): LoadResult {
   );
   if (errors.length > 0) return { errors };
 
-  // Blocked roads are classified in a later step; roads are all usable for now.
   const file = data as unknown as MapFile;
+  const { blockedRoadIds, notices } = classifyBlockedRoads(file);
   const map: EngineMap = {
     ...file,
     usableRoadIds: new Set(
-      Array.isArray(file.roads) ? file.roads.map((road) => road.id) : [],
+      file.roads.filter((road) => !blockedRoadIds.has(road.id)).map((road) => road.id),
     ),
-    blockedRoads: [],
+    blockedRoads: notices.map((notice) => ({
+      roadId: notice.roadId,
+      blockedAreaId: notice.blockedAreaId,
+    })),
   };
-  return { map, notices: [] };
+  return { map, notices };
 }
