@@ -130,6 +130,28 @@ describe("exhaustive search", () => {
     expect(result?.length).toBeCloseTo(340, 9);
   });
 
+  it("treats a start exactly on the end node of a one-way road as that node", () => {
+    const map = square({ oneWay: true });
+    // Start at b (distance 100 on one-way ab); b-c is 100, then 40 along cd.
+    const result = exhaustiveShortestPath(
+      map,
+      { roadId: "ab", distanceAlongRoad: 100 },
+      { roadId: "cd", distanceAlongRoad: 40 },
+    );
+    expect(result?.length).toBeCloseTo(140, 9);
+  });
+
+  it("treats an end at distance 0 of a one-way road as the from-node", () => {
+    const map = square({ oneWay: true });
+    // From c to a is c-d-a = 200; the end point sits on a.
+    const result = exhaustiveShortestPath(
+      map,
+      { nodeId: "c" },
+      { roadId: "ab", distanceAlongRoad: 0 },
+    );
+    expect(result?.length).toBeCloseTo(200, 9);
+  });
+
   it("goes between points on two different roads", () => {
     const result = exhaustiveShortestPath(
       square(),

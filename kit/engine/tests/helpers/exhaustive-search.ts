@@ -97,12 +97,33 @@ export function exhaustiveShortestPath(
     }
     cuts.sort((p, q) => p.at - q.at);
 
-    for (let i = 0; i + 1 < cuts.length; i++) {
-      const from = cuts[i]!;
-      const to = cuts[i + 1]!;
+    // Cuts at the same distance are one place (a point on a node is that
+    // node). Group them, join every member of a group to the others by
+    // zero-length edges in both directions (one-way does not matter for a
+    // distance of zero), and join each group to the next group along the road.
+    const groups: { at: number; vertices: string[] }[] = [];
+    for (const cut of cuts) {
+      const last = groups[groups.length - 1];
+      if (last !== undefined && last.at === cut.at) last.vertices.push(cut.vertex);
+      else groups.push({ at: cut.at, vertices: [cut.vertex] });
+    }
+    for (const group of groups) {
+      for (const p of group.vertices) {
+        for (const q of group.vertices) {
+          if (p !== q) addEdge(p, q, 0);
+        }
+      }
+    }
+    for (let i = 0; i + 1 < groups.length; i++) {
+      const from = groups[i]!;
+      const to = groups[i + 1]!;
       const length = to.at - from.at;
-      addEdge(from.vertex, to.vertex, length);
-      if (road.oneWay !== true) addEdge(to.vertex, from.vertex, length);
+      for (const p of from.vertices) {
+        for (const q of to.vertices) {
+          addEdge(p, q, length);
+          if (road.oneWay !== true) addEdge(q, p, length);
+        }
+      }
     }
   }
 
