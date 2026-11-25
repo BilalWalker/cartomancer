@@ -3,6 +3,7 @@ import {
   checkBlockedAreas,
   checkNodes,
   checkPlaces,
+  checkProps,
   checkRoads,
 } from "../src/map-loader-checks.js";
 
@@ -537,5 +538,156 @@ describe("checkBlockedAreas", () => {
       { ...good, kind: "lava", polygon: [{ x: 0, y: 0 }] },
     ]);
     expect(errors).toHaveLength(3);
+  });
+});
+
+describe("checkProps", () => {
+  const good = {
+    id: "t1",
+    kind: "tree",
+    x: 1,
+    y: 2,
+    width: 4,
+    height: 5,
+    rotationDegrees: 30,
+  };
+
+  function expectPlain(message: string | undefined): void {
+    expect(message).toBeDefined();
+    expect(message).not.toContain("at ");
+  }
+
+  it("accepts good props, negative rotation and an empty list", () => {
+    expect(
+      checkProps([good, { ...good, id: "t2", rotationDegrees: -90 }]),
+    ).toEqual([]);
+    expect(checkProps([])).toEqual([]);
+  });
+
+  it("rejects a prop list that is not a list", () => {
+    const errors = checkProps(good);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("props");
+  });
+
+  it("rejects a prop that is not an object", () => {
+    const errors = checkProps([good, "tree"]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("props");
+    expect(errors[0]?.item).toBe("prop 2");
+  });
+
+  it("names a missing id and an id of the wrong type", () => {
+    const { id: _id, ...noId } = good;
+    const errors = checkProps([noId, { ...good, id: 4 }]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("id");
+    expect(errors[0]?.item).toBe("prop 1");
+    expect(errors[1]?.field).toBe("id");
+    expect(errors[1]?.item).toBe("prop 2");
+  });
+
+  it("names a duplicated prop id", () => {
+    const errors = checkProps([good, { ...good }]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.field).toBe("props");
+    expect(errors[0]?.item).toBe("t1");
+    expect(errors[0]?.message).toContain('"t1"');
+    expectPlain(errors[0]?.message);
+  });
+
+  it("rejects a missing, empty or mistyped kind", () => {
+    const { kind: _k, ...noKind } = good;
+    const errors = checkProps([
+      noKind,
+      { ...good, id: "t2", kind: "" },
+      { ...good, id: "t3", kind: 7 },
+    ]);
+    expect(errors).toHaveLength(3);
+    for (const [i, item] of ["t1", "t2", "t3"].entries()) {
+      expect(errors[i]?.field).toBe("kind");
+      expect(errors[i]?.item).toBe(item);
+      expectPlain(errors[i]?.message);
+    }
+  });
+
+  it("names a missing x and a y of the wrong type", () => {
+    const { x: _x, ...noX } = good;
+    const errors = checkProps([noX, { ...good, id: "t2", y: "2" }]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("x");
+    expect(errors[0]?.item).toBe("t1");
+    expect(errors[1]?.field).toBe("y");
+    expect(errors[1]?.item).toBe("t2");
+  });
+
+  it("rejects x and y that are not finite", () => {
+    const errors = checkProps([
+      { ...good, id: "t1", x: Number.NaN },
+      { ...good, id: "t2", y: Number.POSITIVE_INFINITY },
+    ]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("x");
+    expect(errors[1]?.field).toBe("y");
+    expectPlain(errors[0]?.message);
+  });
+
+  it("rejects a width or height of zero or less", () => {
+    const errors = checkProps([
+      { ...good, id: "t1", width: 0 },
+      { ...good, id: "t2", height: -1 },
+    ]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.field).toBe("width");
+    expect(errors[0]?.item).toBe("t1");
+    expect(errors[1]?.field).toBe("height");
+    expect(errors[1]?.item).toBe("t2");
+    expectPlain(errors[0]?.message);
+  });
+
+  it("names a missing width, a height of the wrong type and non-finite size", () => {
+    const { width: _w, ...noWidth } = good;
+    const errors = checkProps([
+      noWidth,
+      { ...good, id: "t2", height: "5" },
+      { ...good, id: "t3", width: Number.POSITIVE_INFINITY },
+    ]);
+    expect(errors).toHaveLength(3);
+    expect(errors[0]?.field).toBe("width");
+    expect(errors[0]?.item).toBe("t1");
+    expect(errors[1]?.field).toBe("height");
+    expect(errors[1]?.item).toBe("t2");
+    expect(errors[2]?.field).toBe("width");
+    expect(errors[2]?.item).toBe("t3");
+  });
+
+  it("rejects a missing, mistyped or non-finite rotation", () => {
+    const { rotationDegrees: _r, ...noRotation } = good;
+    const errors = checkProps([
+      noRotation,
+      { ...good, id: "t2", rotationDegrees: "90" },
+      { ...good, id: "t3", rotationDegrees: Number.NaN },
+    ]);
+    expect(errors).toHaveLength(3);
+    for (const [i, item] of ["t1", "t2", "t3"].entries()) {
+      expect(errors[i]?.field).toBe("rotationDegrees");
+      expect(errors[i]?.item).toBe(item);
+      expectPlain(errors[i]?.message);
+    }
+  });
+
+  it("reports every problem in one call", () => {
+    const errors = checkProps([
+      good,
+      {
+        ...good,
+        id: "t2",
+        kind: "",
+        x: Number.NaN,
+        width: 0,
+        rotationDegrees: "1",
+      },
+    ]);
+    expect(errors).toHaveLength(4);
   });
 });

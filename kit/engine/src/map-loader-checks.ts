@@ -270,3 +270,66 @@ export function checkBlockedAreas(raw: unknown): EngineError[] {
   });
   return errors;
 }
+
+/**
+ * Checks the prop list: every prop has a unique non-empty string id, a
+ * non-empty text kind, finite numeric x and y, a width and height above zero,
+ * and a finite numeric `rotationDegrees`.
+ */
+export function checkProps(raw: unknown): EngineError[] {
+  if (!Array.isArray(raw)) {
+    return [wrongType("props", "a list")];
+  }
+  const errors: EngineError[] = [];
+  const seen = new Set<string>();
+  raw.forEach((entry: unknown, index: number) => {
+    const label = `prop ${index + 1}`;
+    if (!isRecord(entry)) {
+      errors.push(notAnObject("props", label));
+      return;
+    }
+    const id = entry["id"];
+    let item = label;
+    if (id === undefined) {
+      errors.push(missingField("id", label));
+    } else if (typeof id !== "string" || id === "") {
+      errors.push(wrongType("id", "a non-empty text", label));
+    } else {
+      item = id;
+      if (seen.has(id)) {
+        errors.push(duplicateId("props", id));
+      }
+      seen.add(id);
+    }
+
+    const kind = entry["kind"];
+    if (kind === undefined) {
+      errors.push(missingField("kind", item));
+    } else if (typeof kind !== "string" || kind === "") {
+      errors.push(wrongType("kind", "a non-empty text", item));
+    }
+
+    for (const field of ["x", "y", "rotationDegrees"] as const) {
+      const value = entry[field];
+      if (value === undefined) {
+        errors.push(missingField(field, item));
+      } else if (typeof value !== "number") {
+        errors.push(wrongType(field, "a number", item));
+      } else if (!isFiniteNumber(value)) {
+        errors.push(outOfRange(field, "a finite number", item));
+      }
+    }
+
+    for (const field of ["width", "height"] as const) {
+      const value = entry[field];
+      if (value === undefined) {
+        errors.push(missingField(field, item));
+      } else if (typeof value !== "number") {
+        errors.push(wrongType(field, "a number", item));
+      } else if (!isFiniteNumber(value) || value <= 0) {
+        errors.push(outOfRange(field, "a finite number greater than 0", item));
+      }
+    }
+  });
+  return errors;
+}
