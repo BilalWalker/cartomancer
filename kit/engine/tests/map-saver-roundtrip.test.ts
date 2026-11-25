@@ -40,4 +40,22 @@ describe("map saver round trip", () => {
     expect(withoutBackground).toBeGreaterThan(0);
     expect(withProps).toBeGreaterThan(0);
   });
+
+  // Feature: engine-core, Property 6: Save is idempotent after a round trip
+  // Validates: Requirements 6.4
+  it("save, load, save again gives identical text", () => {
+    fc.assert(
+      fc.property(mapFileArbitrary(10), (file) => {
+        const first = saveMap(loadValid(file));
+        const result = parseMap(first);
+        if (!("map" in result)) {
+          throw new Error(
+            `Saved map did not load: ${result.errors.map((e) => e.message).join("; ")}`,
+          );
+        }
+        expect(saveMap(result.map)).toBe(first);
+      }),
+      { numRuns: 200 },
+    );
+  });
 });
