@@ -148,6 +148,51 @@ export function mapFileArbitrary(maxNodes = 10): fc.Arbitrary<MapFile> {
     });
 }
 
+/** An arbitrary point, a little wider than the range the maps use. */
+export function pointArbitrary(): fc.Arbitrary<{ x: number; y: number }> {
+  const wide = fc.integer({ min: -1200, max: 1200 }).map((n) => n / 2 + 0);
+  return fc.record({ x: wide, y: wide });
+}
+
+/** A map file with at least one usable road, paired with an index into its usable roads. */
+export interface MapWithRoadPoint {
+  file: MapFile;
+  map: EngineMap;
+  /** A point constructed to lie exactly on usable road `roadId`. */
+  onRoad: { x: number; y: number };
+  roadId: string;
+}
+
+/**
+ * Generates a loaded map that has at least one usable road, plus a point
+ * constructed to lie on one of its usable roads (ends and interior).
+ */
+export function mapWithPointOnRoadArbitrary(): fc.Arbitrary<MapWithRoadPoint> {
+  return mapFileArbitrary()
+    .map((file) => ({ file, map: loadValid(file) }))
+    .filter(({ map }) => map.usableRoadIds.size > 0)
+    .chain(({ file, map }) => {
+      const usable = map.roads.filter((r) => map.usableRoadIds.has(r.id));
+      return fc
+        .tuple(
+          fc.integer({ min: 0, max: usable.length - 1 }),
+          fc.integer({ min: 0, max: 100 }),
+        )
+        .map(([index, step]) => {
+          const road = usable[index]!;
+          const a = map.nodes.find((n) => n.id === road.fromNodeId)!;
+          const b = map.nodes.find((n) => n.id === road.toNodeId)!;
+          const t = step / 100;
+          return {
+            file,
+            map,
+            roadId: road.id,
+            onRoad: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t },
+          };
+        });
+    });
+}
+
 /** Load a generated file; throws with the error messages if it does not load. */
 export function loadValid(file: MapFile): EngineMap {
   const result = parseMap(JSON.stringify(file));

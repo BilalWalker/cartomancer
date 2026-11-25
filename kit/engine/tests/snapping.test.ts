@@ -1,5 +1,8 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { distancePointToSegment } from "../src/geometry.js";
 import { parseMap } from "../src/map-loader.js";
+import { loadValid, mapFileArbitrary, mapWithPointOnRoadArbitrary, pointArbitrary } from "./helpers/arbitraries.js";
 import { isNoUsableRoad, snapToRoad } from "../src/snapping.js";
 import type { EngineMap } from "../src/types.js";
 
@@ -71,5 +74,91 @@ describe("snapToRoad", () => {
     const result = snapToRoad(map, { x: 1, y: 1 });
     expect(isNoUsableRoad(result)).toBe(true);
     expect(result).toMatchObject({ reason: "no-usable-road" });
+  });
+});
+
+describe("snapToRoad properties", () => {
+  // Feature: engine-core, Property 7: Snapping finds the nearest usable point
+  // **Validates: Requirements 7.2, 7.4, 7.5**
+  it("snapped distance is at most the distance to every sampled point on every usable road", () => {
+    fc.assert(
+      fc.property(
+        mapWithPointOnRoadArbitrary(),
+        pointArbitrary(),
+        ({ map }, point) => {
+          const snapped = snapToRoad(map, point);
+          if (isNoUsableRoad(snapped)) throw new Error("expected a usable road");
+          const snappedDistance = Math.hypot(snapped.x - point.x, snapped.y - point.y);
+          const byId = new Map(map.nodes.map((n) => [n.id, n]));
+          for (const road of map.roads) {
+            if (!map.usableRoadIds.has(road.id)) continue;
+            const a = byId.get(road.fromNodeId)!;
+            const b = byId.get(road.toNodeId)!;
+            for (let i = 0; i <= 20; i++) {
+              const t = i / 20;
+              const sample = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+              const d = Math.hypot(sample.x - point.x, sample.y - point.y);
+              expect(snappedDistance).toBeLessThanOrEqual(d + 1e-9);
+            }
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  // Feature: engine-core, Property 7: Snapping finds the nearest usable point
+  // **Validates: Requirements 7.2, 7.4, 7.5**
+  it("a point on a usable road snaps to itself within 0.001", () => {
+    fc.assert(
+      fc.property(mapWithPointOnRoadArbitrary(), ({ map, onRoad }) => {
+        const snapped = snapToRoad(map, onRoad);
+        if (isNoUsableRoad(snapped)) throw new Error("expected a usable road");
+        expect(Math.hypot(snapped.x - onRoad.x, snapped.y - onRoad.y)).toBeLessThan(0.001);
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  // Feature: engine-core, Property 7: Snapping finds the nearest usable point
+  // **Validates: Requirements 7.2, 7.4, 7.5**
+  it("equally near roads always give the lowest road id, and the same point the same road", () => {
+    fc.assert(
+      fc.property(
+        mapFileArbitrary().filter((file) => file.roads.length > 0),
+        pointArbitrary(),
+        (file, point) => {
+          // Add a copy of the first road, reversed, with an id that sorts before all others.
+          const first = file.roads[0]!;
+          const duplicate = { ...first, id: "!dup", fromNodeId: first.toNodeId, toNodeId: first.fromNodeId };
+          const map = loadValid({ ...file, roads: [...file.roads, duplicate] });
+          const snapped = snapToRoad(map, point);
+          if (isNoUsableRoad(snapped)) {
+            expect(map.usableRoadIds.size).toBe(0);
+            return;
+          }
+          expect(snapToRoad(map, point)).toEqual(snapped);
+
+          const byId = new Map(map.nodes.map((n) => [n.id, n]));
+          const distanceTo = (roadId: string): number => {
+            const road = map.roads.find((r) => r.id === roadId)!;
+            return distancePointToSegment(point, byId.get(road.fromNodeId)!, byId.get(road.toNodeId)!);
+          };
+          const best = distanceTo(snapped.roadId);
+          for (const road of map.roads) {
+            if (!map.usableRoadIds.has(road.id)) continue;
+            const d = distanceTo(road.id);
+            expect(d).toBeGreaterThanOrEqual(best);
+            if (d === best) expect(snapped.roadId <= road.id).toBe(true);
+          }
+          // The duplicate is usable exactly when the original is, and ties with it.
+          if (map.usableRoadIds.has(first.id)) {
+            expect(map.usableRoadIds.has("!dup")).toBe(true);
+            if (distanceTo(first.id) === best) expect(snapped.roadId <= "!dup").toBe(true);
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
   });
 });
