@@ -1,7 +1,11 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { distancePointToSegment } from "../src/geometry.js";
 import { parseMap } from "../src/map-loader.js";
 import { findRoute } from "../src/route-finder.js";
+import { isNoUsableRoad, snapToRoad } from "../src/snapping.js";
 import type { EngineMap, NoWayResult, Route } from "../src/types.js";
+import { gridRouteArbitrary, smallMapRouteArbitrary } from "./helpers/arbitraries.js";
 
 function load(nodes: [string, number, number][], roads: [string, string, string, boolean?][]): EngineMap {
   const text = JSON.stringify({
@@ -190,5 +194,66 @@ describe("shortest path between nodes", () => {
     );
     const result = findRoute(map, { x: 0, y: 0 }, { point: { x: 60, y: 0 } });
     expect("parts" in result).toBe(false);
+  });
+});
+
+describe("route chain property", () => {
+  const TOLERANCE = 1e-6;
+
+  // Feature: engine-core, Property 8: A returned route is an unbroken chain of usable roads
+  // **Validates: Requirements 8.1, 8.2, 8.6, 8.7**
+  it("every returned route is an unbroken chain of usable roads from the snapped start to the snapped destination", () => {
+    let routesFound = 0;
+    let cases = 0;
+    const cases$ = fc.oneof(smallMapRouteArbitrary(), gridRouteArbitrary());
+    fc.assert(
+      fc.property(cases$, ({ map, start, destination }) => {
+        cases++;
+        const result = findRoute(map, start, destination);
+        if (!("parts" in result)) return;
+        routesFound++;
+
+        const target =
+          "placeId" in destination
+            ? map.places.find((place) => place.id === destination.placeId)!
+            : destination.point;
+        const snappedStart = snapToRoad(map, start);
+        const snappedEnd = snapToRoad(map, target);
+        expect(isNoUsableRoad(snappedStart)).toBe(false);
+        expect(isNoUsableRoad(snappedEnd)).toBe(false);
+        if (isNoUsableRoad(snappedStart) || isNoUsableRoad(snappedEnd)) return;
+
+        if (result.parts.length === 0) {
+          // A zero-length route: both ends snap to the same point.
+          expect(Math.hypot(snappedStart.x - snappedEnd.x, snappedStart.y - snappedEnd.y)).toBeLessThanOrEqual(1e-9);
+          return;
+        }
+
+        const first = result.parts[0]!;
+        const last = result.parts[result.parts.length - 1]!;
+        expect(Math.hypot(first.start.x - snappedStart.x, first.start.y - snappedStart.y)).toBeLessThanOrEqual(TOLERANCE);
+        expect(Math.hypot(last.end.x - snappedEnd.x, last.end.y - snappedEnd.y)).toBeLessThanOrEqual(TOLERANCE);
+
+        const nodes = new Map(map.nodes.map((node) => [node.id, node]));
+        const roads = new Map(map.roads.map((road) => [road.id, road]));
+        for (let i = 0; i < result.parts.length; i++) {
+          const part = result.parts[i]!;
+          if (i > 0) {
+            const previous = result.parts[i - 1]!;
+            expect(Math.hypot(part.start.x - previous.end.x, part.start.y - previous.end.y)).toBeLessThanOrEqual(TOLERANCE);
+          }
+          const road = roads.get(part.roadId);
+          expect(road).toBeDefined();
+          expect(map.usableRoadIds.has(part.roadId)).toBe(true);
+          const a = nodes.get(road!.fromNodeId)!;
+          const b = nodes.get(road!.toNodeId)!;
+          expect(distancePointToSegment(part.start, a, b)).toBeLessThanOrEqual(TOLERANCE);
+          expect(distancePointToSegment(part.end, a, b)).toBeLessThanOrEqual(TOLERANCE);
+        }
+      }),
+      { numRuns: 300 },
+    );
+    // Non-vacuity: routes were found in a good share of the cases.
+    expect(routesFound).toBeGreaterThanOrEqual(cases * 0.2);
   });
 });
