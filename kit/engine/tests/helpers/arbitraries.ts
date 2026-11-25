@@ -424,3 +424,92 @@ export function gridRouteArbitrary(): fc.Arbitrary<SmallMapRouteCase> {
       }),
     );
 }
+
+/** How a chain map is cut between its left and right halves. */
+export type CutKind = "missing-road" | "one-way-wrong-way" | "blocked-road";
+
+/** A chain map that is cut in the middle, with a start on the left and a destination on the right. */
+export interface CutMapRouteCase extends SmallMapRouteCase {
+  cut: CutKind;
+}
+
+/**
+ * Generates a straight chain of nodes (spacing 40) with a cut between two
+ * neighbours: the joining road is missing, or is one-way against the way from
+ * the start to the destination, or lies inside a wall. The start is near the
+ * left end, the destination (a point or a place) near the right end. Every
+ * cut kind gives an unreachable destination, with its own reason.
+ */
+export function cutMapRouteArbitrary(): fc.Arbitrary<CutMapRouteCase> {
+  return fc
+    .record({
+      left: fc.integer({ min: 2, max: 5 }),
+      right: fc.integer({ min: 2, max: 5 }),
+      cut: fc.constantFrom<CutKind>("missing-road", "one-way-wrong-way", "blocked-road"),
+      byPlace: fc.boolean(),
+      kind: fc.constantFrom(...ROAD_KINDS),
+      startOffset: fc.integer({ min: -5, max: 5 }),
+      endOffset: fc.integer({ min: -5, max: 5 }),
+    })
+    .map(({ left, right, cut, byPlace, kind, startOffset, endOffset }) => {
+      const count = left + right;
+      const nodes: NodeData[] = Array.from({ length: count }, (_, i) => ({
+        id: `n${i}`,
+        x: i * 40,
+        y: 0,
+      }));
+      const roads: RoadData[] = [];
+      const blockedAreas: MapFile["blockedAreas"] = [];
+      for (let i = 0; i + 1 < count; i++) {
+        const isCut = i === left - 1;
+        if (isCut && cut === "missing-road") continue;
+        const road: RoadData = {
+          id: `r${i}`,
+          fromNodeId: `n${i}`,
+          toNodeId: `n${i + 1}`,
+          width: 4,
+          kind,
+        };
+        if (isCut && cut === "one-way-wrong-way") {
+          // Points from the right half to the left half.
+          road.fromNodeId = `n${i + 1}`;
+          road.toNodeId = `n${i}`;
+          road.oneWay = true;
+        }
+        roads.push(road);
+        if (isCut && cut === "blocked-road") {
+          const cx = i * 40 + 20;
+          blockedAreas.push({
+            id: "wall",
+            kind: "wall",
+            polygon: [
+              { x: cx - 5, y: -10 },
+              { x: cx + 5, y: -10 },
+              { x: cx + 5, y: 10 },
+              { x: cx - 5, y: 10 },
+            ],
+          });
+        }
+      }
+      const endX = (count - 1) * 40;
+      const file: MapFile = {
+        formatVersion: 1,
+        nodes,
+        roads,
+        places: [{ id: "far", name: "Far end", category: "spot", x: endX, y: 0 }],
+        blockedAreas,
+        props: [],
+        style: { colors: {}, lineStyles: {} },
+      };
+      const map = loadValid(file);
+      const destination: Destination = byPlace
+        ? { placeId: "far" }
+        : { point: { x: endX, y: endOffset } };
+      return {
+        cut,
+        map,
+        start: { x: 0, y: startOffset, headingDegrees: 0 },
+        destination,
+      };
+    });
+}
