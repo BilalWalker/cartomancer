@@ -1,0 +1,8 @@
+{
+  "name": "cartomancer-repo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:hooks": "node --test scripts/hooks/git-guard.test.ts scripts/hooks/task-hygiene.test.ts"
+  }
+}
