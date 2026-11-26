@@ -605,6 +605,88 @@ export function positionSequenceArbitrary(route: Route): fc.Arbitrary<PositionSa
     });
 }
 
+/** The reroute margin the looping routes are built around (the engine default). */
+export const LOOP_MARGIN = 15;
+
+/** A route that doubles back, with positions that travel along it. */
+export interface LoopingRouteCase {
+  route: Route;
+  /** The margin every loop-back stays within. */
+  margin: number;
+  /** Search window to hand to the follower. */
+  searchWindow: number;
+  positions: PositionSample[];
+}
+
+/**
+ * Generates a zigzag route of 3 to 6 straight legs (each 20 to 120 long, all
+ * parallel to the x axis) joined by short connectors of 1 to `margin` long.
+ * Each leg after the first runs back alongside the leg two steps earlier at a
+ * distance of at most `margin`, so a later stretch lies within the margin of
+ * an earlier stretch while being far from it along the route. The route has
+ * no map, only parts.
+ */
+export function loopingRouteArbitrary(margin: number = LOOP_MARGIN): fc.Arbitrary<Route> {
+  return fc
+    .record({
+      legs: fc.array(
+        fc.record({
+          length: fc.integer({ min: 20, max: 120 }),
+          gap: fc.integer({ min: 1, max: Math.max(1, Math.floor(margin)) }),
+        }),
+        { minLength: 3, maxLength: 6 },
+      ),
+    })
+    .map(({ legs }) => {
+      const parts: RoutePart[] = [];
+      let x = 0;
+      let y = 0;
+      let eastward = true;
+      const push = (ex: number, ey: number) => {
+        parts.push({
+          roadId: `r${parts.length}`,
+          direction: "forward",
+          start: { x, y },
+          end: { x: ex, y: ey },
+        });
+        x = ex;
+        y = ey;
+      };
+      legs.forEach((leg, i) => {
+        push(eastward ? leg.length : 0, y);
+        eastward = !eastward;
+        if (i + 1 < legs.length) push(x, y + leg.gap);
+      });
+      const lengthWorldUnits = parts.reduce(
+        (sum, p) => sum + Math.hypot(p.end.x - p.start.x, p.end.y - p.start.y),
+        0,
+      );
+      return {
+        parts,
+        lengthWorldUnits,
+        destination: { point: { x, y } },
+      } satisfies Route;
+    });
+}
+
+/**
+ * Generates a looping route, a search window chosen by the caller (by default
+ * one of 10, 25, 50, 100 or 150), and positions that travel along the route.
+ */
+export function loopingRouteCaseArbitrary(
+  searchWindow: fc.Arbitrary<number> = fc.constantFrom(10, 25, 50, 100, 150),
+  margin: number = LOOP_MARGIN,
+): fc.Arbitrary<LoopingRouteCase> {
+  return loopingRouteArbitrary(margin).chain((route) =>
+    fc.record({
+      route: fc.constant(route),
+      margin: fc.constant(margin),
+      searchWindow,
+      positions: positionSequenceArbitrary(route),
+    }),
+  );
+}
+
 /** A loaded map, a route found on it, and positions that travel along that route. */
 export interface MapRouteSequenceCase {
   map: EngineMap;

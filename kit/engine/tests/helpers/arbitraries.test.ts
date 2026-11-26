@@ -2,6 +2,8 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { distancePointToSegment } from "../../src/geometry.js";
 import {
+  LOOP_MARGIN,
+  loopingRouteCaseArbitrary,
   MAX_FORWARD_STEP,
   MAX_SEQUENCE_OFFSET,
   SMALL_MAP_MAX_NODES,
@@ -153,6 +155,60 @@ describe("map arbitraries", () => {
       { numRuns: 100 },
     );
     expect(sawBackward).toBe(true);
+  });
+
+  it("looping routes pass within the margin of an earlier stretch, and sequences move along them", () => {
+    const windows = new Set<number>();
+    fc.assert(
+      fc.property(loopingRouteCaseArbitrary(), ({ route, margin, searchWindow, positions }) => {
+        windows.add(searchWindow);
+        expect(margin).toBe(LOOP_MARGIN);
+        // The parts form an unbroken chain and the length adds up.
+        let total = 0;
+        for (let i = 0; i < route.parts.length; i++) {
+          const part = route.parts[i]!;
+          if (i > 0) expect(part.start).toEqual(route.parts[i - 1]!.end);
+          total += Math.hypot(part.end.x - part.start.x, part.end.y - part.start.y);
+        }
+        expect(route.lengthWorldUnits).toBeCloseTo(total, 9);
+        // Some later stretch (not the part right after) lies within the margin of an earlier one.
+        let loops = false;
+        for (let j = 2; j < route.parts.length && !loops; j++) {
+          const later = route.parts[j]!;
+          const mid = {
+            x: (later.start.x + later.end.x) / 2,
+            y: (later.start.y + later.end.y) / 2,
+          };
+          for (let i = 0; i < j - 1; i++) {
+            const earlier = route.parts[i]!;
+            if (distancePointToSegment(mid, earlier.start, earlier.end) <= margin) loops = true;
+          }
+        }
+        expect(loops).toBe(true);
+        // Positions move along the route.
+        expect(positions.length).toBeGreaterThanOrEqual(1);
+        for (const p of positions) {
+          const nearest = Math.min(
+            ...route.parts.map((part) => distancePointToSegment(p, part.start, part.end)),
+          );
+          expect(nearest).toBeLessThanOrEqual(MAX_SEQUENCE_OFFSET + 1e-9);
+        }
+        for (let i = 1; i < positions.length; i++) {
+          expect(positions[i]!.timestampMs).toBeGreaterThan(positions[i - 1]!.timestampMs);
+        }
+      }),
+      { numRuns: 100 },
+    );
+    expect(windows.size).toBeGreaterThan(1);
+  });
+
+  it("a caller-supplied search window is used as given", () => {
+    fc.assert(
+      fc.property(loopingRouteCaseArbitrary(fc.constant(37)), ({ searchWindow }) => {
+        expect(searchWindow).toBe(37);
+      }),
+      { numRuns: 100 },
+    );
   });
 
   it("loadValid throws when the file does not load", () => {
