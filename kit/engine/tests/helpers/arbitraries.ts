@@ -901,3 +901,72 @@ export function offRouteSequenceArbitrary(
       }),
   );
 }
+
+/**
+ * Like `offRouteSequenceArbitrary`, but each of the 1 to 4 cycles is either a
+ * full stay (beyond the margin for at least `delayMs`) or a short stay of 1 to
+ * 4 samples spaced 50 to 200 ms apart, which lasts less than `delayMs` for the
+ * default delay. A short stay is always followed by a return within the margin
+ * unless it ends the sequence. Roads differ in width.
+ */
+export function mixedStaySequenceArbitrary(
+  margin: number = LOOP_MARGIN,
+  delayMs: number = SEQUENCE_DELAY_MS,
+): fc.Arbitrary<RerouteSequenceCase> {
+  const fullSteps = Math.ceil(delayMs / 50) + 1;
+  const cycle = fc.record({
+    full: fc.boolean(),
+    returns: fc.array(
+      fc.record({
+        part: fc.nat(),
+        along: fc.nat(1000),
+        beyondEdge: fc.integer({ min: -4, max: Math.floor(margin) }),
+        left: fc.boolean(),
+        elapsedMs: fc.integer({ min: 1, max: 200 }),
+      }),
+      { minLength: 1, maxLength: 2 },
+    ),
+    away: fc.array(
+      fc.record({
+        part: fc.nat(),
+        along: fc.nat(1000),
+        past: fc.integer({ min: 1, max: 10 }),
+        left: fc.boolean(),
+        elapsedMs: fc.integer({ min: 50, max: 200 }),
+      }),
+      { minLength: fullSteps, maxLength: fullSteps },
+    ),
+    shortCount: fc.integer({ min: 1, max: 4 }),
+  });
+  return widthRouteArbitrary().chain((wr) =>
+    fc
+      .record({
+        startTime: fc.integer({ min: 0, max: 100000 }),
+        cycles: fc.array(cycle, { minLength: 1, maxLength: 4 }),
+      })
+      .map(({ startTime, cycles }): RerouteSequenceCase => {
+        const count = wr.route.parts.length;
+        let time = startTime;
+        const samples: MarkedSample[] = [];
+        for (const c of cycles) {
+          for (const r of c.returns) {
+            time += r.elapsedMs;
+            const p = samplePosition(wr, r.part % count, r.along, r.beyondEdge, r.left, time);
+            samples.push({ ...p, beyond: false });
+          }
+          let stayStart: number | undefined;
+          // A short stay of n samples lasts at most (n - 1) * 200 ms, under the delay.
+          const limit = c.full ? c.away.length : Math.min(c.shortCount, c.away.length);
+          for (let i = 0; i < limit; i++) {
+            const a = c.away[i]!;
+            time += a.elapsedMs;
+            stayStart ??= time;
+            const p = samplePosition(wr, a.part % count, a.along, margin + a.past, a.left, time);
+            samples.push({ ...p, beyond: true });
+            if (c.full && time - stayStart >= delayMs) break;
+          }
+        }
+        return { ...wr, margin, delayMs, samples };
+      }),
+  );
+}

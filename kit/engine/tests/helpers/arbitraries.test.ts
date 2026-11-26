@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { distancePointToSegment } from "../../src/geometry.js";
 import { offRouteDistance } from "../../src/route-follower.js";
 import {
+  mixedStaySequenceArbitrary,
   offRouteSequenceArbitrary,
   wobbleSequenceArbitrary,
   type MarkedSample,
@@ -268,6 +269,38 @@ describe("map arbitraries", () => {
       { numRuns: 100 },
     );
     expect(multiCycle).toBeGreaterThan(0);
+  });
+
+  it("mixed-stay sequences contain both full stays and short stays beyond the margin", () => {
+    let shortStays = 0;
+    let fullStays = 0;
+    fc.assert(
+      fc.property(mixedStaySequenceArbitrary(), (c) => {
+        let first: number | undefined;
+        let last = 0;
+        const close = () => {
+          if (first === undefined) return;
+          if (last - first >= c.delayMs) fullStays++;
+          else shortStays++;
+          first = undefined;
+        };
+        for (const s of c.samples) {
+          const d = offRouteDistance(c.route, s, c.roadWidthOf);
+          if (s.beyond) {
+            expect(d).toBeGreaterThan(c.margin);
+            first ??= s.timestampMs;
+            last = s.timestampMs;
+          } else {
+            expect(d).toBeLessThanOrEqual(c.margin);
+            close();
+          }
+        }
+        close();
+      }),
+      { numRuns: 100 },
+    );
+    expect(shortStays).toBeGreaterThan(0);
+    expect(fullStays).toBeGreaterThan(0);
   });
 
   it("loadValid throws when the file does not load", () => {
