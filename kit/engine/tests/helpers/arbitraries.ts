@@ -3,6 +3,7 @@
 
 import fc from "fast-check";
 import { parseMap } from "../../src/map-loader.js";
+import { findRoute } from "../../src/route-finder.js";
 import type {
   BackgroundPictureData,
   BlockedAreaData,
@@ -16,6 +17,8 @@ import type {
   PropData,
   RoadData,
   RoadKind,
+  Route,
+  RoutePart,
   StyleData,
 } from "../../src/types.js";
 
@@ -512,4 +515,126 @@ export function cutMapRouteArbitrary(): fc.Arbitrary<CutMapRouteCase> {
         destination,
       };
     });
+}
+
+/** A position with the time it was read, in milliseconds. */
+export interface PositionSample extends Position {
+  timestampMs: number;
+}
+
+/** Most the generated positions lie to the side of the route centre line. */
+export const MAX_SEQUENCE_OFFSET = 2;
+
+/** Most a generated step goes forward and backward along the route. */
+export const MAX_FORWARD_STEP = 10;
+export const MAX_BACKWARD_STEP = 3;
+
+/** The point at `distance` along the route, with the heading of the part it lies on. */
+function pointAlongRoute(
+  route: Route,
+  distance: number,
+): { x: number; y: number; headingDegrees: number; nx: number; ny: number } {
+  let start = 0;
+  let last: RoutePart | undefined;
+  for (const part of route.parts) {
+    const length = Math.hypot(part.end.x - part.start.x, part.end.y - part.start.y);
+    if (length === 0) continue;
+    last = part;
+    if (distance <= start + length) {
+      return placeOnPart(part, length, distance - start);
+    }
+    start += length;
+  }
+  if (last === undefined) {
+    const only = route.parts[0]!;
+    return { x: only.start.x, y: only.start.y, headingDegrees: 0, nx: 0, ny: 1 };
+  }
+  const length = Math.hypot(last.end.x - last.start.x, last.end.y - last.start.y);
+  return placeOnPart(last, length, length);
+}
+
+function placeOnPart(part: RoutePart, length: number, along: number) {
+  const dx = (part.end.x - part.start.x) / length;
+  const dy = (part.end.y - part.start.y) / length;
+  return {
+    x: part.start.x + dx * along,
+    y: part.start.y + dy * along,
+    headingDegrees: (Math.atan2(dy, dx) * 180) / Math.PI,
+    nx: -dy,
+    ny: dx,
+  };
+}
+
+/**
+ * Generates 1 to 40 positions that travel forward along `route` (which must
+ * have a length above zero), with now and then a small step backward, and a
+ * small sideways offset of at most MAX_SEQUENCE_OFFSET. Timestamps increase
+ * by 1 to 200 ms from a start time.
+ */
+export function positionSequenceArbitrary(route: Route): fc.Arbitrary<PositionSample[]> {
+  const step = fc.oneof(
+    { arbitrary: fc.integer({ min: 0, max: MAX_FORWARD_STEP }), weight: 4 },
+    { arbitrary: fc.integer({ min: -MAX_BACKWARD_STEP, max: -1 }), weight: 1 },
+  );
+  return fc
+    .record({
+      startTime: fc.integer({ min: 0, max: 100000 }),
+      steps: fc.array(
+        fc.record({
+          delta: step,
+          side: fc.integer({ min: -MAX_SEQUENCE_OFFSET, max: MAX_SEQUENCE_OFFSET }),
+          elapsedMs: fc.integer({ min: 1, max: 200 }),
+        }),
+        { minLength: 1, maxLength: 40 },
+      ),
+    })
+    .map(({ startTime, steps }) => {
+      let distance = 0;
+      let time = startTime;
+      return steps.map((s): PositionSample => {
+        distance = Math.min(route.lengthWorldUnits, Math.max(0, distance + s.delta));
+        time += s.elapsedMs;
+        const p = pointAlongRoute(route, distance);
+        return {
+          x: p.x + p.nx * s.side,
+          y: p.y + p.ny * s.side,
+          headingDegrees: p.headingDegrees,
+          timestampMs: time,
+        };
+      });
+    });
+}
+
+/** A loaded map, a route found on it, and positions that travel along that route. */
+export interface MapRouteSequenceCase {
+  map: EngineMap;
+  start: Position;
+  destination: Destination;
+  route: Route;
+  positions: PositionSample[];
+}
+
+/**
+ * Generates a small or grid map, a route found on it (length above zero), and
+ * a position sequence along that route, for the following and rerouting properties.
+ */
+export function mapRouteSequenceArbitrary(): fc.Arbitrary<MapRouteSequenceCase> {
+  return fc
+    .oneof(smallMapRouteArbitrary(), gridRouteArbitrary())
+    .map((c) => ({ ...c, found: findRoute(c.map, c.start, c.destination) }))
+    .filter(
+      (c): c is typeof c & { found: Route } =>
+        "parts" in c.found && c.found.lengthWorldUnits > 0,
+    )
+    .chain((c) =>
+      positionSequenceArbitrary(c.found).map(
+        (positions): MapRouteSequenceCase => ({
+          map: c.map,
+          start: c.start,
+          destination: c.destination,
+          route: c.found,
+          positions,
+        }),
+      ),
+    );
 }

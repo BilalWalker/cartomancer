@@ -2,7 +2,11 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { distancePointToSegment } from "../../src/geometry.js";
 import {
+  MAX_FORWARD_STEP,
+  MAX_SEQUENCE_OFFSET,
   SMALL_MAP_MAX_NODES,
+  mapRouteSequenceArbitrary,
+  positionSequenceArbitrary,
   gridMapFileArbitrary,
   gridRouteArbitrary,
   loadValid,
@@ -93,6 +97,62 @@ describe("map arbitraries", () => {
       fc.property(gridRouteArbitrary(), ({ map }) => map.nodes.length <= 16),
       { numRuns: 100 },
     );
+  });
+
+  it("position sequences stay near the route, move forward with small backward steps, and have increasing timestamps", () => {
+    let multi = 0;
+    fc.assert(
+      fc.property(mapRouteSequenceArbitrary(), ({ map, route, positions }) => {
+        expect(route.lengthWorldUnits).toBeGreaterThan(0);
+        expect(route.parts.length).toBeGreaterThan(0);
+        expect(map.nodes.length).toBeGreaterThan(0);
+        expect(positions.length).toBeGreaterThanOrEqual(1);
+        if (positions.length > 1) multi++;
+        for (const p of positions) {
+          expect(Number.isFinite(p.x + p.y + p.headingDegrees + p.timestampMs)).toBe(true);
+          const nearest = Math.min(
+            ...route.parts.map((part) => distancePointToSegment(p, part.start, part.end)),
+          );
+          expect(nearest).toBeLessThanOrEqual(MAX_SEQUENCE_OFFSET + 1e-9);
+        }
+        for (let i = 1; i < positions.length; i++) {
+          expect(positions[i]!.timestampMs).toBeGreaterThan(positions[i - 1]!.timestampMs);
+          // Progress along the route, measured on the centre line near each position.
+          const gap = Math.hypot(
+            positions[i]!.x - positions[i - 1]!.x,
+            positions[i]!.y - positions[i - 1]!.y,
+          );
+          expect(gap).toBeLessThanOrEqual(
+            MAX_FORWARD_STEP + 2 * MAX_SEQUENCE_OFFSET + 1e-9,
+          );
+        }
+        const first = positions[0]!;
+        const startsNearRouteStart = route.parts[0]!.start;
+        expect(
+          Math.hypot(first.x - startsNearRouteStart.x, first.y - startsNearRouteStart.y),
+        ).toBeLessThanOrEqual(MAX_FORWARD_STEP + MAX_SEQUENCE_OFFSET + 1e-9);
+      }),
+      { numRuns: 100 },
+    );
+    expect(multi).toBeGreaterThan(0);
+  });
+
+  it("sequences along a straight route include backward steps", () => {
+    const route = {
+      parts: [{ roadId: "r0", direction: "forward" as const, start: { x: 0, y: 0 }, end: { x: 500, y: 0 } }],
+      lengthWorldUnits: 500,
+      destination: { point: { x: 500, y: 0 } },
+    };
+    let sawBackward = false;
+    fc.assert(
+      fc.property(positionSequenceArbitrary(route), (positions) => {
+        for (let i = 1; i < positions.length; i++) {
+          if (positions[i]!.x < positions[i - 1]!.x) sawBackward = true;
+        }
+      }),
+      { numRuns: 100 },
+    );
+    expect(sawBackward).toBe(true);
   });
 
   it("loadValid throws when the file does not load", () => {
