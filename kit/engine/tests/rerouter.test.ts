@@ -1,6 +1,9 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { Rerouter } from "../src/rerouter";
+import { advance } from "../src/route-follower";
 import type { Route } from "../src/types";
+import { mapRouteSequenceArbitrary } from "./helpers/arbitraries";
 
 // One straight road along y = 0, width 10 (edge at 5 from the centre line).
 const road: Route = {
@@ -83,5 +86,43 @@ describe("rerouter", () => {
     };
     expect(r.update(zero, on, 0, widthOf).requestReroute).toBe(false);
     expect(r.update(zero, on, 10000, widthOf).requestReroute).toBe(false);
+  });
+});
+
+describe("rerouter on the route (property)", () => {
+  // Feature: engine-core, Property 18: Moving along the route never triggers a reroute
+  // **Validates: Requirements 13.10**
+  it("requests no reroute and the distance left never grows while moving along the route", () => {
+    const EPS = 1e-6;
+    let advancedCases = 0;
+    fc.assert(
+      fc.property(mapRouteSequenceArbitrary(), ({ map, route, positions }) => {
+        expect(route.lengthWorldUnits).toBeGreaterThan(0);
+        const widths = new Map(map.roads.map((r) => [r.id, r.width]));
+        const roadWidthOf = (roadId: string): number => widths.get(roadId)!;
+        const rerouter = new Rerouter();
+        let progress = 0;
+        let previousRemaining = route.lengthWorldUnits;
+        let advanced = false;
+        for (const position of positions) {
+          const result = advance(route, progress, position);
+          expect(result.remaining.lengthWorldUnits).toBeLessThanOrEqual(previousRemaining + EPS);
+          const update = rerouter.update(
+            result.remaining,
+            position,
+            position.timestampMs,
+            roadWidthOf,
+          );
+          expect(update.requestReroute).toBe(false);
+          if (result.progress > progress + 1e-9) advanced = true;
+          progress = result.progress;
+          previousRemaining = result.remaining.lengthWorldUnits;
+        }
+        if (advanced) advancedCases++;
+      }),
+      { numRuns: 200 },
+    );
+    // Non-vacuity: routes had positive length and progress advanced.
+    expect(advancedCases).toBeGreaterThan(0);
   });
 });
