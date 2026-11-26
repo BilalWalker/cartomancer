@@ -26,3 +26,48 @@ describe("computeGuidance: distance left and inactive state", () => {
     expect(g.nextTurn).toBeUndefined();
   });
 });
+
+type Pt = { x: number; y: number };
+
+function routeThrough(...points: Pt[]): Route {
+  const parts = [];
+  let length = 0;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const start = points[i]!;
+    const end = points[i + 1]!;
+    parts.push({ roadId: `r${i}`, direction: "forward" as const, start, end });
+    length += Math.hypot(end.x - start.x, end.y - start.y);
+  }
+  return { parts, lengthWorldUnits: length, destination: { point: points[points.length - 1]! } };
+}
+
+describe("computeGuidance: next turn per class", () => {
+  const cases: Array<[string, Pt, string]> = [
+    ["left", { x: 50, y: -50 }, "left"],
+    ["right", { x: 50, y: 50 }, "right"],
+    ["turn back", { x: 0, y: 5 }, "turn-back"],
+  ];
+  for (const [name, last, expected] of cases) {
+    it(`reports ${name} with the distance to the joint`, () => {
+      const route = routeThrough({ x: 0, y: 0 }, { x: 50, y: 0 }, last);
+      const g = computeGuidance(route, position, route.destination, 0);
+      expect(g.nextTurn).toBe(expected);
+      expect(g.distanceToTurnWorldUnits).toBeCloseTo(50);
+    });
+  }
+
+  it("reports no next turn for a straight route and keeps the distance left", () => {
+    const route = routeThrough({ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 100, y: 0 });
+    const g = computeGuidance(route, position, route.destination, 0);
+    expect(g.nextTurn).toBeUndefined();
+    expect(g.distanceToTurnWorldUnits).toBeUndefined();
+    expect(g.distanceLeftWorldUnits).toBeCloseTo(100);
+  });
+
+  it("skips a straight-on joint and reports the later turn", () => {
+    const route = routeThrough({ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 60, y: 0 }, { x: 60, y: -40 });
+    const g = computeGuidance(route, position, route.destination, 0);
+    expect(g.nextTurn).toBe("left");
+    expect(g.distanceToTurnWorldUnits).toBeCloseTo(60);
+  });
+});
