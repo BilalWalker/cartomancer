@@ -720,3 +720,184 @@ export function mapRouteSequenceArbitrary(): fc.Arbitrary<MapRouteSequenceCase> 
       ),
     );
 }
+
+/** The reroute delay the off-route sequences are built around (the engine default). */
+export const SEQUENCE_DELAY_MS = 1000;
+
+/** A straight route whose roads have differing widths, with a width lookup. */
+export interface WidthRoute {
+  route: Route;
+  /** Road width by road id. */
+  widths: Record<string, number>;
+  roadWidthOf: (roadId: string) => number;
+}
+
+/** A sample of a reroute sequence, marked with whether it lies beyond the margin. */
+export interface MarkedSample extends PositionSample {
+  beyond: boolean;
+}
+
+/** A route with differing road widths and a position sequence for the rerouter. */
+export interface RerouteSequenceCase extends WidthRoute {
+  margin: number;
+  delayMs: number;
+  samples: MarkedSample[];
+}
+
+/**
+ * Generates a straight route along the x axis of 2 to 5 parts (each 20 to 100
+ * long), each on its own road with its own width (1 to 40, a multiple of 0.5).
+ * Widths are drawn so that neighbouring parts often differ.
+ */
+export function widthRouteArbitrary(): fc.Arbitrary<WidthRoute> {
+  return fc
+    .array(fc.record({ length: fc.integer({ min: 20, max: 100 }), width: positiveSize }), {
+      minLength: 2,
+      maxLength: 5,
+    })
+    .map((list) => {
+      const parts: RoutePart[] = [];
+      const widths: Record<string, number> = {};
+      let x = 0;
+      list.forEach((item, i) => {
+        const id = `r${i}`;
+        parts.push({
+          roadId: id,
+          direction: "forward",
+          start: { x, y: 0 },
+          end: { x: x + item.length, y: 0 },
+        });
+        widths[id] = item.width;
+        x += item.length;
+      });
+      return {
+        route: { parts, lengthWorldUnits: x, destination: { point: { x, y: 0 } } },
+        widths,
+        roadWidthOf: (roadId: string) => widths[roadId]!,
+      };
+    });
+}
+
+/**
+ * A position inside part `partIndex` (never on a joint, so the nearest part is
+ * that part alone), `side` units from the centre line where `side` is
+ * `half width + beyondEdge` (clamped to the centre line), on the chosen side.
+ */
+function samplePosition(
+  wr: WidthRoute,
+  partIndex: number,
+  along: number,
+  beyondEdge: number,
+  left: boolean,
+  timestampMs: number,
+): PositionSample {
+  const part = wr.route.parts[partIndex]!;
+  const length = part.end.x - part.start.x;
+  const x = part.start.x + 1 + (along % (length - 1));
+  const magnitude = Math.max(0, wr.widths[part.roadId]! / 2 + beyondEdge);
+  return { x, y: left ? -magnitude : magnitude, headingDegrees: 0, timestampMs };
+}
+
+/**
+ * Generates 1 to 40 positions whose Off_Route_Distance stays at or below the
+ * margin: some on the road surface, some wobbling near the margin, some exactly
+ * at half the road width plus the margin from the centre line. Roads differ in
+ * width. Timestamps increase by 1 to 200 ms.
+ */
+export function wobbleSequenceArbitrary(
+  margin: number = LOOP_MARGIN,
+): fc.Arbitrary<RerouteSequenceCase> {
+  const beyondEdge = fc.oneof(
+    { arbitrary: fc.constant(margin), weight: 3 },
+    { arbitrary: fc.integer({ min: Math.floor(margin) - 3, max: Math.floor(margin) }), weight: 3 },
+    { arbitrary: fc.integer({ min: -4, max: Math.floor(margin) }), weight: 2 },
+  );
+  return widthRouteArbitrary().chain((wr) =>
+    fc
+      .record({
+        startTime: fc.integer({ min: 0, max: 100000 }),
+        steps: fc.array(
+          fc.record({
+            part: fc.integer({ min: 0, max: wr.route.parts.length - 1 }),
+            along: fc.integer({ min: 0, max: 1000 }),
+            beyondEdge,
+            left: fc.boolean(),
+            elapsedMs: fc.integer({ min: 1, max: 200 }),
+          }),
+          { minLength: 1, maxLength: 40 },
+        ),
+      })
+      .map(({ startTime, steps }): RerouteSequenceCase => {
+        let time = startTime;
+        const samples = steps.map((s): MarkedSample => {
+          time += s.elapsedMs;
+          const p = samplePosition(wr, s.part, s.along, s.beyondEdge, s.left, time);
+          return { ...p, beyond: false };
+        });
+        return { ...wr, margin, delayMs: SEQUENCE_DELAY_MS, samples };
+      }),
+  );
+}
+
+/**
+ * Generates sequences of 1 to 3 cycles. Each cycle starts with 1 to 2 samples
+ * back within the margin, then leaves: samples beyond the margin (1 to 10 units
+ * past it) spaced 50 to 200 ms apart until the stay has lasted at least
+ * `delayMs`. The sequence ends beyond the margin. Roads differ in width.
+ */
+export function offRouteSequenceArbitrary(
+  margin: number = LOOP_MARGIN,
+  delayMs: number = SEQUENCE_DELAY_MS,
+): fc.Arbitrary<RerouteSequenceCase> {
+  const awaySteps = Math.ceil(delayMs / 50) + 1;
+  const cycle = fc.record({
+    returns: fc.array(
+      fc.record({
+        part: fc.nat(),
+        along: fc.nat(1000),
+        beyondEdge: fc.integer({ min: -4, max: Math.floor(margin) }),
+        left: fc.boolean(),
+        elapsedMs: fc.integer({ min: 1, max: 200 }),
+      }),
+      { minLength: 1, maxLength: 2 },
+    ),
+    away: fc.array(
+      fc.record({
+        part: fc.nat(),
+        along: fc.nat(1000),
+        past: fc.integer({ min: 1, max: 10 }),
+        left: fc.boolean(),
+        elapsedMs: fc.integer({ min: 50, max: 200 }),
+      }),
+      { minLength: awaySteps, maxLength: awaySteps },
+    ),
+  });
+  return widthRouteArbitrary().chain((wr) =>
+    fc
+      .record({
+        startTime: fc.integer({ min: 0, max: 100000 }),
+        cycles: fc.array(cycle, { minLength: 1, maxLength: 3 }),
+      })
+      .map(({ startTime, cycles }): RerouteSequenceCase => {
+        const count = wr.route.parts.length;
+        let time = startTime;
+        const samples: MarkedSample[] = [];
+        for (const c of cycles) {
+          for (const r of c.returns) {
+            time += r.elapsedMs;
+            const p = samplePosition(wr, r.part % count, r.along, r.beyondEdge, r.left, time);
+            samples.push({ ...p, beyond: false });
+          }
+          let stayStart: number | undefined;
+          for (const a of c.away) {
+            time += a.elapsedMs;
+            stayStart ??= time;
+            const p = samplePosition(wr, a.part % count, a.along, margin + a.past, a.left, time);
+            samples.push({ ...p, beyond: true });
+            if (time - stayStart >= delayMs) break;
+          }
+        }
+        return { ...wr, margin, delayMs, samples };
+      }),
+  );
+}

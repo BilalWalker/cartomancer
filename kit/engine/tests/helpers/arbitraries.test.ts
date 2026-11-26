@@ -1,7 +1,11 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { distancePointToSegment } from "../../src/geometry.js";
+import { offRouteDistance } from "../../src/route-follower.js";
 import {
+  offRouteSequenceArbitrary,
+  wobbleSequenceArbitrary,
+  type MarkedSample,
   LOOP_MARGIN,
   loopingRouteCaseArbitrary,
   MAX_FORWARD_STEP,
@@ -209,6 +213,61 @@ describe("map arbitraries", () => {
       }),
       { numRuns: 100 },
     );
+  });
+
+  it("wobble sequences stay within the margin, reach it exactly, on roads of differing widths", () => {
+    let exactlyAtMargin = 0;
+    let differingWidths = 0;
+    fc.assert(
+      fc.property(wobbleSequenceArbitrary(), (c) => {
+        expect(c.samples.length).toBeGreaterThanOrEqual(1);
+        for (const s of c.samples) {
+          const d = offRouteDistance(c.route, s, c.roadWidthOf);
+          expect(d).toBeLessThanOrEqual(c.margin);
+          if (d === c.margin) exactlyAtMargin++;
+          expect(s.beyond).toBe(false);
+        }
+        for (let i = 1; i < c.samples.length; i++) {
+          expect(c.samples[i]!.timestampMs).toBeGreaterThan(c.samples[i - 1]!.timestampMs);
+        }
+        if (new Set(Object.values(c.widths)).size > 1) differingWidths++;
+      }),
+      { numRuns: 100 },
+    );
+    expect(exactlyAtMargin).toBeGreaterThan(0);
+    expect(differingWidths).toBeGreaterThan(0);
+  });
+
+  it("off-route sequences stay beyond the margin for the delay, with returns in between", () => {
+    let multiCycle = 0;
+    fc.assert(
+      fc.property(offRouteSequenceArbitrary(), (c) => {
+        let returns = 0;
+        let stayStart: number | undefined;
+        let lastBeyond: MarkedSample | undefined;
+        c.samples.forEach((s, i) => {
+          const d = offRouteDistance(c.route, s, c.roadWidthOf);
+          if (s.beyond) {
+            expect(d).toBeGreaterThan(c.margin);
+            stayStart ??= s.timestampMs;
+            lastBeyond = s;
+          } else {
+            expect(d).toBeLessThanOrEqual(c.margin);
+            if (stayStart !== undefined && lastBeyond !== undefined) {
+              expect(lastBeyond.timestampMs - stayStart).toBeGreaterThanOrEqual(c.delayMs);
+            }
+            if (i > 0 && c.samples[i - 1]!.beyond) returns++;
+            stayStart = undefined;
+          }
+        });
+        // The last stay is beyond the margin for at least the delay too.
+        expect(c.samples[c.samples.length - 1]!.beyond).toBe(true);
+        expect(lastBeyond!.timestampMs - stayStart!).toBeGreaterThanOrEqual(c.delayMs);
+        if (returns > 0) multiCycle++;
+      }),
+      { numRuns: 100 },
+    );
+    expect(multiCycle).toBeGreaterThan(0);
   });
 
   it("loadValid throws when the file does not load", () => {
