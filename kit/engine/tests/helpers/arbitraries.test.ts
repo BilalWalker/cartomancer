@@ -91,7 +91,7 @@ describe("map arbitraries", () => {
     );
     fc.assert(
       fc.property(gridRouteArbitrary(), ({ map }) => map.nodes.length <= 16),
-      { numRuns: 50 },
+      { numRuns: 100 },
     );
   });
 
