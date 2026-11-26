@@ -7,23 +7,29 @@ const INACTIVE: Guidance = { active: false };
 /**
  * Guidance for the remaining route. With no route the fixed inactive
  * guidance is returned (no distance, no turn). Otherwise the distance left
- * equals the remaining route length. Next turn and arrival come in later
- * steps; the extra parameters are accepted now so the signature is stable.
+ * equals the remaining route length. The player has arrived when that
+ * length is at most the arrival radius and the off-route distance is at
+ * most the margin; then distance left is zero and there is no next turn.
  */
 export function computeGuidance(
   remainingRoute: Route | undefined,
   position: Position,
   _destination: Destination | undefined,
-  _offRouteDistance: number,
-  _margin = 15,
-  _arrivalRadius = 10,
+  offRouteDistance: number,
+  margin = 15,
+  arrivalRadius = 10,
 ): Guidance {
   if (remainingRoute === undefined) {
     return { ...INACTIVE };
   }
+  // Arrival is decided along the route, never by straight-line distance.
+  if (remainingRoute.lengthWorldUnits <= arrivalRadius && offRouteDistance <= margin) {
+    return { active: true, distanceLeftWorldUnits: 0, arrived: true };
+  }
   const guidance: Guidance = {
     active: true,
     distanceLeftWorldUnits: remainingRoute.lengthWorldUnits,
+    arrived: false,
   };
   const next = playerFacesAway(remainingRoute, position)
     ? { turn: "turn-back" as NextTurn, distance: 0 }
