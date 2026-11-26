@@ -100,3 +100,25 @@ export function gitViolations(command: string): string[] {
   }
   return problems;
 }
+
+/** Problems of one raw commit message (as `git log --format=%B` prints it), per commit-rules.md. */
+export function lintCommitMessage(raw: string): string[] {
+  const problems: string[] = [];
+  if (raw.startsWith('\uFEFF')) problems.push('subject starts with a UTF-8 BOM (write the message without one)');
+  const message = raw.replace(/^\uFEFF/, '');
+  const lines = message.replace(/\r\n/g, '\n').split('\n');
+  const subject = lines[0] ?? '';
+  if (subject.length > 72) problems.push(`subject is ${subject.length} characters, limit 72`);
+  if (!/^[A-Z][A-Za-z0-9 ]*: \S/.test(subject)) problems.push('subject must be "Area: what changed"');
+  if (lines.length > 1 && lines[1].trim() !== '') problems.push('second line must be blank');
+  if (lines.slice(2).every((l) => l.trim() === '')) problems.push('body is missing (why, and how it was verified)');
+  if (/^\s*Co-Authored-By:/im.test(message)) problems.push('attribution trailer lines are not allowed');
+  if (/Generated (with|by)/i.test(message)) problems.push('"Generated with/by" lines are not allowed');
+  if (/\p{Extended_Pictographic}/u.test(message)) problems.push('emoji are not allowed');
+  return problems;
+}
+
+/** Paths that must never be committed: anything under node_modules, dist or .work. */
+export function forbiddenPaths(paths: readonly string[]): string[] {
+  return paths.filter((p) => /(^|\/)(node_modules|dist|\.work)\//.test(p.replace(/\\/g, '/')));
+}
