@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
+import { classifyTurn, signedAngleDifference } from "../src/geometry";
 import { computeGuidance } from "../src/guidance";
 import type { Position, Route } from "../src/types";
 
@@ -91,5 +93,93 @@ describe("computeGuidance: turn back from the player heading", () => {
     const g = computeGuidance(route, { x: 0, y: 0, headingDegrees: -151 }, route.destination, 0);
     expect(g.nextTurn).toBe("turn-back");
     expect(g.distanceToTurnWorldUnits).toBe(0);
+  });
+});
+
+// Feature: engine-core, Property 20: Turn classification follows the signed angle bands
+// **Validates: Requirements 15.3, 15.4**
+describe("Property 20: turn classification follows the signed angle bands", () => {
+  // Expected class from the bands, written without the engine helpers.
+  function expectedClass(change: number): string {
+    const size = Math.abs(change);
+    if (size <= 30) return "straight-on";
+    if (size > 150) return "turn-back";
+    return change > 0 ? "right" : "left";
+  }
+
+  it("classifies the normalised change of two headings by the bands", () => {
+    const seen = new Set<string>();
+    let boundaryCases = 0;
+    let wrapCases = 0;
+    fc.assert(
+      fc.property(
+        fc.integer({ min: -360, max: 360 }),
+        fc.integer({ min: -180, max: 180 }),
+        (before, rawChange) => {
+          const after = before + rawChange;
+          // Normalise to (-180, 180]: -180 and 180 are the same turn.
+          const change = rawChange === -180 ? 180 : rawChange;
+          const delta = signedAngleDifference(before, after);
+          expect(delta).toBeCloseTo(change, 9);
+          const cls = classifyTurn(delta);
+          expect(cls).toBe(expectedClass(change));
+          seen.add(cls);
+          if (Math.abs(change) === 30 || Math.abs(change) === 150) boundaryCases++;
+          if (after > 180 || after < -180) wrapCases++;
+        },
+      ),
+      { numRuns: 500 },
+    );
+    expect([...seen].sort()).toEqual(["left", "right", "straight-on", "turn-back"]);
+    expect(boundaryCases).toBeGreaterThan(0);
+    expect(wrapCases).toBeGreaterThan(0);
+  });
+
+  it("hits both band edges exactly, with both signs", () => {
+    for (const [change, cls] of [
+      [30, "straight-on"],
+      [-30, "straight-on"],
+      [31, "right"],
+      [-31, "left"],
+      [150, "right"],
+      [-150, "left"],
+      [151, "turn-back"],
+      [-151, "turn-back"],
+      [180, "turn-back"],
+      [-180, "turn-back"],
+    ] as const) {
+      expect(classifyTurn(signedAngleDifference(170, 170 + change))).toBe(cls);
+    }
+  });
+
+  it("applies the same bands to the player heading against the first route part", () => {
+    let turnBacks = 0;
+    let others = 0;
+    fc.assert(
+      fc.property(
+        fc.constantFrom(0, 90, 180, -90),
+        fc.integer({ min: -180, max: 180 }),
+        (partHeading, rawChange) => {
+          const dx = partHeading === 0 ? 50 : partHeading === 180 ? -50 : 0;
+          const dy = partHeading === 90 ? 50 : partHeading === -90 ? -50 : 0;
+          const route = routeThrough({ x: 0, y: 0 }, { x: dx, y: dy });
+          const player: Position = { x: 0, y: 0, headingDegrees: partHeading - rawChange };
+          const g = computeGuidance(route, player, route.destination, 0);
+          // Player heading minus the change means part heading is player + change.
+          if (expectedClass(rawChange === -180 ? 180 : rawChange) === "turn-back") {
+            turnBacks++;
+            expect(g.nextTurn).toBe("turn-back");
+            expect(g.distanceToTurnWorldUnits).toBe(0);
+          } else {
+            others++;
+            expect(g.nextTurn).toBeUndefined();
+          }
+          expect(g.distanceLeftWorldUnits).toBeCloseTo(50);
+        },
+      ),
+      { numRuns: 500 },
+    );
+    expect(turnBacks).toBeGreaterThan(0);
+    expect(others).toBeGreaterThan(0);
   });
 });
