@@ -1,6 +1,8 @@
+import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { advance, offRouteDistance } from "../src/route-follower";
 import type { Route, RoutePart } from "../src/types";
+import { mapRouteSequenceArbitrary } from "./helpers/arbitraries";
 
 function part(roadId: string, sx: number, sy: number, ex: number, ey: number): RoutePart {
   return { roadId, direction: "forward", start: { x: sx, y: sy }, end: { x: ex, y: ey } };
@@ -130,5 +132,50 @@ describe("off-route distance", () => {
 
   it("is infinite for an empty route", () => {
     expect(offRouteDistance(route([]), { x: 0, y: 0 }, wide)).toBe(Infinity);
+  });
+});
+
+describe("following properties", () => {
+  // Feature: engine-core, Property 14: Following the route never increases the distance left
+  // **Validates: Requirements 12.1, 12.2, 12.3, 12.4, 12.7**
+  it("Property 14: the distance left never grows and the removed part does not return", () => {
+    const EPS = 1e-6;
+    let advancedCases = 0;
+    let backwardCases = 0;
+    fc.assert(
+      fc.property(mapRouteSequenceArbitrary(), ({ route, positions }) => {
+        let previousRemaining = route.lengthWorldUnits;
+        let progress = 0;
+        let previousProjection = 0;
+        let advanced = false;
+        let backward = false;
+        for (const position of positions) {
+          // The nearest route point over the whole route, independent of the
+          // follower's progress, shows whether the player stepped back.
+          const projection = advance(route, 0, position, route.lengthWorldUnits).progress;
+          if (projection < previousProjection - 0.1) backward = true;
+          previousProjection = projection;
+
+          const result = advance(route, progress, position);
+          expect(result.progress).toBeGreaterThanOrEqual(progress);
+          expect(result.remaining.lengthWorldUnits).toBeLessThanOrEqual(previousRemaining + EPS);
+          expect(result.remaining.lengthWorldUnits).toBeLessThanOrEqual(route.lengthWorldUnits + EPS);
+          // The removed part does not return: what is left is exactly the
+          // route length minus the progress.
+          expect(
+            Math.abs(result.remaining.lengthWorldUnits - (route.lengthWorldUnits - result.progress)),
+          ).toBeLessThan(1e-4);
+          if (result.progress > progress + 1e-9) advanced = true;
+          previousRemaining = result.remaining.lengthWorldUnits;
+          progress = result.progress;
+        }
+        if (advanced) advancedCases++;
+        if (backward) backwardCases++;
+      }),
+      { numRuns: 200 },
+    );
+    // Non-vacuity: progress moved forward and backward steps happened.
+    expect(advancedCases).toBeGreaterThan(0);
+    expect(backwardCases).toBeGreaterThan(0);
   });
 });
