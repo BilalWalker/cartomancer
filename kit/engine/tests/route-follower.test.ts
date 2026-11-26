@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advance } from "../src/route-follower";
+import { advance, offRouteDistance } from "../src/route-follower";
 import type { Route, RoutePart } from "../src/types";
 
 function part(roadId: string, sx: number, sy: number, ex: number, ey: number): RoutePart {
@@ -86,5 +86,49 @@ describe("route follower", () => {
     // Nothing beyond the window is removed.
     expect(result.remaining.parts.slice(1)).toEqual(loop.parts.slice(1));
     expect(result.remaining.lengthWorldUnits).toBeCloseTo(loop.lengthWorldUnits - 100);
+  });
+});
+
+describe("off-route distance", () => {
+  const straight = route([part("r", 0, 0, 100, 0)]);
+  const wide = (): number => 20;
+  const narrow = (): number => 4;
+  const margin = 15;
+
+  it("is negative on the centre line", () => {
+    expect(offRouteDistance(straight, { x: 50, y: 0 }, wide)).toBe(-10);
+  });
+
+  it("is zero at the road edge", () => {
+    expect(offRouteDistance(straight, { x: 50, y: 10 }, wide)).toBe(0);
+  });
+
+  it("is exactly the margin at half width plus margin on a wide road", () => {
+    const value = offRouteDistance(straight, { x: 50, y: 10 + margin }, wide);
+    expect(value).toBe(margin);
+    expect(value > margin).toBe(false);
+  });
+
+  it("is exactly the margin at half width plus margin on a narrow road", () => {
+    const value = offRouteDistance(straight, { x: 50, y: 2 + margin }, narrow);
+    expect(value).toBe(margin);
+  });
+
+  it("gives different values for the same centre-line distance on different widths", () => {
+    const position = { x: 50, y: 20 };
+    expect(offRouteDistance(straight, position, wide)).toBe(10);
+    expect(offRouteDistance(straight, position, narrow)).toBe(18);
+    expect(offRouteDistance(straight, position, wide) > margin).toBe(false);
+    expect(offRouteDistance(straight, position, narrow) > margin).toBe(true);
+  });
+
+  it("uses the width of the road nearest to the position", () => {
+    const two = route([part("a", 0, 0, 100, 0), part("b", 100, 0, 100, 100)]);
+    const widthOf = (id: string): number => (id === "a" ? 10 : 30);
+    expect(offRouteDistance(two, { x: 130, y: 50 }, widthOf)).toBe(15);
+  });
+
+  it("is infinite for an empty route", () => {
+    expect(offRouteDistance(route([]), { x: 0, y: 0 }, wide)).toBe(Infinity);
   });
 });

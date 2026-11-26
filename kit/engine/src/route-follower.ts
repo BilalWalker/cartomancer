@@ -20,6 +20,30 @@ function partLength(part: RoutePart): number {
 }
 
 /**
+ * Off_Route_Distance: the distance from `position` to the nearest point of the
+ * remaining route, minus half the width of the road in use at that point.
+ * Zero or negative on the road surface. An empty route has no road to be on,
+ * so the result is Infinity. Ties go to the earliest part.
+ */
+export function offRouteDistance(
+  remaining: Route,
+  position: Point,
+  roadWidthOf: (roadId: string) => number,
+): number {
+  let bestDistance = Infinity;
+  let bestRoadId: string | undefined;
+  for (const part of remaining.parts) {
+    const nearest = nearestPointOnSegment(position, part.start, part.end);
+    if (nearest.distance < bestDistance) {
+      bestDistance = nearest.distance;
+      bestRoadId = part.roadId;
+    }
+  }
+  if (bestRoadId === undefined) return Infinity;
+  return bestDistance - roadWidthOf(bestRoadId) / 2;
+}
+
+/**
  * Move along `route` (the original route, not a trimmed copy). Looks for the
  * point nearest to `position` only among route points whose distance along the
  * route lies in [progress, progress + searchWindow]. The new progress is the
