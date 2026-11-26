@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import { Rerouter } from "../src/rerouter";
 import { offRouteDistance } from "../src/route-follower";
 import type { Route } from "../src/types";
-import { wobbleSequenceArbitrary } from "./helpers/arbitraries";
+import {
+  mixedStaySequenceArbitrary,
+  offRouteSequenceArbitrary,
+  wobbleSequenceArbitrary,
+} from "./helpers/arbitraries";
 
 // Hand-written examples: the margin is measured from the road edge, not
 // from the centre line. Default margin 15 and delay 1000 ms.
@@ -75,5 +79,77 @@ describe("rerouter within the margin (property)", () => {
     // Non-vacuity: the run really included exact-margin and long-duration sequences.
     expect(atMargin).toBeGreaterThan(0);
     expect(longRuns).toBeGreaterThan(0);
+  });
+});
+
+describe("rerouter overstaying the margin (property)", () => {
+  /**
+   * Feed a sequence and check each maximal stay beyond the margin: exactly one
+   * request if the stay lasted at least the delay (at the first sample that
+   * reaches it), none otherwise. Returns [full stays, short stays, stays].
+   */
+  function checkStays(c: {
+    route: Route;
+    roadWidthOf: (id: string) => number;
+    margin: number;
+    delayMs: number;
+    samples: { x: number; y: number; timestampMs: number; beyond: boolean }[];
+  }): { full: number; short: number } {
+    const rerouter = new Rerouter({ margin: c.margin, delayMs: c.delayMs });
+    let full = 0;
+    let short = 0;
+    let stayStart: number | undefined;
+    let requests = 0;
+    let lastBeyond = 0;
+    const closeStay = () => {
+      if (stayStart === undefined) return;
+      if (lastBeyond - stayStart >= c.delayMs) {
+        expect(requests).toBe(1);
+        full += 1;
+      } else {
+        expect(requests).toBe(0);
+        short += 1;
+      }
+      stayStart = undefined;
+      requests = 0;
+    };
+    for (const s of c.samples) {
+      const result = rerouter.update(c.route, { x: s.x, y: s.y }, s.timestampMs, c.roadWidthOf);
+      if (s.beyond) {
+        stayStart ??= s.timestampMs;
+        lastBeyond = s.timestampMs;
+        if (result.requestReroute) {
+          requests += 1;
+          // The request comes only once the stay has lasted the delay.
+          expect(s.timestampMs - stayStart).toBeGreaterThanOrEqual(c.delayMs);
+        }
+      } else {
+        expect(result.requestReroute).toBe(false);
+        closeStay();
+      }
+    }
+    closeStay();
+    return { full, short };
+  }
+
+  // Feature: engine-core, Property 17: Overstaying the margin for the full delay triggers exactly one reroute
+  // **Validates: Requirements 13.2, 13.3, 13.5, 13.11**
+  it("requests exactly one reroute per stay of at least the delay, none for shorter stays", () => {
+    let multiStay = 0;
+    let shortStays = 0;
+    fc.assert(
+      fc.property(
+        fc.oneof(offRouteSequenceArbitrary(), mixedStaySequenceArbitrary()),
+        (c) => {
+          const { full, short } = checkStays(c);
+          if (full + short > 1) multiStay += 1;
+          shortStays += short;
+        },
+      ),
+      { numRuns: 200 },
+    );
+    // Non-vacuity: sequences with several stays and with short stays occurred.
+    expect(multiStay).toBeGreaterThan(0);
+    expect(shortStays).toBeGreaterThan(0);
   });
 });
