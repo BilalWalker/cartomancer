@@ -71,3 +71,25 @@ describe("computeGuidance: next turn per class", () => {
     expect(g.distanceToTurnWorldUnits).toBeCloseTo(60);
   });
 });
+
+describe("computeGuidance: turn back from the player heading", () => {
+  const route = routeThrough({ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 100, y: 0 });
+
+  it("does not turn the player back at exactly 150 degrees", () => {
+    const g = computeGuidance(route, { x: 0, y: 0, headingDegrees: 150 }, route.destination, 0);
+    expect(g.nextTurn).toBeUndefined();
+  });
+
+  it("turns the player back at 151 degrees, at distance zero", () => {
+    const g = computeGuidance(route, { x: 0, y: 0, headingDegrees: 151 }, route.destination, 0);
+    expect(g.nextTurn).toBe("turn-back");
+    expect(g.distanceToTurnWorldUnits).toBe(0);
+    expect(g.distanceLeftWorldUnits).toBeCloseTo(100);
+  });
+
+  it("turns the player back at minus 151 degrees as well", () => {
+    const g = computeGuidance(route, { x: 0, y: 0, headingDegrees: -151 }, route.destination, 0);
+    expect(g.nextTurn).toBe("turn-back");
+    expect(g.distanceToTurnWorldUnits).toBe(0);
+  });
+});

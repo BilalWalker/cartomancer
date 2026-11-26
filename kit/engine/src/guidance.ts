@@ -12,7 +12,7 @@ const INACTIVE: Guidance = { active: false };
  */
 export function computeGuidance(
   remainingRoute: Route | undefined,
-  _position: Position,
+  position: Position,
   _destination: Destination | undefined,
   _offRouteDistance: number,
   _margin = 15,
@@ -25,12 +25,29 @@ export function computeGuidance(
     active: true,
     distanceLeftWorldUnits: remainingRoute.lengthWorldUnits,
   };
-  const next = findNextTurn(remainingRoute);
+  const next = playerFacesAway(remainingRoute, position)
+    ? { turn: "turn-back" as NextTurn, distance: 0 }
+    : findNextTurn(remainingRoute);
   if (next !== undefined) {
     guidance.nextTurn = next.turn;
     guidance.distanceToTurnWorldUnits = next.distance;
   }
   return guidance;
+}
+
+/**
+ * True when the first route part with length points more than 150 degrees
+ * away from the player's heading.
+ */
+function playerFacesAway(route: Route, position: Position): boolean {
+  for (const part of route.parts) {
+    if (Math.hypot(part.end.x - part.start.x, part.end.y - part.start.y) === 0) continue;
+    const heading = headingOfSegment(part.start, part.end);
+    return (
+      classifyTurn(signedAngleDifference(position.headingDegrees, heading)) === "turn-back"
+    );
+  }
+  return false;
 }
 
 /**
