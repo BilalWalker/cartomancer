@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { classifyTurn, signedAngleDifference } from "../src/geometry";
+import { classifyTurn, headingOfSegment, signedAngleDifference } from "../src/geometry";
 import { computeGuidance } from "../src/guidance";
+import { findRoute } from "../src/route-finder";
 import type { Position, Route } from "../src/types";
+import { gridRouteArbitrary, smallMapRouteArbitrary } from "./helpers/arbitraries";
 
 const position: Position = { x: 0, y: 0, headingDegrees: 0 };
 
@@ -181,5 +183,52 @@ describe("Property 20: turn classification follows the signed angle bands", () =
     );
     expect(turnBacks).toBeGreaterThan(0);
     expect(others).toBeGreaterThan(0);
+  });
+});
+
+// Feature: engine-core, Property 23: Guidance distance left starts equal to route length
+// **Validates: Requirements 15.1, 15.8**
+describe("Property 23: guidance distance left starts equal to route length", () => {
+  it("equals the route length at the route start, within 0.000001", () => {
+    let cases = 0;
+    let found = 0;
+    let withLength = 0;
+    let beyondDefaultRadius = 0;
+    fc.assert(
+      fc.property(fc.oneof(smallMapRouteArbitrary(), gridRouteArbitrary()), ({ map, start, destination }) => {
+        cases++;
+        const result = findRoute(map, start, destination);
+        if (!("parts" in result)) return;
+        found++;
+        const first = result.parts[0];
+        const here: Position =
+          first === undefined
+            ? start
+            : {
+                x: first.start.x,
+                y: first.start.y,
+                headingDegrees: headingOfSegment(first.start, first.end),
+              };
+
+        // Radius zero keeps arrival from replacing the distance with zero
+        // (a zero-length route is then arrived with distance zero, equal to its length).
+        const g = computeGuidance(result, here, destination, 0, 15, 0);
+        expect(g.active).toBe(true);
+        expect(Math.abs(g.distanceLeftWorldUnits! - result.lengthWorldUnits)).toBeLessThanOrEqual(1e-6);
+
+        if (result.lengthWorldUnits > 0) withLength++;
+        if (result.lengthWorldUnits > 10) {
+          beyondDefaultRadius++;
+          // With the default radius the distance is the route length as well.
+          const d = computeGuidance(result, here, destination, 0);
+          expect(Math.abs(d.distanceLeftWorldUnits! - result.lengthWorldUnits)).toBeLessThanOrEqual(1e-6);
+        }
+      }),
+      { numRuns: 200 },
+    );
+    expect(cases).toBeGreaterThanOrEqual(200);
+    expect(found).toBeGreaterThan(0);
+    expect(withLength).toBeGreaterThan(0);
+    expect(beyondDefaultRadius).toBeGreaterThan(0);
   });
 });
