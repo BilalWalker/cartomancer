@@ -40,7 +40,17 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 - **Tilt_Angle**: The angle in degrees between the viewing direction and the ground plane in the Tilted_View. Allowed range 20 to 70 degrees. Default 45 degrees.
 - **Raised_Block**: A Prop whose kind is in the Raised_Kinds, drawn in the Tilted_View as a box with a ground footprint, a top face and side faces that rise from the ground.
 - **Raised_Kinds**: The list of Prop kinds that the Tilted_View draws as Raised_Blocks. Default: `building`, `house`, `tower`, `wall-block`. A Prop kind outside the Raised_Kinds is drawn flat on the ground.
-- **Block_Height**: The height in world units of a Raised_Block. It is the Prop height field multiplied by a height factor. The default height factor is 1. A caller-supplied height factor per Prop kind must lie in the range 0 to 100.
+- **Block_Height**: The height in world units of a Raised_Block. It is the Block_Height_Value of the Prop multiplied by a height factor. The default height factor is 1. A caller-supplied height factor per Prop kind must lie in the range 0 to 100.
+- **Block_Height_Value**: The height in world units before the height factor is applied. It is the `blockHeight` field of the Prop when the Prop has that field, otherwise the Default_Block_Height of the Prop kind, otherwise 0 for a Prop kind that is not in the Raised_Kinds.
+- **blockHeight**: The optional Prop field of map file format version 1 that holds the height of a Raised_Block in world units, finite and greater than or equal to 0. The field is stored under the name `blockHeight` and not under the name `height`, because every Prop already has `width` and `height` as its footprint size on the ground (see `kit/engine/docs/map-file-format.md` and `kit/engine/src/types.ts`), and a second `height` would be ambiguous and would break existing map files.
+- **Default_Block_Height**: The height in world units that applies to a Prop kind in the Raised_Kinds when the Prop has no `blockHeight`. Defaults: `building` 12, `house` 6, `tower` 24, `wall-block` 3. A Prop kind outside the Raised_Kinds has the Default_Block_Height 0.
+- **Mount_Function**: One of `mountMinimap`, `mountFullMap` and `mountTiltedView`. A Mount_Function takes a canvas element, an Engine and an options object, and mounts one View on the canvas.
+- **Mount_Handle**: The object a Mount_Function returns. It holds `destroy()` and the controls of that View.
+- **Frame_Loop**: The loop of a mounted View that runs on animation frames, reads the Position, the Route and the Guidance from the Engine, and draws the View when a redraw is due.
+- **Draw_Function**: A lower-level, public function of the Views that draws one View once on a Canvas_Interface that the caller supplies.
+- **Draw_Pass**: One of the passes of Requirement 6 criterion 1 that draw many items with the same drawing state, such as the Road outlines of one kind or the Road fills of one kind.
+- **Settling**: The state of a Camera whose value differs from its target value by more than 0.01 CSS pixels (world centre, in screen distance), 0.01 degrees (rotation) or 0.1% (Zoom, relative). A Camera that is not Settling is at rest.
+- **Views_API_Doc**: The file `kit/engine/docs/views-api.md`.
 - **Depth_Order**: The draw order of the Tilted_View, in which items that are farther from the viewer are drawn before items that are nearer. The viewer is at the bottom of the screen, so an item is nearer when its ground footprint lies lower on the screen.
 - **Route_Line**: The drawn line of the remaining Route.
 - **Player_Marker**: The drawn mark of the player's Position, with a pointer that shows the heading.
@@ -144,6 +154,8 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 7. THE Views SHALL mark a one-way Road with arrowheads along its centre line that point in the travel direction, spaced at least 40 CSS pixels apart on the screen.
 8. THE Views SHALL draw a Blocked_Road with the blocked colour of the Resolved_Style and a dash pattern, so that a Blocked_Road is told apart from a Usable_Road without relying on colour alone.
 9. IF a Road has a width that is not finite or not greater than 0 world units, THEN THE Views SHALL draw no stroke for that Road and SHALL report a Notice that names the Road identifier and states that the width must be greater than 0.
+10. THE Views SHALL draw all visible Usable_Roads of the same kind and the same line width in CSS pixels, in the same Draw_Pass, as one path, so that the outline Draw_Pass and the fill Draw_Pass each use one path per kind and per line width (see Requirement 22).
+11. THE Views SHALL draw all visible Blocked_Roads of the same line width in CSS pixels as one dashed path (see Requirement 22).
 
 ### Requirement 6: Blocked areas, props and layer order
 
@@ -270,6 +282,11 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 12. FOR ALL generated Maps and Cameras, with Tilt_Angle from 20 to 70 degrees, THE tilted projection of a ground point at height 0 SHALL map back to the same ground point with the inverse projection within 0.001 world units (tilt round-trip property).
 13. IF the caller sets a height factor that is not finite or lies outside the range 0 to 100, THEN THE Tilted_View SHALL return a plain-worded View_Error that names the Prop kind and the allowed range and SHALL keep the previous height factor.
 14. IF a Raised_Block has a height that is not finite or is less than 0 world units, THEN THE Tilted_View SHALL draw that Prop flat on the ground and SHALL report a Notice that names the Prop identifier and the invalid height.
+15. THE Tilted_View SHALL compute the Block_Height of a Raised_Block as the Block_Height_Value multiplied by the height factor of the Prop kind, and SHALL NOT use the footprint `height` field of the Prop as a Block_Height.
+16. WHEN a Prop in the Raised_Kinds has no `blockHeight`, THE Tilted_View SHALL use the Default_Block_Height of the Prop kind as the Block_Height_Value.
+17. WHEN a Prop has a `blockHeight`, THE Tilted_View SHALL use the `blockHeight` as the Block_Height_Value, also for a Prop kind that is not in the Raised_Kinds, in which case the Prop stays flat on the ground as criterion 3 of Requirement 6 states.
+18. THE Tilted_View SHALL use the largest Block_Height of the visible Raised_Blocks for the margin of the Visible_Region in criterion 10.
+19. FOR ALL generated Maps with Props that have a `blockHeight` between 0 and 1,000 world units, THE top face of each Raised_Block drawn on the Recording_Canvas SHALL lie above its footprint on the screen by the Block_Height multiplied by the cosine of the Tilt_Angle within 0.01 CSS pixels divided by Zoom (block-height property).
 
 ### Requirement 13: Smooth movement and reduced motion
 
@@ -305,6 +322,8 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 6. IF the Device_Pixel_Ratio is not finite or lies outside 0.5 to 8, THEN THE Canvas_Adapter SHALL use a Device_Pixel_Ratio of 1 and SHALL report a Notice that names the value and the allowed range.
 7. IF the CSS size of the canvas has a width or height that is not finite or lies outside 1 to 16384 CSS pixels, THEN THE Canvas_Adapter SHALL keep the previous pixel size, SHALL draw no frame, and SHALL return a plain-worded View_Error that names the size and the allowed range.
 8. IF the canvas pixel size (CSS size multiplied by the Device_Pixel_Ratio used) would exceed 16384 pixels in width or height, THEN THE Canvas_Adapter SHALL lower the Device_Pixel_Ratio used until both sides are at most 16384 pixels and SHALL report a Notice that states the lowered ratio.
+9. THE Views SHALL draw a frame when the Map, the Route, the Position, the Camera, the Viewport or the Style has changed since the last frame, and SHALL draw a frame while a Camera is Settling, so that criterion 4 covers the Map and Smoothing as well.
+10. WHILE no Map, Route, Position, Camera, Viewport or Style change has happened since the last frame and no Camera is Settling, THE Views SHALL make zero calls on the Canvas_Interface (see Requirement 22).
 
 ### Requirement 15: Input by mouse, touch and keyboard
 
@@ -405,6 +424,8 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 14. THE Views SHALL document each exported function and type with a description, its inputs with their units and allowed ranges, its outputs, its View_Errors and one usage example, in a file inside `kit/engine/docs/`.
 15. THE Default_Suite SHALL include an example-based test for each View_Error and each Notice named in Requirements 1 to 18, which checks that the message is plain-worded, names the input, and contains no coordinates where a requirement says so.
 16. THE Default_Suite SHALL include, for each numeric input with an allowed range, example-based tests at the lower bound, at the upper bound, just below the lower bound, just above the upper bound, and with NaN, positive infinity and negative infinity.
+17. THE Views SHALL leave the behaviour of the engine-core spec unchanged for every map file that has no `blockHeight` field, except for the addition of `blockHeight` described in Requirement 23, and the Views SHALL treat Requirement 23 as the one change to the Engine that is allowed in this spec besides criterion 13.
+18. THE Mount_Functions and their input binding and observer code SHALL be the only Views code that references browser-only globals, together with the Canvas_Adapter, and criterion 7 of Requirement 1 SHALL apply to all other Views logic.
 
 ### Requirement 20: Gate on the large map
 
@@ -422,3 +443,70 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 8. IF the steps of criteria 1 to 3 do not work on the Large_Generated_Map, THEN THE checkpoint report SHALL say plainly that the Gate failed and SHALL name the step that failed, and the project SHALL stop there.
 9. IF the Demo_Page does not load the Large_Generated_Map within 30 seconds, THEN THE Gate SHALL fail with a plain-worded reason that states that the map did not load and the time waited.
 10. IF the click in criterion 1 yields a No_Way_Result, THEN THE Gate SHALL report the plain-worded message of the No_Way_Result and SHALL record the step as failed.
+
+### Requirement 21: One-call mounting
+
+**User Story:** As an application developer, I want to mount a view on a canvas with one call, so that I do not wire the adapter, the pixel ratio, the resizing, the input and the frame loop myself.
+
+#### Acceptance Criteria
+
+1. THE Views SHALL export the Mount_Functions `mountMinimap`, `mountFullMap` and `mountTiltedView`, each taking a canvas element, an Engine and an options object.
+2. WHEN a Mount_Function is called with a valid canvas, a valid Engine and valid options, THE Mount_Function SHALL create the Canvas_Adapter, set the pixel size and scale as Requirement 14 states, observe the CSS size of the canvas, and start the Frame_Loop of that View.
+3. WHEN `mountFullMap` is called, THE Mount_Function SHALL also bind the mouse, touch and keyboard input of Requirement 15 to the canvas.
+4. WHEN a Mount_Function is called, THE Mount_Function SHALL return a Mount_Handle that holds `destroy()` and the controls of that View, which are the Zoom limits and Zoom for the Minimap, the pan, zoom, fit, follow and selection controls for the Full_Map, and the Tilt_Angle and height factors for the Tilted_View.
+5. WHILE a View is mounted, THE Frame_Loop SHALL read the Position, the Route and the Guidance from the Engine on each animation frame, so that the application only feeds Positions to the Engine.
+6. WHILE a View is mounted, THE Frame_Loop SHALL pass the timestamp of the animation frame in ms to the Smoothing and SHALL NOT read the system clock in the pure logic, as Requirement 13 criterion 7 states.
+7. THE Views SHALL keep the Draw_Functions public, so that an application can draw a View once on a Canvas_Interface of its own.
+8. WHEN `destroy()` is called, THE Mount_Handle SHALL stop the Frame_Loop, remove every event listener that the Mount_Function added, and disconnect every observer that the Mount_Function created.
+9. WHEN `destroy()` is called a second or later time on the same Mount_Handle, THE Mount_Handle SHALL do nothing and SHALL return no error.
+10. WHEN `destroy()` has been called, THE Mount_Handle SHALL ignore calls to its controls and SHALL return a plain-worded View_Error that states that the view has been destroyed.
+11. IF the first argument of a Mount_Function is not a canvas element, THEN THE Mount_Function SHALL return a plain-worded View_Error that names the canvas argument and states that a canvas element is required, and SHALL mount nothing.
+12. IF the second argument of a Mount_Function is not an Engine with the Engine_API functions the View reads, THEN THE Mount_Function SHALL return a plain-worded View_Error that names the engine argument and the missing function, and SHALL mount nothing.
+13. IF the options object is not an object, or holds an option that is outside its allowed range (a Zoom limit or Zoom outside 0.001 to 1000 CSS pixels per world unit, a Smoothing duration outside 1 to 5000 ms, a Tilt_Angle outside 20 to 70 degrees, or a height factor outside 0 to 100), THEN THE Mount_Function SHALL return a plain-worded View_Error that names the option and its allowed range, and SHALL mount nothing.
+14. IF a Mount_Function is called on a canvas that already has a mounted View, THEN THE Mount_Function SHALL return a plain-worded View_Error that states that the canvas already has a view, and SHALL mount nothing.
+15. IF a Mount_Function returns a View_Error, THEN THE Mount_Function SHALL leave no listener, observer, animation frame request or changed canvas size behind.
+16. THE Demo_Page SHALL mount its three Views with the Mount_Functions and SHALL feed only the Position and the timestamp to the Engine.
+17. THE Views_API_Doc SHALL document the three Mount_Functions, the options, the Mount_Handle controls, the View_Errors and `destroy()`, with one usage example for each Mount_Function.
+18. THE Default_Suite SHALL test the Mount_Functions in Node with a stand-in canvas, a stand-in animation frame scheduler, a stand-in resize observer and a stand-in Engine, and SHALL include example-based tests for each View_Error of criteria 10 to 14, for the second `destroy()` of criterion 9, and for the removal of every listener and observer of criterion 8, checked by counting the added and removed listeners and observers.
+19. FOR ALL generated sequences of calls to controls and to `destroy()`, THE number of listeners, observers and pending animation frame requests that remain after `destroy()` SHALL be 0 (destroy-leaves-nothing property).
+
+### Requirement 22: Drawing cost
+
+**User Story:** As a player, I want the views to cost little on a large map and nothing when nothing changes, so that the page stays smooth and my battery lasts.
+
+#### Acceptance Criteria
+
+1. THE Views SHALL draw all visible Usable_Roads of one kind and one line width in CSS pixels as one path in the outline Draw_Pass and as one path in the fill Draw_Pass, using one move and line segment per Road in that path.
+2. THE Views SHALL draw all visible Blocked_Roads of one line width in CSS pixels as one dashed path.
+3. THE Views SHALL draw the one-way arrowheads of one Road kind in one path per Draw_Pass.
+4. THE Views SHALL keep the draw order of Requirement 5 criterion 2 and Requirement 6 criterion 1 when Roads are drawn as one path per kind.
+5. FOR ALL generated Maps with N Usable_Roads of one kind and one width that are all in the Visible_Set, with N from 1 to 5,000, THE number of paths begun on the Recording_Canvas for the Roads of that kind SHALL be the same for every N (path-count property).
+6. WHEN a View is drawn twice with no change of the Map, the Route, the Position, the Camera, the Viewport or the Style between the two draws, and no Camera is Settling, THE second draw SHALL make zero calls on the Recording_Canvas (unchanged-frame property).
+7. WHEN a View is drawn while a Camera is Settling, THE View SHALL draw the frame, and WHEN the Camera reaches its target, THE View SHALL draw one last frame and then no more frames until a change.
+8. WHEN a Map, Route, Position, Camera, Viewport or Style change happens, THE View SHALL draw a frame no later than the next animation frame.
+9. WHILE Reduced_Motion is set, THE View SHALL treat a Camera as at rest in the same frame in which the target is set, as Requirement 13 criterion 4 states.
+10. IF the Frame_Loop runs while the canvas is hidden or has a CSS size of 0, THEN THE View SHALL make zero calls on the Canvas_Interface and SHALL draw again at the first frame in which the canvas has a valid CSS size.
+11. THE Default_Suite SHALL include an example-based test that draws a Map with 5,000 Roads of one kind and one width on the Recording_Canvas and checks that the number of paths begun for the Roads equals the number for a Map with 1 Road of that kind and width.
+12. THE Default_Suite SHALL include an example-based test for each change type of criterion 8 (Map, Route, Position, Camera, Viewport, Style) that checks that exactly one more frame is drawn, and an example-based test that checks that the frame after it makes zero calls.
+13. THE Frame_Benchmark SHALL report the number of paths begun per frame for each View on the Large_Generated_Map, in addition to the numbers of Requirement 18.
+
+### Requirement 23: Block height in the map file
+
+**User Story:** As a map maker, I want to give a building its own height in the map file, so that the tilted view shows tall and low buildings as I mean them.
+
+#### Acceptance Criteria
+
+1. THE Map file format version 1 SHALL allow an optional Prop field `blockHeight`, a finite number greater than or equal to 0 in world units.
+2. THE Map file format SHALL keep `width` and `height` of a Prop as the footprint size on the ground, so that `blockHeight` does not clash with them and no existing map file changes meaning.
+3. WHEN a map file has a Prop without `blockHeight`, THE Map_Loader SHALL load the Prop as before and SHALL add no `blockHeight` to it, so that every map file that loaded before still loads to the same Map.
+4. WHEN a map file has a Prop with a valid `blockHeight`, THE Map_Loader SHALL keep the value in the Map.
+5. IF a Prop has a `blockHeight` that is not a number, is not finite, or is less than 0, THEN THE Map_Loader SHALL return a plain-worded error that names the Prop identifier and the field `blockHeight` and states that the value must be a finite number of 0 or more, and SHALL load no Map.
+6. THE Map_Saver SHALL write `blockHeight` for each Prop that has it and SHALL write no `blockHeight` for a Prop that has none.
+7. FOR ALL generated Maps in which each Prop has no `blockHeight` or a finite `blockHeight` of 0 or more, saving the Map and loading the result SHALL give the same Map (round-trip property), and THE generator of Maps for the engine-core tests SHALL produce Props with and without `blockHeight`.
+8. THE Mirror function SHALL keep the `blockHeight` of each Prop unchanged and SHALL change nothing else beyond what the engine-core spec states, so that the property of mirroring a Map still holds with Props that have a `blockHeight`.
+9. THE Map file format document `kit/engine/docs/map-file-format.md` SHALL list `blockHeight` in the Props table as optional with its rule, SHALL state the Default_Block_Height values and the rule that a Prop kind outside the Raised_Kinds has the default 0, and SHALL state why the field is not called `height`.
+10. THE Engine type `PropData` in `kit/engine/src/types.ts` SHALL hold the optional field `blockHeight`.
+11. THE Default_Suite SHALL include example-based tests at the lower bound 0, just below the lower bound, with a very large finite value, with NaN, positive infinity and negative infinity, and with a text value, each checked against the Map_Loader.
+12. THE Default_Suite of the engine core SHALL still pass after this change, and no existing test SHALL be edited to make it pass; new tests and the extension of the generator in the test helpers are allowed, and the extension SHALL leave the existing assertions as they are.
+13. THE Views SHALL read `blockHeight` only through the Map and SHALL use it only as Requirement 12 criteria 15 to 19 state.
+14. THE Views SHALL use no Prop in any decision about routes or guidance, so that `blockHeight` has no effect on routes or guidance (Requirement 6 criterion 4).
