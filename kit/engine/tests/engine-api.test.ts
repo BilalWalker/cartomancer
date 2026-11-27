@@ -5,7 +5,14 @@ import { Engine } from "../src/engine.js";
 
 // Files are read as raw text through Vite's glob import (no Node types needed).
 const rawFiles = import.meta.glob(
-  ["../docs/map-file-format.md", "../src/map-loader.ts", "../src/map-loader-checks.ts"],
+  [
+    "../docs/map-file-format.md",
+    "../docs/api.md",
+    "../src/index.ts",
+    "../src/engine.ts",
+    "../src/map-loader.ts",
+    "../src/map-loader-checks.ts",
+  ],
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;
 
@@ -35,6 +42,35 @@ describe("map file format doc", () => {
   it("states the supported version and the screen convention", () => {
     expect(doc).toContain("Screen_Convention");
     expect(doc).toContain("`1`");
+  });
+});
+
+describe("API reference doc", () => {
+  const read = (path: string) => rawFiles[path] as string;
+  const doc = read("../docs/api.md");
+
+  it("has one entry for every export of src/index.ts and no others", () => {
+    const names = new Set<string>();
+    const source = read("../src/index.ts");
+    for (const match of source.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}/g)) {
+      for (const part of (match[1] as string).split(",")) {
+        const name = part.trim();
+        if (name) names.add(name);
+      }
+    }
+    const entries = [...doc.matchAll(/^### `(\w+)`\s*$/gm)].map((m) => m[1] as string);
+    expect(new Set(entries).size, "duplicate entries").toBe(entries.length);
+    expect([...entries].sort()).toEqual([...names].sort());
+  });
+
+  it("documents every public Engine method", () => {
+    const engineSource = read("../src/engine.ts");
+    const methods = [...engineSource.matchAll(/^ {2}(\w+)\(.*\{$/gm)].map((m) => m[1] as string);
+    expect(methods).toContain("configure");
+    for (const method of methods) {
+      if (method === "constructor") continue;
+      expect(doc, `method ${method}`).toContain(`\`${method}(`);
+    }
   });
 });
 
