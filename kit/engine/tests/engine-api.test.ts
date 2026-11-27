@@ -100,11 +100,10 @@ describe("Engine.getBlockedRoads", () => {
   });
 });
 
-// Until feedPosition exists (a later task), tests set the start position directly.
 function engineAt(text: string, x: number, y: number): Engine {
   const engine = new Engine();
   engine.loadMap(text);
-  (engine as unknown as { lastPosition: unknown }).lastPosition = { x, y, heading: 0 };
+  engine.feedPosition({ x, y, headingDegrees: 0 }, 0);
   return engine;
 }
 
@@ -197,5 +196,61 @@ describe("Engine destination", () => {
     const result = engine.setDestination({ placeId: "p1" });
     expect("message" in result && "parts" in result).toBe(false);
     expect(engine.getRoute()).toBeUndefined();
+  });
+});
+
+describe("Engine.feedPosition", () => {
+  const at = (x: number, y: number) => ({ x, y, headingDegrees: 0 });
+
+  it("returns the plain no-map error before a map is loaded", () => {
+    const result = new Engine().feedPosition(at(0, 0), 0);
+    expect(result?.message).toBe("No map is loaded yet. Load a map first.");
+  });
+
+  it("trims the route as the position moves along it", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    engine.setDestination({ point: { x: 100, y: 3 } });
+    expect(engine.feedPosition(at(40, 0), 10)).toBeUndefined();
+    expect(engine.getRemainingRoute()?.lengthWorldUnits).toBeCloseTo(60);
+    engine.feedPosition(at(70, 0), 20);
+    expect(engine.getRemainingRoute()?.lengthWorldUnits).toBeCloseTo(30);
+    expect(engine.getRoute()?.lengthWorldUnits).toBeCloseTo(100);
+  });
+
+  it("uses a caller-supplied search window", () => {
+    const wide = engineAt(joinedMapText(), 0, 0);
+    wide.setDestination({ point: { x: 100, y: 3 } });
+    wide.feedPosition(at(80, 0), 10);
+    expect(wide.getRemainingRoute()?.lengthWorldUnits).toBeCloseTo(20);
+
+    const narrow = engineAt(joinedMapText(), 0, 0);
+    expect(narrow.configure({ searchWindow: 10 })).toBeUndefined();
+    narrow.setDestination({ point: { x: 100, y: 3 } });
+    narrow.feedPosition(at(80, 0), 10);
+    expect(narrow.getRemainingRoute()?.lengthWorldUnits).toBeCloseTo(90);
+  });
+
+  it("stores the position for a later destination without a route", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    engine.feedPosition(at(0, 50), 5);
+    const result = engine.setDestination({ point: { x: 100, y: 50 } });
+    expect("parts" in result && result.lengthWorldUnits).toBeCloseTo(100);
+  });
+
+  it("rejects bad input and keeps the state", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    engine.setDestination({ point: { x: 100, y: 3 } });
+    expect(engine.feedPosition(at(Number.NaN, 0), 1)?.message).toContain("position.x");
+    expect(engine.feedPosition(at(1, 0), Number.POSITIVE_INFINITY)?.message).toContain("timestampMs");
+    expect(engine.getRemainingRoute()).toBe(engine.getRoute());
+  });
+});
+
+describe("Engine.configure", () => {
+  it("rejects bad options and changes nothing", () => {
+    const engine = new Engine();
+    expect(engine.configure({ searchWindow: -1 })?.message).toContain("searchWindow");
+    expect(engine.configure({ rerouteMargin: 5, arrivalRadius: Number.NaN })?.message).toContain("arrivalRadius");
+    expect(engine.configure({})).toBeUndefined();
   });
 });

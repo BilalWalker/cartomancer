@@ -3,10 +3,12 @@
 import { badInput, noMapLoaded } from "./errors.js";
 import { parseMap } from "./map-loader.js";
 import { findRoute } from "./route-finder.js";
+import { advance, DEFAULT_SEARCH_WINDOW } from "./route-follower.js";
 import type {
   Destination,
   EngineError,
   EngineMap,
+  EngineOptions,
   LoadResult,
   NoWayResult,
   Notice,
@@ -22,6 +24,12 @@ export class Engine {
   private remainingRoute: Route | undefined;
   private lastNoWay: NoWayResult | undefined;
   private progress = 0;
+  private options: EngineOptions = {
+    searchWindow: DEFAULT_SEARCH_WINDOW,
+    rerouteMargin: 15,
+    rerouteDelayMs: 1000,
+    arrivalRadius: 10,
+  };
   /** The last position fed to the engine; the start of any new route. */
   private lastPosition: Position | undefined;
 
@@ -90,6 +98,50 @@ export class Engine {
     return found;
   }
 
+  /**
+   * Feed the player's position. Keeps the follower progress and trims the
+   * remaining route. Returns an error and changes nothing for bad input or
+   * when no map is loaded.
+   */
+  feedPosition(position: Position, timestampMs: number): EngineError | undefined {
+    if (!this.map) return noMapLoaded();
+    const value = position as unknown as { x?: unknown; y?: unknown; headingDegrees?: unknown } | null;
+    if (typeof value !== "object" || value === null) return badInput("position", "must be an object with x, y and headingDegrees");
+    if (!isFiniteNumber(value.x)) return badInput("position.x");
+    if (!isFiniteNumber(value.y)) return badInput("position.y");
+    if (!isFiniteNumber(value.headingDegrees)) return badInput("position.headingDegrees");
+    if (!isFiniteNumber(timestampMs)) return badInput("timestampMs");
+
+    this.lastPosition = { x: value.x, y: value.y, headingDegrees: value.headingDegrees };
+    if (this.route) {
+      const result = advance(this.route, this.progress, this.lastPosition, this.options.searchWindow);
+      this.progress = result.progress;
+      this.remainingRoute = result.remaining;
+    }
+    return undefined;
+  }
+
+  /**
+   * Change the tuning options. Only the fields given change. Bad input
+   * returns an error and changes nothing.
+   */
+  configure(options: Partial<EngineOptions>): EngineError | undefined {
+    const value = options as unknown;
+    if (typeof value !== "object" || value === null) return badInput("options", "must be an object");
+    const given = value as Record<string, unknown>;
+    for (const key of OPTION_KEYS) {
+      const entry = given[key];
+      if (entry !== undefined && !(isFiniteNumber(entry) && entry >= 0)) {
+        return badInput(key, "must be a number that is zero or more");
+      }
+    }
+    for (const key of OPTION_KEYS) {
+      const entry = given[key];
+      if (entry !== undefined) this.options[key] = entry as number;
+    }
+    return undefined;
+  }
+
   /** Forget the destination, the route and any No_Way_Result. */
   clearDestination(): void {
     this.route = undefined;
@@ -112,6 +164,12 @@ export class Engine {
   getLastNoWayResult(): NoWayResult | undefined {
     return this.lastNoWay;
   }
+}
+
+const OPTION_KEYS = ["searchWindow", "rerouteMargin", "rerouteDelayMs", "arrivalRadius"] as const;
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function checkDestination(destination: Destination): EngineError | undefined {
