@@ -118,6 +118,61 @@ export function worldToScreen(camera: Camera, point: Point): Point | ViewError {
   };
 }
 
+/**
+ * Moves the camera so that what was under a pointer stays under it after the
+ * pointer moved by `screenDelta` CSS pixels. An unusable camera or delta
+ * returns a ViewError and the given camera is not changed.
+ */
+export function panCamera(
+  camera: Camera,
+  screenDelta: { dx: number; dy: number },
+): Camera | ViewError {
+  const cameraError = validateCamera(camera);
+  if (cameraError) return cameraError;
+  if (
+    typeof screenDelta !== "object" ||
+    screenDelta === null ||
+    !isFiniteNumber(screenDelta.dx) ||
+    !isFiniteNumber(screenDelta.dy)
+  ) {
+    return badPoint("pan distance");
+  }
+  const { cos, sin } = rotationParts(camera.rotationDegrees);
+  const wx = (cos * screenDelta.dx + sin * screenDelta.dy) / camera.zoom;
+  const wy = (-sin * screenDelta.dx + cos * screenDelta.dy) / camera.zoom;
+  return { ...camera, centerX: camera.centerX - wx, centerY: camera.centerY - wy };
+}
+
+/**
+ * Multiplies the zoom by `factor` (a finite number above 0) and keeps the
+ * world point under `anchor` (CSS pixels) fixed on the screen. The new zoom
+ * is held within 0.001 to 1000. An unusable camera, anchor or factor returns
+ * a ViewError and the given camera is not changed.
+ */
+export function zoomCamera(
+  camera: Camera,
+  anchor: Point,
+  factor: number,
+): Camera | ViewError {
+  const cameraError = validateCamera(camera);
+  if (cameraError) return cameraError;
+  const anchorError = validatePoint(anchor, "zoom anchor");
+  if (anchorError) return anchorError;
+  if (!isFiniteNumber(factor)) return badNumber("zoom factor");
+  if (factor <= 0) return outOfRange("zoom factor", "a number above 0");
+  const world = screenToWorld(camera, anchor) as Point;
+  const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, camera.zoom * factor));
+  const { cos, sin } = rotationParts(camera.rotationDegrees);
+  const sx = anchor.x - camera.viewportWidth / 2;
+  const sy = anchor.y - camera.viewportHeight / 2;
+  return {
+    ...camera,
+    zoom,
+    centerX: world.x - (cos * sx + sin * sy) / zoom,
+    centerY: world.y - (-sin * sx + cos * sy) / zoom,
+  };
+}
+
 /** Maps a screen point in CSS pixels to a world point. */
 export function screenToWorld(camera: Camera, point: Point): Point | ViewError {
   const cameraError = validateCamera(camera);
