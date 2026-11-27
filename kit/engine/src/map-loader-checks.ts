@@ -274,7 +274,8 @@ export function checkBlockedAreas(raw: unknown): EngineError[] {
 /**
  * Checks the prop list: every prop has a unique non-empty string id, a
  * non-empty text kind, finite numeric x and y, a width and height above zero,
- * and a finite numeric `rotationDegrees`.
+ * and a finite numeric `rotationDegrees`. The optional `blockHeight`, when
+ * present, must be a finite number of 0 or more.
  */
 export function checkProps(raw: unknown): EngineError[] {
   if (!Array.isArray(raw)) {
@@ -329,6 +330,14 @@ export function checkProps(raw: unknown): EngineError[] {
       } else if (!isFiniteNumber(value) || value <= 0) {
         errors.push(outOfRange(field, "a finite number greater than 0", item));
       }
+    }
+
+    const blockHeight = entry["blockHeight"];
+    if (
+      blockHeight !== undefined &&
+      (!isFiniteNumber(blockHeight) || blockHeight < 0)
+    ) {
+      errors.push(outOfRange("blockHeight", "a finite number of 0 or more", item));
     }
   });
   return errors;
