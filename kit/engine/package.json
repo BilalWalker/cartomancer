@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "bench": "vite-node bench/route-bench.ts",
     "build": "tsc --noEmit",
     "test": "vitest --run"
   },
