@@ -1,6 +1,8 @@
 // Item bounding boxes and a uniform-grid spatial index, built once per map.
 
 import type { EngineMap } from "../types.js";
+import { screenToWorld, validateCamera, type Camera } from "./camera.js";
+import { badNumber, outOfRange, type ViewError } from "./view-errors.js";
 
 export interface Bounds {
   minX: number;
@@ -133,4 +135,103 @@ export function buildSpatialIndex(map: EngineMap): SpatialIndex {
     }
   });
   return { cellSize, items, cells };
+}
+
+/** The items that overlap a region, by kind. */
+export interface VisibleSet {
+  roadIds: Set<string>;
+  blockedAreaIds: Set<string>;
+  propIds: Set<string>;
+  placeIds: Set<string>;
+  /** How many roads were tested against the region (not how many were found). */
+  roadsTested: number;
+}
+
+/**
+ * The world rectangle that holds the whole viewport of the camera, widened by
+ * `margin` world units on every side. For a turned camera this is the box
+ * around the turned viewport. An unusable camera or margin returns a ViewError.
+ */
+export function visibleRegion(camera: Camera, margin: number): Bounds | ViewError {
+  const cameraError = validateCamera(camera);
+  if (cameraError) return cameraError;
+  if (typeof margin !== "number" || !Number.isFinite(margin)) {
+    return badNumber("visible region margin");
+  }
+  if (margin < 0) return outOfRange("visible region margin", "a number of 0 or more");
+  const corners = [
+    { x: 0, y: 0 },
+    { x: camera.viewportWidth, y: 0 },
+    { x: camera.viewportWidth, y: camera.viewportHeight },
+    { x: 0, y: camera.viewportHeight },
+  ];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const corner of corners) {
+    const world = screenToWorld(camera, corner) as { x: number; y: number };
+    if (world.x < minX) minX = world.x;
+    if (world.y < minY) minY = world.y;
+    if (world.x > maxX) maxX = world.x;
+    if (world.y > maxY) maxY = world.y;
+  }
+  return {
+    minX: minX - margin,
+    minY: minY - margin,
+    maxX: maxX + margin,
+    maxY: maxY + margin,
+  };
+}
+
+function overlaps(a: Bounds, b: Bounds): boolean {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
+
+/** The items whose bounding box overlaps the region (touching counts). */
+export function computeVisibleSet(index: SpatialIndex, region: Bounds): VisibleSet {
+  const result: VisibleSet = {
+    roadIds: new Set(),
+    blockedAreaIds: new Set(),
+    propIds: new Set(),
+    placeIds: new Set(),
+    roadsTested: 0,
+  };
+  const size = index.cellSize;
+  const x0 = Math.floor(region.minX / size);
+  const x1 = Math.floor(region.maxX / size);
+  const y0 = Math.floor(region.minY / size);
+  const y1 = Math.floor(region.maxY / size);
+  const cellCount = (x1 - x0 + 1) * (y1 - y0 + 1);
+
+  const seen = new Set<number>();
+  const test = (itemIndex: number): void => {
+    if (seen.has(itemIndex)) return;
+    seen.add(itemIndex);
+    const item = index.items[itemIndex] as IndexedItem;
+    if (item.kind === "road") result.roadsTested++;
+    if (!overlaps(item.bounds, region)) return;
+    if (item.kind === "road") result.roadIds.add(item.id);
+    else if (item.kind === "blockedArea") result.blockedAreaIds.add(item.id);
+    else if (item.kind === "prop") result.propIds.add(item.id);
+    else result.placeIds.add(item.id);
+  };
+
+  if (cellCount > index.cells.size) {
+    // A region over more cells than exist: walk the filled cells instead.
+    for (const [key, list] of index.cells) {
+      const [cx, cy] = key.split(",").map(Number) as [number, number];
+      if (cx < x0 || cx > x1 || cy < y0 || cy > y1) continue;
+      for (const itemIndex of list) test(itemIndex);
+    }
+  } else {
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cy = y0; cy <= y1; cy++) {
+        const list = index.cells.get(cellKey(cx, cy));
+        if (list === undefined) continue;
+        for (const itemIndex of list) test(itemIndex);
+      }
+    }
+  }
+  return result;
 }
