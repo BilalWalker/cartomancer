@@ -1,6 +1,42 @@
+/// <reference types="vite/client" />
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { Engine } from "../src/engine.js";
+
+// Files are read as raw text through Vite's glob import (no Node types needed).
+const rawFiles = import.meta.glob(
+  ["../docs/map-file-format.md", "../src/map-loader.ts", "../src/map-loader-checks.ts"],
+  { query: "?raw", import: "default", eager: true },
+) as Record<string, string>;
+
+describe("map file format doc", () => {
+  const read = (path: string) => rawFiles[path] as string;
+  const doc = read("../docs/map-file-format.md");
+
+  it("mentions every field name the loader reads", () => {
+    const listed = [
+      "formatVersion", "nodes", "roads", "places", "blockedAreas", "props",
+      "backgroundPicture", "style", "id", "x", "y", "fromNodeId", "toNodeId",
+      "width", "kind", "oneWay", "name", "category", "polygon", "height",
+      "rotationDegrees", "ref", "scale", "opacity", "colors", "lineStyles",
+      "dash",
+    ];
+    const scanned = new Set<string>();
+    for (const file of ["../src/map-loader.ts", "../src/map-loader-checks.ts"]) {
+      for (const match of read(file).matchAll(/\["(\w+)"\]/g)) {
+        scanned.add(match[1] as string);
+      }
+    }
+    for (const name of [...listed, ...scanned]) {
+      expect(doc, `field ${name}`).toContain(`\`${name}\``);
+    }
+  });
+
+  it("states the supported version and the screen convention", () => {
+    expect(doc).toContain("Screen_Convention");
+    expect(doc).toContain("`1`");
+  });
+});
 
 const nodes = [
   { id: "a", x: 0, y: 0 },
