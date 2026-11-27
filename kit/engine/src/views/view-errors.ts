@@ -62,6 +62,14 @@ export function badSize(input: string, min: number, max: number): ViewError {
   );
 }
 
+/** A map item has a coordinate that is not finite. The value is not repeated. */
+export function badItemCoordinate(kind: string, id: string): ViewError {
+  return error(
+    `The ${kind} "${id}" has a coordinate which is not finite, so the map was not set.`,
+    kind,
+  );
+}
+
 /** The canvas has no 2D drawing context. */
 export function noContext(): ViewError {
   return error(

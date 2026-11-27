@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  badItemCoordinate,
   badNumber,
   badPoint,
   badSize,
@@ -20,6 +21,7 @@ const cases: [string, string, string, string][] = [
   ["outOfRange", outOfRange("zoom", "from 0.001 to 1000").message, "zoom", "from 0.001 to 1000"],
   ["badPoint", badPoint("world point").message, "world point", "finite"],
   ["badSize", badSize("viewport width", 1, 16384).message, "viewport width", "from 1 to 16384"],
+  ["badItemCoordinate", badItemCoordinate("road", "r1").message, 'road "r1"', "not finite"],
   ["noContext", noContext().message, "2D drawing", "no view was mounted"],
   ["notACanvas", notACanvas().message, "canvas", "canvas element"],
   ["missingEngineFunction", missingEngineFunction("getRoute").message, "getRoute", "engine"],
