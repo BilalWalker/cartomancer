@@ -342,3 +342,68 @@ describe("Engine rerouting", () => {
     expect(engine.getRoute()).not.toBe(first);
   });
 });
+
+describe("Engine input guards", () => {
+  const bad = (value: unknown) => value as never;
+
+  it("loadMap rejects non-text input and keeps the loaded map", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    for (const value of [undefined, null, 5, Number.NaN, {}, []]) {
+      const result = engine.loadMap(bad(value));
+      expect("errors" in result && result.errors[0]?.message).toContain("text");
+    }
+    expect(engine.getPlaces()).toHaveLength(1);
+  });
+
+  it("setDestination rejects wrong types, NaN and Infinity and keeps state", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    const route = engine.setDestination({ placeId: "p1" });
+    const inputs = [
+      undefined,
+      null,
+      "p1",
+      7,
+      {},
+      { placeId: 5 },
+      { point: null },
+      { point: { x: Number.NaN, y: 0 } },
+      { point: { x: 0, y: Number.POSITIVE_INFINITY } },
+      { point: { x: "1", y: 0 } },
+    ];
+    for (const value of inputs) {
+      const result = engine.setDestination(bad(value));
+      expect("message" in result && "field" in result).toBe(true);
+      expect(engine.getRoute()).toBe(route);
+    }
+  });
+
+  it("feedPosition rejects wrong types, NaN and Infinity and keeps state", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    engine.setDestination({ placeId: "p1" });
+    const remaining = engine.getRemainingRoute();
+    const inputs: [unknown, unknown][] = [
+      [undefined, 0],
+      [null, 0],
+      ["x", 0],
+      [{ x: Number.NaN, y: 0, headingDegrees: 0 }, 0],
+      [{ x: 0, y: Number.POSITIVE_INFINITY, headingDegrees: 0 }, 0],
+      [{ x: 0, y: 0, headingDegrees: Number.NaN }, 0],
+      [{ x: "0", y: 0, headingDegrees: 0 }, 0],
+      [{ x: 0, y: 0, headingDegrees: 0 }, Number.NaN],
+      [{ x: 0, y: 0, headingDegrees: 0 }, "1"],
+    ];
+    for (const [position, time] of inputs) {
+      expect(engine.feedPosition(bad(position), bad(time))).toBeDefined();
+      expect(engine.getRemainingRoute()).toBe(remaining);
+    }
+  });
+
+  it("configure rejects wrong types, NaN and Infinity", () => {
+    const engine = new Engine();
+    for (const value of [undefined, null, 5, "a"]) {
+      expect(engine.configure(bad(value))?.message).toContain("options");
+    }
+    expect(engine.configure(bad({ rerouteMargin: Number.POSITIVE_INFINITY }))?.message).toContain("rerouteMargin");
+    expect(engine.configure(bad({ searchWindow: "5" }))?.message).toContain("searchWindow");
+  });
+});

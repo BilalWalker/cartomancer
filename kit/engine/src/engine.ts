@@ -43,6 +43,9 @@ export class Engine {
 
   /** Load map file text. A failed load leaves the previous map in place. */
   loadMap(text: string): LoadResult {
+    if (typeof (text as unknown) !== "string") {
+      return { errors: [badInput("text", "must be the map file text")] };
+    }
     const result = parseMap(text);
     if ("map" in result) {
       this.map = result.map;
