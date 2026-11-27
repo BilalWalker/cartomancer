@@ -35,6 +35,29 @@ describe("map arbitraries", () => {
     );
   });
 
+  it("generated props come with and without a blockHeight from 0 to 1,000", () => {
+    let withHeight = 0;
+    let withoutHeight = 0;
+    fc.assert(
+      fc.property(mapFileArbitrary(), (file) => {
+        for (const prop of file.props) {
+          if (prop.blockHeight === undefined) {
+            expect("blockHeight" in prop).toBe(false);
+            withoutHeight++;
+          } else {
+            expect(Number.isFinite(prop.blockHeight)).toBe(true);
+            expect(prop.blockHeight).toBeGreaterThanOrEqual(0);
+            expect(prop.blockHeight).toBeLessThanOrEqual(1000);
+            withHeight++;
+          }
+        }
+      }),
+      { numRuns: 100 },
+    );
+    expect(withHeight).toBeGreaterThan(0);
+    expect(withoutHeight).toBeGreaterThan(0);
+  });
+
   it("points constructed on a road lie on that usable road", () => {
     fc.assert(
       fc.property(mapWithPointOnRoadArbitrary(), ({ map, roadId, onRoad }) => {

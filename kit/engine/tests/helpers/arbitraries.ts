@@ -86,17 +86,25 @@ const blockedAreaArb: fc.Arbitrary<Omit<BlockedAreaData, "id">> = fc.record({
   }),
 });
 
-const propArb: fc.Arbitrary<Omit<PropData, "id">> = fc.record({
-  kind: fc.oneof(
-    fc.constantFrom("building", "tree", "water", "marker"),
-    word,
-  ),
-  x: coordinate,
-  y: coordinate,
-  width: positiveSize,
-  height: positiveSize,
-  rotationDegrees: fc.integer({ min: -720, max: 720 }).map((n) => n + 0),
-});
+/** A block height: a multiple of 0.5 from 0 to 1,000 (never -0). */
+const blockHeightArb = fc.integer({ min: 0, max: 2000 }).map((n) => n / 2 + 0);
+
+// The key `blockHeight` is absent for some props and present for others.
+const propArb: fc.Arbitrary<Omit<PropData, "id">> = fc.record(
+  {
+    kind: fc.oneof(
+      fc.constantFrom("building", "tree", "water", "marker"),
+      word,
+    ),
+    x: coordinate,
+    y: coordinate,
+    width: positiveSize,
+    height: positiveSize,
+    rotationDegrees: fc.integer({ min: -720, max: 720 }).map((n) => n + 0),
+    blockHeight: blockHeightArb,
+  },
+  { requiredKeys: ["kind", "x", "y", "width", "height", "rotationDegrees"] },
+);
 
 const backgroundArb: fc.Arbitrary<BackgroundPictureData> = fc.record({
   ref: word,
