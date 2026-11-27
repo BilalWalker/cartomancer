@@ -66,6 +66,11 @@ export class Engine {
     return this.map ? this.map.places.map((place) => ({ ...place })) : [];
   }
 
+  /** A copy of the loaded map for read access, or undefined before a map is loaded. */
+  getMap(): EngineMap | undefined {
+    return this.map ? structuredClone(this.map) : undefined;
+  }
+
   /** Roads left out of routing, each with its notices. */
   getBlockedRoads(): { roadId: string; notices: Notice[] }[] {
     if (!this.map) return [];

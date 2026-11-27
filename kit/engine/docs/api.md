@@ -20,6 +20,7 @@ Methods:
 
 - `loadMap(text)`: takes the map file text, returns a `LoadResult`. A failed load keeps the previous map.
 - `getPlaces()`: returns every place as `PlaceData[]`.
+- `getMap()`: returns a copy of the loaded `EngineMap`, or nothing before a map is loaded. Editing the copy does not change the engine.
 - `getBlockedRoads()`: returns the roads left out of routing, each with its notices.
 - `setDestination(destination)`: takes a `Destination`, returns a `Route`, a `NoWayResult` or an `EngineError`.
 - `feedPosition(position, timestampMs)`: takes a `Position` and a time in milliseconds, follows the route and reroutes when needed. Returns an `EngineError` or nothing.
@@ -38,6 +39,8 @@ if ("errors" in loaded) throw new Error(loaded.errors[0].message);
 engine.setDestination({ placeId: "bank" });
 engine.feedPosition({ x: 0, y: 0, headingDegrees: 0 }, performance.now());
 console.log(engine.getGuidanceSentence());
+const map = engine.getMap(); // a copy; undefined before a map is loaded
+console.log(map?.roads.length);
 ```
 
 ### `mirrorHeading`

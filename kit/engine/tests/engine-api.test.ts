@@ -151,6 +151,40 @@ describe("Engine.getPlaces", () => {
   });
 });
 
+describe("Engine.getMap", () => {
+  it("is undefined before a map is loaded", () => {
+    expect(new Engine().getMap()).toBeUndefined();
+  });
+
+  it("returns the loaded map", () => {
+    const engine = new Engine();
+    engine.loadMap(mapText([lake]));
+    const map = engine.getMap();
+    expect(map?.roads).toHaveLength(2);
+    expect(map?.places[0]?.name).toBe("Bank");
+    expect(map?.usableRoadIds.has("r2")).toBe(true);
+    expect(map?.blockedRoads).toEqual([{ roadId: "r1", blockedAreaId: "lake" }]);
+  });
+
+  it("returns a copy: editing it does not change the engine", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    const map = engine.getMap();
+    if (!map) throw new Error("map expected");
+    map.places[0]!.name = "Changed";
+    map.roads.length = 0;
+    map.usableRoadIds.clear();
+    map.nodes.push({ id: "z", x: 1, y: 1 });
+    expect(engine.getPlaces()[0]?.name).toBe("Bank");
+    const again = engine.getMap();
+    expect(again).not.toBe(map);
+    expect(again?.roads).toHaveLength(3);
+    expect(again?.usableRoadIds.size).toBe(3);
+    expect(again?.nodes).toHaveLength(4);
+    const route = engine.setDestination({ placeId: "p1" });
+    expect("parts" in route).toBe(true);
+  });
+});
+
 describe("Engine.getBlockedRoads", () => {
   it("is empty before a map is loaded", () => {
     expect(new Engine().getBlockedRoads()).toEqual([]);
