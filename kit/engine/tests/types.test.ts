@@ -13,6 +13,7 @@ import type {
   Notice,
   OffRouteDistance,
   Position,
+  PropData,
   Route,
   RoutePart,
   SnappedPoint,
@@ -68,6 +69,13 @@ describe("shared types", () => {
     expect(map.roads).toHaveLength(1);
     expect([position, snapped, route, noWay, turn, guidance, follower, options, offRoute]).toHaveLength(9);
     expect([ok, bad]).toHaveLength(2);
+  });
+
+  it("accepts a prop with and without blockHeight", () => {
+    const flat: PropData = { id: "t1", kind: "tree", x: 0, y: 0, width: 2, height: 2, rotationDegrees: 0 };
+    const raised: PropData = { ...flat, id: "b1", kind: "building", blockHeight: 12 };
+    expect(flat.blockHeight).toBeUndefined();
+    expect(raised.blockHeight).toBe(12);
   });
 
   it("does not allow straight-on as a next turn", () => {

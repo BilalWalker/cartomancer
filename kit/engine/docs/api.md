@@ -249,7 +249,7 @@ const position: Position = { x: 0, y: 0, headingDegrees: 90 };
 
 ### `PropData`
 
-A decoration: `id`, `kind`, `x`, `y`, `width`, `height` and `rotationDegrees`.
+A decoration: `id`, `kind`, `x`, `y`, `width`, `height` and `rotationDegrees`, and an optional `blockHeight` (the height of a raised block in views, 0 or more; `height` is the ground footprint).
 
 ```ts
 const prop: PropData = { id: "t1", kind: "tree", x: 5, y: 5, width: 4, height: 4, rotationDegrees: 0 };

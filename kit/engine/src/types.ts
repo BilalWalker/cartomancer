@@ -45,6 +45,12 @@ export interface PropData {
   width: number;
   height: number;
   rotationDegrees: number;
+  /**
+   * Optional height of a raised block in the tilted view, in world units.
+   * Finite, 0 or more. Not called `height` because `width` and `height`
+   * are the ground footprint.
+   */
+  blockHeight?: number;
 }
 
 export interface BackgroundPictureData {

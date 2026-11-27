@@ -26,7 +26,7 @@ describe("map file format doc", () => {
       "formatVersion", "nodes", "roads", "places", "blockedAreas", "props",
       "backgroundPicture", "style", "id", "x", "y", "fromNodeId", "toNodeId",
       "width", "kind", "oneWay", "name", "category", "polygon", "height",
-      "rotationDegrees", "ref", "scale", "opacity", "colors", "lineStyles",
+      "rotationDegrees", "blockHeight", "ref", "scale", "opacity", "colors", "lineStyles",
       "dash",
     ];
     const scanned = new Set<string>();

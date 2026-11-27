@@ -87,6 +87,13 @@ Props are decoration only.
 | `width`           | number | Finite and greater than 0. |
 | `height`          | number | Finite and greater than 0. |
 | `rotationDegrees` | number | Finite.                    |
+| `blockHeight`     | number | Optional. Finite, 0 or more, in world units. |
+
+`blockHeight` is how tall a prop stands when a view draws it as a raised
+block. It is not called `height` because `width` and `height` are the
+ground footprint of the prop. When it is absent, a view uses a default
+for the kind: `building` 12, `house` 6, `tower` 24, `wall-block` 3, and
+0 for any other kind. A file without `blockHeight` keeps its meaning.
 
 ## Background picture
 
