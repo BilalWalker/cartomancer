@@ -17,7 +17,9 @@ inclusion: always
 
 ## Small tasks, frequent commits
 - Keep tasks small. A task that would touch more than a few files or take more than one sitting must be split into smaller tasks.
-- Every task ends with its own commit as soon as its tests pass.
+- Every task ends with its own commit, containing the code and its tests, as soon as the tests pass.
 - A task that still grows is committed in several working steps, not in one commit.
 - Never put several tasks in one commit.
+- A piece of code and its tests go in ONE commit, never two. Do not commit code first and its tests later.
+- This applies from the map-views block on.
 - Every commit must build and pass the default suite.
