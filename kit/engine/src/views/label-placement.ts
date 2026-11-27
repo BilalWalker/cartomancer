@@ -46,6 +46,19 @@ function tooClose(a: Rect, b: Rect): boolean {
   return dx < LABEL_GAP_PX && dy < LABEL_GAP_PX;
 }
 
+/**
+ * Move a start edge so that [start, start + size] lies inside [0, limit].
+ * `limit - size` can round so that `start + size` ends a hair above `limit`;
+ * step down one representable number at a time until the sum fits.
+ */
+function fitStart(start: number, size: number, limit: number): number {
+  let s = Math.min(Math.max(start, 0), limit - size);
+  while (s > 0 && s + size > limit) {
+    s = s - Math.max(2 * Number.EPSILON * Math.abs(s), Number.MIN_VALUE);
+  }
+  return s;
+}
+
 function byPriority(a: LabelCandidate, b: LabelCandidate): number {
   const pa = finite(a.priority) ? a.priority : Infinity;
   const pb = finite(b.priority) ? b.priority : Infinity;
@@ -107,8 +120,8 @@ export function placeLabels(
   for (const c of valid) {
     if (c.width > viewport.width || c.height > viewport.height) continue;
     const rect: Rect = {
-      x: Math.min(Math.max(c.screenX, 0), viewport.width - c.width),
-      y: Math.min(Math.max(c.screenY, 0), viewport.height - c.height),
+      x: fitStart(c.screenX, c.width, viewport.width),
+      y: fitStart(c.screenY, c.height, viewport.height),
       width: c.width,
       height: c.height,
     };
