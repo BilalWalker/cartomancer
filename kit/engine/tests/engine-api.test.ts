@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { Engine } from "../src/engine.js";
 
@@ -405,5 +406,132 @@ describe("Engine input guards", () => {
     }
     expect(engine.configure(bad({ rerouteMargin: Number.POSITIVE_INFINITY }))?.message).toContain("rerouteMargin");
     expect(engine.configure(bad({ searchWindow: "5" }))?.message).toContain("searchWindow");
+  });
+});
+
+// Feature: engine-core, Property 27: The API rejects malformed input without changing state
+// **Validates: Requirements 18.8**
+describe("Property 27: malformed input leaves state unchanged", () => {
+  const junk = fc.constantFrom<unknown>(
+    undefined,
+    null,
+    "text",
+    7,
+    true,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    [],
+    [1, 2],
+  );
+  const badNumber = fc.constantFrom<unknown>(
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    "5",
+    undefined,
+    null,
+    true,
+    {},
+  );
+  const notObject = fc.constantFrom<unknown>(undefined, null, "p1", 7, true, Number.NaN);
+
+  type Call = { method: string; name: string; run: (engine: Engine) => string | undefined };
+  const errorText = (value: unknown): string | undefined => {
+    if (typeof value !== "object" || value === null) return undefined;
+    if ("errors" in value) return (value as { errors: { message: string }[] }).errors[0]?.message;
+    if ("message" in value && !("parts" in value)) return (value as { message: string }).message;
+    return undefined;
+  };
+
+  const loadCall = junk.map<Call>((value) => ({
+    method: "loadMap",
+    name: "text",
+    run: (engine) => errorText(engine.loadMap(value as never)),
+  }));
+  const destinationCall = fc
+    .oneof(
+      notObject.map((value) => ({ value, name: "destination" })),
+      junk
+        .filter((value) => typeof value !== "string")
+        .map((value) => ({ value: { placeId: value }, name: "placeId" })),
+      fc
+        .tuple(badNumber, fc.boolean())
+        .map(([value, inX]) => ({ value: { point: inX ? { x: value, y: 0 } : { x: 0, y: value } }, name: "point" })),
+      notObject.map((value) => ({ value: { point: value }, name: "point" })),
+    )
+    .map<Call>(({ value, name }) => ({
+      method: "setDestination",
+      name,
+      run: (engine) => errorText(engine.setDestination(value as never)),
+    }));
+  const feedCall = fc
+    .oneof(
+      notObject.map((value) => ({ position: value, time: 0 as unknown, name: "position" })),
+      badNumber.map((value) => ({ position: { x: value, y: 0, headingDegrees: 0 }, time: 0, name: "position.x" })),
+      badNumber.map((value) => ({ position: { x: 0, y: value, headingDegrees: 0 }, time: 0, name: "position.y" })),
+      badNumber.map((value) => ({
+        position: { x: 0, y: 0, headingDegrees: value },
+        time: 0,
+        name: "position.headingDegrees",
+      })),
+      badNumber.map((value) => ({ position: { x: 0, y: 0, headingDegrees: 0 }, time: value, name: "timestampMs" })),
+    )
+    .map<Call>(({ position, time, name }) => ({
+      method: "feedPosition",
+      name,
+      run: (engine) => errorText(engine.feedPosition(position as never, time as never)),
+    }));
+  const configureCall = fc
+    .oneof(
+      notObject.map((value) => ({ value, name: "options" })),
+      fc
+        .tuple(fc.constantFrom("searchWindow", "rerouteMargin", "rerouteDelayMs", "arrivalRadius"), badNumber)
+        .filter(([, value]) => value !== undefined)
+        .map(([key, value]) => ({ value: { [key]: value }, name: key })),
+    )
+    .map<Call>(({ value, name }) => ({
+      method: "configure",
+      name,
+      run: (engine) => errorText(engine.configure(value as never)),
+    }));
+
+  const snapshot = (engine: Engine): string =>
+    JSON.stringify({
+      route: engine.getRoute() ?? null,
+      remaining: engine.getRemainingRoute() ?? null,
+      guidance: engine.getGuidance(),
+      sentence: engine.getGuidanceSentence(),
+      noWay: engine.getLastNoWayResult() ?? null,
+      places: engine.getPlaces(),
+      blocked: engine.getBlockedRoads(),
+    });
+
+  it("returns an error naming the input and leaves route, guidance and map unchanged", () => {
+    const seen = new Set<string>();
+    fc.assert(
+      fc.property(fc.oneof(loadCall, destinationCall, feedCall, configureCall), (call) => {
+        const engine = engineAt(joinedMapText(), 0, 0);
+        const route = engine.setDestination({ placeId: "p1" });
+        expect("parts" in route).toBe(true);
+        engine.feedPosition({ x: 0, y: 10, headingDegrees: 90 }, 100);
+        const before = snapshot(engine);
+        const routeBefore = engine.getRoute();
+        const remainingBefore = engine.getRemainingRoute();
+
+        const message = call.run(engine);
+
+        seen.add(call.method);
+        expect(message).toBeDefined();
+        expect(message).toContain(call.name);
+        expect(snapshot(engine)).toBe(before);
+        expect(engine.getRoute()).toBe(routeBefore);
+        expect(engine.getRemainingRoute()).toBe(remainingBefore);
+        expect(routeBefore).toBeDefined();
+        expect(engine.getPlaces()).toHaveLength(1);
+      }),
+      { numRuns: 200 },
+    );
+    expect([...seen].sort()).toEqual(["configure", "feedPosition", "loadMap", "setDestination"]);
   });
 });
