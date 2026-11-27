@@ -2,6 +2,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { Engine } from "../src/engine.js";
+import { isNoUsableRoad, snapToRoad } from "../src/index.js";
 
 // Files are read as raw text through Vite's glob import (no Node types needed).
 const rawFiles = import.meta.glob(
@@ -61,6 +62,14 @@ describe("API reference doc", () => {
     const entries = [...doc.matchAll(/^### `(\w+)`\s*$/gm)].map((m) => m[1] as string);
     expect(new Set(entries).size, "duplicate entries").toBe(entries.length);
     expect([...entries].sort()).toEqual([...names].sort());
+  });
+
+  it("exports and documents snapToRoad, isNoUsableRoad and NoUsableRoadResult", () => {
+    const source = read("../src/index.ts");
+    for (const name of ["snapToRoad", "isNoUsableRoad", "NoUsableRoadResult"]) {
+      expect(source, `export ${name}`).toContain(name);
+      expect(doc, `entry ${name}`).toContain(`### \`${name}\``);
+    }
   });
 
   it("documents every public Engine method", () => {
@@ -182,6 +191,40 @@ describe("Engine.getMap", () => {
     expect(again?.nodes).toHaveLength(4);
     const route = engine.setDestination({ placeId: "p1" });
     expect("parts" in route).toBe(true);
+  });
+});
+
+describe("snapToRoad from the public surface", () => {
+  it("snaps a point to the nearest usable road of getMap()", () => {
+    const map = engineAt(joinedMapText(), 0, 0).getMap();
+    if (!map) throw new Error("map expected");
+    const snapped = snapToRoad(map, { x: 40, y: 12 });
+    expect(isNoUsableRoad(snapped)).toBe(false);
+    if (!isNoUsableRoad(snapped)) {
+      expect(snapped.roadId).toBe("r1");
+      expect(snapped.x).toBeCloseTo(40);
+      expect(snapped.y).toBeCloseTo(0);
+    }
+  });
+
+  it("answers plainly when the map has no usable road", () => {
+    const engine = new Engine();
+    engine.loadMap(
+      JSON.stringify({
+        formatVersion: 1,
+        nodes,
+        roads: [],
+        places: [],
+        blockedAreas: [],
+        props: [],
+        style: { colors: {}, lineStyles: {} },
+      }),
+    );
+    const map = engine.getMap();
+    if (!map) throw new Error("map expected");
+    const result = snapToRoad(map, { x: 1, y: 1 });
+    expect(isNoUsableRoad(result)).toBe(true);
+    if (isNoUsableRoad(result)) expect(result.reason).toBe("no-usable-road");
   });
 });
 

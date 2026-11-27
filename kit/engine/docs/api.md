@@ -43,6 +43,18 @@ const map = engine.getMap(); // a copy; undefined before a map is loaded
 console.log(map?.roads.length);
 ```
 
+### `isNoUsableRoad`
+
+Tells the two answers of `snapToRoad` apart.
+
+- Inputs: the result of `snapToRoad`.
+- Outputs: `true` when the result is a `NoUsableRoadResult`, `false` when it is a snapped point.
+
+```ts
+const snapped = snapToRoad(map, { x: 3, y: 4 });
+if (isNoUsableRoad(snapped)) console.log(snapped.message);
+```
+
 ### `mirrorHeading`
 
 Mirrors a heading left to right.
@@ -63,6 +75,21 @@ Mirrors a map left to right: negates x of nodes, places, props, blocked area poi
 
 ```ts
 const mirrored = mirrorMap(map);
+```
+
+### `snapToRoad`
+
+Finds the nearest point on a usable road. Roads left out of routing are ignored. When two roads are equally near, the lowest road id wins.
+
+- Inputs: an `EngineMap` (for example from `engine.getMap()`) and a point `{ x, y }`.
+- Outputs: a snapped point `{ x, y, roadId, distanceAlongRoad }`, or a `NoUsableRoadResult` when the map has no usable road. The map is not changed.
+
+```ts
+const map = engine.getMap();
+if (map) {
+  const snapped = snapToRoad(map, { x: 40, y: 12 });
+  if (!isNoUsableRoad(snapped)) console.log(snapped.roadId, snapped.x, snapped.y);
+}
 ```
 
 ## Types
@@ -169,6 +196,14 @@ A node: `id`, `x` and `y`.
 
 ```ts
 const node: NodeData = { id: "a", x: 0, y: 0 };
+```
+
+### `NoUsableRoadResult`
+
+The answer of `snapToRoad` when the map has no usable road: `reason` (`"no-usable-road"`) and `message`.
+
+```ts
+const none: NoUsableRoadResult = { reason: "no-usable-road", message: "The map has no road you can use." };
 ```
 
 ### `NoWayReason`

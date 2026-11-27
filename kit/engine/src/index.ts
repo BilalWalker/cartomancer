@@ -2,6 +2,8 @@
 
 export { Engine } from "./engine.js";
 export { mirrorHeading, mirrorMap } from "./mirror.js";
+export { isNoUsableRoad, snapToRoad } from "./snapping.js";
+export type { NoUsableRoadResult } from "./snapping.js";
 export type {
   BackgroundPictureData,
   BlockedAreaData,
