@@ -248,132 +248,132 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
 - [x] 12. Checkpoint - Ensure all tests pass
   - Run `npm run build` and `npm test` in `kit/engine`, each as its own call. Ensure all tests pass, ask the user if questions arise. No commit unless a fix was needed (then one commit per fix).
 
-- [ ] 13. Route follower
-  - [-] 13.1 Follow the route with progress and a search window
+- [x] 13. Route follower
+  - [x] 13.1 Follow the route with progress and a search window
     - Create `kit/engine/src/route-follower.ts` with `advance(route, progress, position, searchWindow = 100)` returning `{ remaining, progress }`. It looks for the point nearest to the position only among route points whose distance along the route is in `[progress, progress + searchWindow]`, sets the new progress to that point's distance along the route, and removes the part before it. Progress never decreases, so stepping back keeps the removed part removed.
     - Add `tests/route-follower.test.ts` examples: on route, ahead, stepping back keeps the removed part removed, position far away, a caller-supplied window replaces the default 100, and a hand-written loop where a later stretch lies closer than the stretch at the progress but beyond the window (progress stays within the window, nothing beyond it is removed).
     - Commit subject: `Engine: add route follower with progress and search window`
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
-  - [~] 13.2 Off-route distance measured from the road edge
+  - [x] 13.2 Off-route distance measured from the road edge
     - Add `offRouteDistance(remaining, position, roadWidthOf)` to `route-follower.ts`: the distance from the position to the nearest point of the remaining route minus half the width of the road in use at that point (negative or zero on the road surface). Add examples to `tests/route-follower.test.ts`: on the centre line, at the road edge, exactly half width plus margin away from the centre line on a wide road and on a narrow road (same margin test gives different centre-line distances).
     - Commit subject: `Engine: add off-route distance measured from the road edge`
     - _Requirements: 13.1, 13.4_
-  - [~] 13.3 Position sequence generators
+  - [x] 13.3 Position sequence generators
     - Add to `tests/helpers/arbitraries.ts` generators for position sequences along a route (forward, with small backward steps) with timestamps. Extend `tests/helpers/arbitraries.test.ts` to check the sequences stay within a small distance of the route.
     - Commit subject: `Engine tests: add position sequence generators`
     - _Requirements: 12.7, 13.10_
-  - [~] 13.4 Property 14: distance left never grows
+  - [x] 13.4 Property 14: distance left never grows
     - Add to `tests/route-follower.test.ts` a property over generated maps, routes and position sequences that move along the route (including momentary backward steps): the remaining length never exceeds the previous remaining length, progress never decreases, and the removed part does not return.
     - **Property 14: Following the route never increases the distance left**
     - **Validates: Requirements 12.1, 12.2, 12.3, 12.4, 12.7**
     - Commit subject: `Engine tests: add property test for route following`
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.7_
-  - [~] 13.5 Looping route generator
+  - [x] 13.5 Looping route generator
     - Add to `tests/helpers/arbitraries.ts` a generator for routes that loop back to pass within the reroute margin of an earlier or later stretch of themselves, position sequences along them, and a caller-supplied search window. Extend `tests/helpers/arbitraries.test.ts` to check the loop property (some later stretch lies within the margin of an earlier stretch) and that sequences move along the route.
     - Commit subject: `Engine tests: add looping route generator`
     - _Requirements: 12.8_
-  - [~] 13.6 Property 15: no jump ahead on looping routes
+  - [x] 13.6 Property 15: no jump ahead on looping routes
     - Create `tests/route-follower-looping.test.ts` with a property over looping routes and position sequences moving along them, with default and caller-supplied search windows: progress after each position is at most the previous progress plus the window, no part beyond the window is removed, and the remaining route still contains every untravelled stretch.
     - **Property 15: The follower never jumps ahead on a looping route**
     - **Validates: Requirements 12.1, 12.2, 12.5, 12.6, 12.8**
     - Commit subject: `Engine tests: add property test for no jump ahead on loops`
     - _Requirements: 12.1, 12.2, 12.5, 12.6, 12.8_
 
-- [ ] 14. Rerouter
-  - [~] 14.1 Rerouter with margin from the road edge and delay
+- [x] 14. Rerouter
+  - [x] 14.1 Rerouter with margin from the road edge and delay
     - Create `kit/engine/src/rerouter.ts` with `class Rerouter` (options `margin` default 15, `delayMs` default 1000) and `update(remainingRoute, position, timestampMs, roadWidthOf)` returning `{ requestReroute }`. It computes `offRouteDistance` (from `route-follower.ts`); beyond the margin when that value is greater than the margin. It starts timing beyond the margin, cancels on return within the margin, fires once after the delay, then waits for a fresh overstay. It never reads the system clock.
     - Add `tests/rerouter.test.ts` examples: default values, custom margin and delay honoured, cancel before delay, one request only, second request after a fresh overstay.
     - Commit subject: `Engine: add rerouter with edge-measured margin and delay`
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.8_
-  - [~] 14.2 Edge margin example tests
+  - [x] 14.2 Edge margin example tests
     - Create `tests/rerouter-edge-margin.test.ts` with hand-written examples: on a wide road a position at half the width plus the margin from the centre line never triggers a reroute; one world unit further, held for the delay, triggers exactly one; the same centre-line distance triggers on a narrow road but not on a wide one.
     - Commit subject: `Engine tests: add edge-measured margin examples for rerouter`
     - _Requirements: 13.4, 13.9, 13.11_
-  - [~] 14.3 Wobble and off-route sequence generators
+  - [x] 14.3 Wobble and off-route sequence generators
     - Add to `tests/helpers/arbitraries.ts` generators, on routes whose roads have differing widths, for sequences whose off-route distance stays within the margin (wobbling near it, including exactly at half the width plus the margin from the centre line), and for sequences that leave and stay beyond it for at least the delay, with returns in between. Extend `tests/helpers/arbitraries.test.ts` to check both shapes against `offRouteDistance`.
     - Commit subject: `Engine tests: add reroute sequence generators`
     - _Requirements: 13.9, 13.11_
-  - [~] 14.4 Property 16: no reroute within the margin
+  - [x] 14.4 Property 16: no reroute within the margin
     - Add to `tests/rerouter-edge-margin.test.ts` a property: sequences whose off-route distance (measured from the road edge, differing widths) stays at or below the margin never request a reroute, for any duration.
     - **Property 16: Staying within the margin measured from the road edge never triggers a reroute**
     - **Validates: Requirements 13.1, 13.3, 13.4, 13.9**
     - Commit subject: `Engine tests: add property test for no reroute within margin`
     - _Requirements: 13.1, 13.3, 13.4, 13.9_
-  - [~] 14.5 Property 17: exactly one reroute per overstay
+  - [x] 14.5 Property 17: exactly one reroute per overstay
     - Add to `tests/rerouter-edge-margin.test.ts` a property: sequences that stay beyond the margin for at least the delay request exactly one reroute per stay and no more until the player returns within the margin and overstays again; a stay shorter than the delay requests none.
     - **Property 17: Overstaying the margin for the full delay triggers exactly one reroute**
     - **Validates: Requirements 13.2, 13.3, 13.5, 13.11**
     - Commit subject: `Engine tests: add property test for reroute timing`
     - _Requirements: 13.2, 13.3, 13.5, 13.11_
-  - [~] 14.6 Property 18: moving along the route never reroutes
+  - [x] 14.6 Property 18: moving along the route never reroutes
     - Add to `tests/rerouter.test.ts` a property: sequences that move along the route (fed through `advance` and the rerouter) request no reroute and never increase the distance left.
     - **Property 18: Moving along the route never triggers a reroute**
     - **Validates: Requirements 13.10**
     - Commit subject: `Engine tests: add property test for on-route rerouter`
     - _Requirements: 13.10_
 
-- [ ] 15. Guidance
-  - [~] 15.1 Distance left and no-route guidance
+- [x] 15. Guidance
+  - [x] 15.1 Distance left and no-route guidance
     - Create `kit/engine/src/guidance.ts` with `computeGuidance(remainingRoute, position, destination, offRouteDistance, margin = 15, arrivalRadius = 10)`: distance left equals the remaining route length, and an undefined route gives the fixed inactive guidance (`active: false`, no distance, no turn). Add `tests/guidance-turn.test.ts` examples for both.
     - Commit subject: `Engine: add guidance distance left and inactive state`
     - _Requirements: 15.1, 15.7_
-  - [~] 15.2 Next turn, skipping straight-on points
+  - [x] 15.2 Next turn, skipping straight-on points
     - Extend `computeGuidance`: turn points are the joints between consecutive route parts, each classified with `signedAngleDifference` and `classifyTurn` from `geometry.ts`. The next turn is the first turn point ahead classified left, right or turn back, with the distance along the remaining route to it; every straight-on point is skipped and never reported; when none remains, guidance holds a distance left and no next turn.
     - Add to `tests/guidance-turn.test.ts` one hand-written route per turn class, and to `tests/screen-convention.test.ts` guidance-level examples: a route heading right then up the screen reports left, then down the screen reports right.
     - Commit subject: `Engine: report the next turn and skip straight on points`
     - _Requirements: 15.2, 15.3, 15.9, 15.10, 15.11, 15.14_
-  - [~] 15.3 Straight-on skipping examples
+  - [x] 15.3 Straight-on skipping examples
     - Create `tests/guidance-next-turn.test.ts` with hand-written routes: several straight-on points before a left turn report the left turn at its distance; a route with only straight-on points reports a distance left and no next turn; a point at exactly 30 degrees is skipped and one just above 30 is reported.
     - Commit subject: `Engine tests: add straight on skipping examples`
     - _Requirements: 15.9, 15.10, 21.6_
-  - [~] 15.4 Turn back from the player's heading
+  - [x] 15.4 Turn back from the player's heading
     - Extend `computeGuidance` so when the player's heading (`position.headingDegrees`) differs from the first route part's heading by more than 150 degrees, the next turn is turn back at distance zero. Add examples to `tests/guidance-turn.test.ts` at 150 and 151 degrees.
     - Commit subject: `Engine: report turn back from the player heading`
     - _Requirements: 15.4_
-  - [~] 15.5 Arrival along the route
+  - [x] 15.5 Arrival along the route
     - Extend `computeGuidance` so the arrived flag is set when the distance left along the remaining route is at most the arrival radius AND the off-route distance is at most the margin, never from the straight-line distance to the destination. While arrived, distance left is zero and there is no next turn. Add `tests/guidance-arrival.test.ts` examples: just inside, exactly on the radius, just outside, custom radius, within the radius but beyond the margin (not arrived).
     - Commit subject: `Engine: add route-based arrival to guidance`
     - _Requirements: 15.5, 15.6, 15.12_
-  - [~] 15.6 Arrival example with a destination behind a blocked area
+  - [x] 15.6 Arrival example with a destination behind a blocked area
     - Create `tests/guidance-arrival-blocked.test.ts` with a hand-written map file in which the destination lies just behind a blocked area, within the arrival radius of the position in a straight line but further than the radius along the route. Load it with `parseMap`, find the route with `findRoute`, compute guidance, and assert the arrived flag is not set and distance left is the route distance.
     - Commit subject: `Engine tests: add blocked area arrival example`
     - _Requirements: 15.12, 15.13, 21.6_
-  - [~] 15.7 Guidance sentences
+  - [x] 15.7 Guidance sentences
     - Create `kit/engine/src/guidance-text.ts` with `toSentence(guidance, noWayResult?)` using the fixed templates: "turn left in N", "turn right in N", "turn back in N" (N rounded to a whole unit), "You have arrived." (with the place name when the destination is a place), "go straight on" for the rounded distance left when there is a distance and no next turn, and the no-route sentence with the plain reason when present. There is no sentence for a straight-on turn, since it cannot be reported. Add `tests/guidance-text.test.ts` with one example per template.
     - Commit subject: `Engine: add guidance sentences`
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.6, 21.6_
-  - [~] 15.8 Property 20: turn bands
+  - [x] 15.8 Property 20: turn bands
     - Add to `tests/guidance-turn.test.ts` a property over generated heading pairs (including exactly 30 and 150 degrees, both signs, wrap-around at 180): the change is `after - before` normalised to (-180, 180], and the class is straight on up to 30, right above 30 up to 150, left below -30 down to -150, turn back above 150; the same bands apply to player heading versus first route part.
     - **Property 20: Turn classification follows the signed angle bands**
     - **Validates: Requirements 15.3, 15.4**
     - Commit subject: `Engine tests: add property test for turn classification`
     - _Requirements: 15.3, 15.4_
-  - [~] 15.9 Property 21: next turn is never straight on
+  - [x] 15.9 Property 21: next turn is never straight on
     - Add to `tests/guidance-next-turn.test.ts` a property over generated routes: the next turn is never straight on, equals the first turn point ahead classified left, right or turn back, and when none remains guidance holds a distance left and no next turn.
     - **Property 21: The next turn is never straight on**
     - **Validates: Requirements 15.2, 15.9, 15.10, 15.11**
     - Commit subject: `Engine tests: add property test for next turn never straight on`
     - _Requirements: 15.2, 15.9, 15.10, 15.11_
-  - [~] 15.10 Property 22: arrival along the route
+  - [x] 15.10 Property 22: arrival along the route
     - Add to `tests/guidance-arrival.test.ts` a property over generated maps, routes and positions: the arrived flag is set exactly when distance left along the remaining route is at most the arrival radius and the off-route distance is at most the margin; straight-line distance to the destination never decides it; when set, distance left is zero and no next turn is reported.
     - **Property 22: Arrival depends on distance along the route and on being on the route**
     - **Validates: Requirements 15.5, 15.6, 15.12**
     - Commit subject: `Engine tests: add property test for arrival`
     - _Requirements: 15.5, 15.6, 15.12_
-  - [~] 15.11 Property 23: distance left starts at route length
+  - [x] 15.11 Property 23: distance left starts at route length
     - Add to `tests/guidance-turn.test.ts` a property over generated maps and routes: guidance computed at the route start has distance left equal to the route length within 0.000001.
     - **Property 23: Guidance distance left starts equal to route length**
     - **Validates: Requirements 15.1, 15.8**
     - Commit subject: `Engine tests: add property test for starting distance left`
     - _Requirements: 15.1, 15.8_
-  - [~] 15.12 Property 24: sentences depend on guidance data only
+  - [x] 15.12 Property 24: sentences depend on guidance data only
     - Add to `tests/guidance-text.test.ts` a property: two structurally equal guidance values (and equal optional No_Way_Result values), built separately, give identical sentences.
     - **Property 24: Guidance sentences are a pure function of guidance data**
     - **Validates: Requirements 16.5**
     - Commit subject: `Engine tests: add property test for sentence purity`
     - _Requirements: 16.5_
 
-- [~] 16. Checkpoint - Ensure all tests pass
+- [-] 16. Checkpoint - Ensure all tests pass
   - Run `npm run build` and `npm test` in `kit/engine`, each as its own call. Ensure all tests pass, ask the user if questions arise. No commit unless a fix was needed.
 
 - [ ] 17. Mirror

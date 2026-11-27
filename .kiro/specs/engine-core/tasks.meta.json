@@ -27,6 +27,38 @@
     "11.5 Property 12: unreachable gives no route": {
       "status": "passed",
       "lastRunTimestamp": 1795634804863
+    },
+    "13.4 Property 14: distance left never grows": {
+      "status": "passed",
+      "lastRunTimestamp": 1795672756186
+    },
+    "13.6 Property 15: no jump ahead on looping routes": {
+      "status": "passed",
+      "lastRunTimestamp": 1795672923012
+    },
+    "14.4 Property 16: no reroute within the margin": {
+      "status": "passed",
+      "lastRunTimestamp": 1795673259877
+    },
+    "14.5 Property 17: exactly one reroute per overstay": {
+      "status": "passed",
+      "lastRunTimestamp": 1795673400279
+    },
+    "14.6 Property 18: moving along the route never reroutes": {
+      "status": "passed",
+      "lastRunTimestamp": 1795673496758
+    },
+    "15.9 Property 21: next turn is never straight on": {
+      "status": "passed",
+      "lastRunTimestamp": 1795674273043
+    },
+    "15.10 Property 22: arrival along the route": {
+      "status": "passed",
+      "lastRunTimestamp": 1795674357462
+    },
+    "15.12 Property 24: sentences depend on guidance data only": {
+      "status": "passed",
+      "lastRunTimestamp": 1795674526312
     }
   },
   "executionHistory": {
@@ -768,6 +800,11 @@
         "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795672241104
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672540712
       }
     ],
     "13.2 Off-route distance measured from the road edge": [
@@ -775,6 +812,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038008
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672545032
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672616930
       }
     ],
     "13.3 Position sequence generators": [
@@ -782,6 +829,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038082
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672621149
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672705873
       }
     ],
     "13.4 Property 14: distance left never grows": [
@@ -789,6 +846,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038155
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672710189
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672773561
       }
     ],
     "13.5 Looping route generator": [
@@ -796,6 +863,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038224
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672778109
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672847464
       }
     ],
     "13.6 Property 15: no jump ahead on looping routes": [
@@ -803,6 +880,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038300
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672851680
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672933791
       }
     ],
     "14.1 Rerouter with margin from the road edge and delay": [
@@ -810,6 +897,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038373
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672938743
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673027119
       }
     ],
     "14.2 Edge margin example tests": [
@@ -817,6 +914,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038451
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673031662
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673082078
       }
     ],
     "14.3 Wobble and off-route sequence generators": [
@@ -824,6 +931,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038524
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673086354
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673186421
       }
     ],
     "14.4 Property 16: no reroute within the margin": [
@@ -831,6 +948,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038601
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673192132
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673282900
       }
     ],
     "14.5 Property 17: exactly one reroute per overstay": [
@@ -838,6 +965,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038677
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673288397
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673411872
       }
     ],
     "14.6 Property 18: moving along the route never reroutes": [
@@ -845,6 +982,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038749
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673418941
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673508414
       }
     ],
     "15.1 Distance left and no-route guidance": [
@@ -852,6 +999,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038815
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673515309
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673600755
       }
     ],
     "15.2 Next turn, skipping straight-on points": [
@@ -859,6 +1016,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038888
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673605594
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673707146
       }
     ],
     "15.3 Straight-on skipping examples": [
@@ -866,6 +1033,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632038963
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673711722
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673786338
       }
     ],
     "15.4 Turn back from the player's heading": [
@@ -873,6 +1050,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039034
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673786679
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673863700
       }
     ],
     "15.5 Arrival along the route": [
@@ -880,6 +1067,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039109
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673868365
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673943885
       }
     ],
     "15.6 Arrival example with a destination behind a blocked area": [
@@ -887,6 +1084,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039178
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673948986
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674018885
       }
     ],
     "15.7 Guidance sentences": [
@@ -894,6 +1101,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039249
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674023886
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674102448
       }
     ],
     "15.8 Property 20: turn bands": [
@@ -901,6 +1118,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039320
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674107183
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674210203
       }
     ],
     "15.9 Property 21: next turn is never straight on": [
@@ -908,6 +1135,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039405
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674215122
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674288261
       }
     ],
     "15.10 Property 22: arrival along the route": [
@@ -915,6 +1152,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039504
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674293447
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674374122
       }
     ],
     "15.11 Property 23: distance left starts at route length": [
@@ -922,6 +1169,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039578
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674379075
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674458190
       }
     ],
     "15.12 Property 24: sentences depend on guidance data only": [
@@ -929,6 +1186,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039649
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674463201
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674563859
       }
     ],
     "16. Checkpoint - Ensure all tests pass": [
@@ -936,6 +1203,11 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039719
+      },
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674564328
       }
     ],
     "17.1 Mirror a map and a heading": [
@@ -1118,6 +1390,27 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795634888972
+      }
+    ],
+    "13. Route follower": [
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795672933914
+      }
+    ],
+    "14. Rerouter": [
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795673508626
+      }
+    ],
+    "15. Guidance": [
+      {
+        "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795674564101
       }
     ]
   }
