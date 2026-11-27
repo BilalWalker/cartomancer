@@ -5,9 +5,13 @@ import {
   DEFAULT_SMOOTHING_MS,
   MAX_SMOOTHING_MS,
   MIN_SMOOTHING_MS,
+  FrameClock,
+  advanceCamera,
   advanceSmoothed,
   advanceSmoothedHeading,
 } from "../../src/views/smoothing";
+import { isViewError } from "../../src/views/view-errors";
+import type { Camera } from "../../src/views/camera";
 
 const valueArb = fc.double({ min: -1e6, max: 1e6, noNaN: true });
 const dtsArb = fc.array(fc.integer({ min: 1, max: 1000 }), { minLength: 1, maxLength: 40 });
@@ -93,5 +97,115 @@ describe("advanceSmoothed examples", () => {
   it("ends exactly on the target heading as given", () => {
     expect(advanceSmoothedHeading(350, 10, 1000, 1)).toBe(10);
     expect(advanceSmoothedHeading(0, 180, 1000, 1)).toBe(180);
+  });
+});
+
+const startCamera: Camera = {
+  centerX: 0,
+  centerY: 0,
+  zoom: 1,
+  rotationDegrees: 350,
+  viewportWidth: 200,
+  viewportHeight: 200,
+};
+const targetCamera: Camera = {
+  centerX: 100,
+  centerY: -50,
+  zoom: 2,
+  rotationDegrees: 10,
+  viewportWidth: 300,
+  viewportHeight: 250,
+};
+
+describe("advanceCamera examples", () => {
+  it("jumps to the target in the same frame under reduced motion", () => {
+    const step = advanceCamera(startCamera, targetCamera, 16, 300, true);
+    expect(isViewError(step)).toBe(false);
+    if (!isViewError(step)) {
+      expect(step.camera).toEqual(targetCamera);
+      expect(step.settling).toBe(false);
+    }
+  });
+
+  it("moves part of the way and reports settling, then arrives", () => {
+    const step = advanceCamera(startCamera, targetCamera, 100, 300, false);
+    if (isViewError(step)) throw new Error("unexpected error");
+    expect(step.settling).toBe(true);
+    expect(step.camera.centerX).toBeGreaterThan(0);
+    expect(step.camera.centerX).toBeLessThan(100);
+    expect(step.camera.rotationDegrees).toBeGreaterThan(350);
+    expect(step.camera.viewportWidth).toBe(300);
+    const done = advanceCamera(step.camera, targetCamera, 1000, 1, false);
+    if (isViewError(done)) throw new Error("unexpected error");
+    expect(done.camera).toEqual(targetCamera);
+    expect(done.settling).toBe(false);
+  });
+
+  it("cuts an interval over 1000 ms to 1000 ms", () => {
+    const long = advanceCamera(startCamera, targetCamera, 50000, 5000, false);
+    const capped = advanceCamera(startCamera, targetCamera, 1000, 5000, false);
+    expect(long).toEqual(capped);
+  });
+
+  it("rejects a duration outside 1 to 5000 ms and names it", () => {
+    for (const bad of [0, 0.999, 5000.001, 6000, NaN, Infinity, -Infinity]) {
+      const step = advanceCamera(startCamera, targetCamera, 16, bad, false);
+      expect(isViewError(step)).toBe(true);
+      if (isViewError(step)) {
+        expect(step.message).toContain("smoothing duration");
+        expect(step.message).toContain("1 to 5000");
+      }
+    }
+    for (const ok of [1, 5000]) {
+      expect(isViewError(advanceCamera(startCamera, targetCamera, 16, ok, false))).toBe(false);
+    }
+  });
+
+  it("rejects an unusable target", () => {
+    const step = advanceCamera(startCamera, { ...targetCamera, zoom: NaN }, 16, 300, false);
+    expect(isViewError(step)).toBe(true);
+  });
+});
+
+describe("FrameClock examples", () => {
+  it("gives 0 for the first timestamp and then the interval", () => {
+    const clock = new FrameClock();
+    expect(clock.tick(1000)).toEqual({ dtMs: 0 });
+    expect(clock.tick(1016)).toEqual({ dtMs: 16 });
+  });
+
+  it("cuts an interval over 1000 ms to 1000", () => {
+    const clock = new FrameClock();
+    clock.tick(0);
+    expect(clock.tick(5000)).toEqual({ dtMs: 1000 });
+    clock.tick(6000);
+    expect(clock.tick(7000)).toEqual({ dtMs: 1000 });
+    expect(clock.tick(7000.5)).toEqual({ dtMs: 0.5 });
+  });
+
+  it("gives interval 0 and a notice when time goes backwards", () => {
+    const clock = new FrameClock();
+    clock.tick(500);
+    const tick = clock.tick(400);
+    expect(isViewError(tick)).toBe(false);
+    if (!isViewError(tick)) {
+      expect(tick.dtMs).toBe(0);
+      expect(tick.notice?.message).toContain("time went backwards");
+    }
+    expect(clock.tick(416)).toEqual({ dtMs: 16 });
+  });
+
+  it("rejects a timestamp that is not finite and keeps its state", () => {
+    const clock = new FrameClock();
+    clock.tick(100);
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const tick = clock.tick(bad);
+      expect(isViewError(tick)).toBe(true);
+      if (isViewError(tick)) {
+        expect(tick.message).toContain("timestamp");
+        expect(tick.message).toContain("finite number of ms");
+      }
+    }
+    expect(clock.tick(120)).toEqual({ dtMs: 20 });
   });
 });
