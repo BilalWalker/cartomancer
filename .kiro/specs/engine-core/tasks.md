@@ -373,7 +373,7 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
     - Commit subject: `Engine tests: add property test for sentence purity`
     - _Requirements: 16.5_
 
-- [-] 16. Checkpoint - Ensure all tests pass
+- [x] 16. Checkpoint - Ensure all tests pass
   - Run `npm run build` and `npm test` in `kit/engine`, each as its own call. Ensure all tests pass, ask the user if questions arise. No commit unless a fix was needed.
 
 - [ ] 17. Mirror
