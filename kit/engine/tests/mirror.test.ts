@@ -1,6 +1,8 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { mirrorHeading, mirrorMap } from "../src/mirror.js";
 import type { EngineMap } from "../src/types.js";
+import { loadValid, mapFileArbitrary } from "./helpers/arbitraries.js";
 
 const sample: EngineMap = {
   formatVersion: 1,
@@ -70,5 +72,53 @@ describe("mirrorHeading", () => {
   it("keeps straight down and straight up", () => {
     expect(mirrorHeading(90)).toBe(90);
     expect(mirrorHeading(-90)).toBe(-90);
+  });
+});
+
+// Feature: engine-core, Property 26: Mirroring twice restores the original map
+// **Validates: Requirements 17.4, 17.5**
+describe("Property 26: mirroring twice restores the original map", () => {
+  // Headings stay in (-180, 180], the range mirrorHeading returns.
+  const headingArbitrary = fc.oneof(
+    fc.integer({ min: -179, max: 180 }),
+    fc.double({ min: -179.5, max: 180, noNaN: true }),
+  );
+
+  it("mirrorMap twice equals the original loaded map", () => {
+    let withContent = 0;
+    fc.assert(
+      fc.property(mapFileArbitrary(), (file) => {
+        const map = loadValid(file);
+        const twice = mirrorMap(mirrorMap(map));
+        expect(twice).toEqual(map);
+        if (map.nodes.length > 0 && map.nodes.some((n) => n.x !== 0)) withContent++;
+      }),
+      { numRuns: 100 },
+    );
+    expect(withContent).toBeGreaterThan(0);
+  });
+
+  it("mirrorMap changes the map when it has a node away from x = 0", () => {
+    let changed = 0;
+    fc.assert(
+      fc.property(mapFileArbitrary(), (file) => {
+        const map = loadValid(file);
+        if (map.nodes.some((n) => n.x !== 0)) {
+          expect(mirrorMap(map)).not.toEqual(map);
+          changed++;
+        }
+      }),
+      { numRuns: 100 },
+    );
+    expect(changed).toBeGreaterThan(0);
+  });
+
+  it("mirrorHeading twice equals the heading", () => {
+    fc.assert(
+      fc.property(headingArbitrary, (h) => {
+        expect(mirrorHeading(mirrorHeading(h))).toBeCloseTo(h, 9);
+      }),
+      { numRuns: 200 },
+    );
   });
 });
