@@ -59,6 +59,18 @@
     "15.12 Property 24: sentences depend on guidance data only": {
       "status": "passed",
       "lastRunTimestamp": 1795674526312
+    },
+    "17.3 Property 25: mirrored guidance swaps turns": {
+      "status": "passed",
+      "lastRunTimestamp": 1795676448431
+    },
+    "18.6 Property 19: reroute starts at the player and keeps the destination": {
+      "status": "passed",
+      "lastRunTimestamp": 1795677118606
+    },
+    "18.8 Property 27: malformed input leaves state unchanged": {
+      "status": "passed",
+      "lastRunTimestamp": 1795677331170
     }
   },
   "executionHistory": {
@@ -1220,6 +1232,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039800
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676086395
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676294107
       }
     ],
     "17.2 Property 26: mirroring twice restores the map": [
@@ -1227,6 +1249,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039875
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676299174
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676363894
       }
     ],
     "17.3 Property 25: mirrored guidance swaps turns": [
@@ -1234,6 +1266,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632039952
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676368996
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676487057
       }
     ],
     "18.1 Engine: load a map and read places and blocked roads": [
@@ -1241,6 +1283,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040041
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676494470
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676576925
       }
     ],
     "18.2 Engine: set and clear a destination": [
@@ -1248,6 +1300,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040116
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676582115
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676697302
       }
     ],
     "18.3 Engine: feed positions, follow the route and configure options": [
@@ -1255,6 +1317,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040195
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676702486
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676802358
       }
     ],
     "18.4 Engine: guidance data and sentence": [
@@ -1262,6 +1334,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040296
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676807962
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676893630
       }
     ],
     "18.5 Engine: rerouting": [
@@ -1269,6 +1351,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040375
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676898626
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677035910
       }
     ],
     "18.6 Property 19: reroute starts at the player and keeps the destination": [
@@ -1276,6 +1368,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040450
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677041100
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677156204
       }
     ],
     "18.7 Engine: input guards on every method": [
@@ -1283,6 +1385,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040519
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677161365
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677262454
       }
     ],
     "18.8 Property 27: malformed input leaves state unchanged": [
@@ -1290,6 +1402,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040598
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677267948
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677365413
       }
     ],
     "19.1 Public exports and map file format doc": [
@@ -1297,6 +1419,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040677
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677370953
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677469617
       }
     ],
     "19.2 API doc and export list test": [
@@ -1304,6 +1436,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040749
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677474695
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677571165
       }
     ],
     "20.1 Large map generator": [
@@ -1311,6 +1453,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040827
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677576908
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677667136
       }
     ],
     "20.2 Benchmark command": [
@@ -1318,6 +1470,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632040903
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677672421
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677843877
       }
     ],
     "21. Final checkpoint - Ensure all tests pass": [
@@ -1325,6 +1487,16 @@
         "executionId": "a3ff2399-c305-4e6e-802d-04747eb709c5",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795632041018
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677844396
+      },
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795678000043
       }
     ],
     "2. Types and errors": [
@@ -1416,6 +1588,34 @@
         "executionId": "63a85165-03e8-43ca-9169-f9015de46e72",
         "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
         "timestamp": 1795674564101
+      }
+    ],
+    "17. Mirror": [
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795676487348
+      }
+    ],
+    "18. Engine class": [
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677365650
+      }
+    ],
+    "19. Public surface and docs": [
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677571426
+      }
+    ],
+    "20. Generator and benchmark": [
+      {
+        "executionId": "38c59f1f-2d6f-4f78-942d-5cf2189ce9a2",
+        "chatSessionId": "sess_9020bba0-4c96-4d03-a4fc-626c2e40fd66",
+        "timestamp": 1795677844174
       }
     ]
   }

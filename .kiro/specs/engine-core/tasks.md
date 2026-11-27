@@ -376,83 +376,83 @@ Each task is small (1-3 files) and ends with its own commit. Each task adds its 
 - [x] 16. Checkpoint - Ensure all tests pass
   - Run `npm run build` and `npm test` in `kit/engine`, each as its own call. Ensure all tests pass, ask the user if questions arise. No commit unless a fix was needed.
 
-- [ ] 17. Mirror
-  - [~] 17.1 Mirror a map and a heading
+- [x] 17. Mirror
+  - [x] 17.1 Mirror a map and a heading
     - Create `kit/engine/src/mirror.ts` with `mirrorMap(map)`: negate x of nodes, places, props, blocked area points and background picture position, negate prop rotation, leave everything else unchanged and keep derived fields consistent. Also export `mirrorHeading(h)` = `180 - h`. Add `tests/mirror.test.ts` with hand-written examples for the map and for headings (0 becomes 180, 90 stays 90, -90 stays -90).
     - Commit subject: `Engine: add map and heading mirroring`
     - _Requirements: 17.1, 17.5_
-  - [~] 17.2 Property 26: mirroring twice restores the map
+  - [x] 17.2 Property 26: mirroring twice restores the map
     - Add to `tests/mirror.test.ts` a property over generated maps and headings: `mirrorMap(mirrorMap(map))` equals the map and `mirrorHeading(mirrorHeading(h))` equals h.
     - **Property 26: Mirroring twice restores the original map**
     - **Validates: Requirements 17.4, 17.5**
     - Commit subject: `Engine tests: add property test for mirror involution`
     - _Requirements: 17.4, 17.5_
-  - [~] 17.3 Property 25: mirrored guidance swaps turns
+  - [x] 17.3 Property 25: mirrored guidance swaps turns
     - Create `tests/helpers/turn-sequence.ts` that finds a route with `findRoute`, walks positions along it with `advance`, and records the next turn and its distance from `computeGuidance` (without the Engine class). Add to `tests/mirror.test.ts` a property over generated maps, starts and destinations: the mirrored turn sequence equals the original with left and right swapped and turn back unchanged, neither contains straight on, a heading h maps to `180 - h` so a left change becomes a right change of the same size, and route length, distances to turns and road id sequence are equal within 0.000001.
     - **Property 25: Mirroring swaps turns and preserves lengths**
     - **Validates: Requirements 17.2, 17.3, 17.5**
     - Commit subject: `Engine tests: add property test for mirrored guidance`
     - _Requirements: 17.2, 17.3, 17.5_
 
-- [ ] 18. Engine class
-  - [~] 18.1 Engine: load a map and read places and blocked roads
+- [x] 18. Engine class
+  - [x] 18.1 Engine: load a map and read places and blocked roads
     - Create `kit/engine/src/engine.ts` with `class Engine` and `loadMap(text)` (a failed load keeps the previous state), `getPlaces()` (name and category exposed for search) and `getBlockedRoads()`. Create `tests/engine-api.test.ts` with examples for each method.
     - Commit subject: `Engine: add Engine class with loadMap and place access`
     - _Requirements: 5.4, 18.1, 18.4, 18.6_
-  - [~] 18.2 Engine: set and clear a destination
+  - [x] 18.2 Engine: set and clear a destination
     - Add `setDestination({ placeId } | { point })`, `clearDestination()`, `getRoute()`, `getRemainingRoute()` and `getLastNoWayResult()` to `engine.ts`. Setting a destination returns the route with its length or the No_Way_Result and stores it, and resets the follower progress to zero. Add examples to `tests/engine-api.test.ts`, including an unknown place id.
     - Commit subject: `Engine: add destination handling to Engine`
     - _Requirements: 10.3, 18.2, 18.4, 18.5_
-  - [~] 18.3 Engine: feed positions, follow the route and configure options
+  - [x] 18.3 Engine: feed positions, follow the route and configure options
     - Add `feedPosition(position, timestampMs)` and `configure({ searchWindow, rerouteMargin, rerouteDelayMs, arrivalRadius })` to `engine.ts`. Feeding keeps a follower progress, calls `advance` with the configured search window (default 100) and stores the remaining route and last position; before a map is loaded it returns the plain "no map is loaded" error. Add examples to `tests/engine-api.test.ts`, including that a caller-supplied search window is used.
     - Commit subject: `Engine: follow the route when a position is fed`
     - _Requirements: 12.4, 12.5, 13.6, 18.3, 18.9_
-  - [~] 18.4 Engine: guidance data and sentence
+  - [x] 18.4 Engine: guidance data and sentence
     - Add `getGuidance()` and `getGuidanceSentence()` to `engine.ts`, computed from the remaining route, last position, destination, `offRouteDistance` (using road widths from the map), the configured margin and arrival radius, and the last No_Way_Result. Add examples to `tests/engine-api.test.ts`: a route in progress, arrival with a place name, no route.
     - Commit subject: `Engine: expose guidance data and sentence`
     - _Requirements: 15.1, 15.5, 15.7, 16.1, 16.2, 16.3, 16.4, 18.4_
-  - [~] 18.5 Engine: rerouting
+  - [x] 18.5 Engine: rerouting
     - Wire `Rerouter` into `feedPosition` using the configured margin and delay and the road width lookup from the map. On a request, find a new route from the position to the same destination and reset the follower progress; when the finder returns a No_Way_Result, clear the route and keep the result for `getLastNoWayResult` and the sentence. Time comes only from the supplied timestamp. Add examples to `tests/engine-api.test.ts`: reroute after the delay, no reroute on a wobble, no-way after a reroute.
     - Commit subject: `Engine: reroute when the player leaves the route`
     - _Requirements: 13.2, 13.6, 13.7, 13.8, 14.1, 14.2_
-  - [~] 18.6 Property 19: reroute starts at the player and keeps the destination
+  - [x] 18.6 Property 19: reroute starts at the player and keeps the destination
     - Create `tests/reroute-result.test.ts` with a property over generated maps and off-route positions where a new route is found: the new route starts at the snapped point of the position at the time of the request and ends at the snapped point of the same destination as the old route.
     - **Property 19: A reroute starts where the player is and keeps the destination**
     - **Validates: Requirements 14.1, 14.2, 14.3**
     - Commit subject: `Engine tests: add property test for reroute result`
     - _Requirements: 14.1, 14.2, 14.3_
-  - [~] 18.7 Engine: input guards on every method
+  - [x] 18.7 Engine: input guards on every method
     - Add type and finiteness checks at the start of every public Engine method (including `configure`) using the `badInput` factory, so a rejected call returns a plain error naming the input and changes no state. Add examples to `tests/engine-api.test.ts` for NaN, Infinity and wrong types on each method.
     - Commit subject: `Engine: reject malformed input without changing state`
     - _Requirements: 18.8_
-  - [~] 18.8 Property 27: malformed input leaves state unchanged
+  - [x] 18.8 Property 27: malformed input leaves state unchanged
     - Add to `tests/engine-api.test.ts` a property over malformed inputs (wrong type, NaN, Infinity) passed to each Engine method: the call returns an error naming the input, and route, remaining route, guidance and loaded map are equal to their values before the call.
     - **Property 27: The API rejects malformed input without changing state**
     - **Validates: Requirements 18.8**
     - Commit subject: `Engine tests: add property test for input rejection`
     - _Requirements: 18.8_
 
-- [ ] 19. Public surface and docs
-  - [~] 19.1 Public exports and map file format doc
+- [x] 19. Public surface and docs
+  - [x] 19.1 Public exports and map file format doc
     - Fill `kit/engine/src/index.ts` with re-exports of `Engine`, the documented types and `mirrorMap` only (plus `mirrorHeading`). Create `kit/engine/docs/map-file-format.md` describing every field, type and allowed value, the supported format version, the Screen_Convention, and the style rules from `checkStyle`. Add to `tests/engine-api.test.ts` a check that the doc mentions every field name the loader reads.
     - Commit subject: `Engine: add public exports and map file format doc`
     - _Requirements: 1.5, 18.10_
-  - [~] 19.2 API doc and export list test
+  - [x] 19.2 API doc and export list test
     - Create `kit/engine/docs/api.md` with one entry per exported function and type (including `configure` and `mirrorHeading`): description, inputs, outputs and one usage example. Add to `tests/engine-api.test.ts` a test that the export list of `src/index.ts` matches the entries in `docs/api.md` exactly.
     - Commit subject: `Engine: add API reference doc`
     - _Requirements: 18.7, 18.10_
 
-- [ ] 20. Generator and benchmark
-  - [~] 20.1 Large map generator
+- [x] 20. Generator and benchmark
+  - [x] 20.1 Large map generator
     - Create `kit/engine/bench/generate-large-map.ts` producing a connected 5,000-road map from a numeric seed with a seeded random generator (no `Math.random`). Add `tests/generate-large-map.test.ts`: the same seed gives equal output, a different seed differs, the map loads without errors and has 5,000 roads.
     - Commit subject: `Engine: add seeded large map generator`
     - _Requirements: 20.1_
-  - [~] 20.2 Benchmark command
+  - [x] 20.2 Benchmark command
     - Create `kit/engine/bench/route-bench.ts` and add a `bench` script to `package.json`. It loads the large map, times the load, computes at least 100 seeded start and destination routes, and prints the median, 95th percentile and maximum route time in ms, the load time, the Node version, the machine description and the number of No_Way_Results, with no pass or fail threshold. Run it once with `npm run bench` (give the call a generous timeout) and record the printed numbers in the commit body. The benchmark stays out of `npm test`.
     - Commit subject: `Engine: add route benchmark command`
     - _Requirements: 20.2, 20.3, 20.4, 20.5_
 
-- [~] 21. Final checkpoint - Ensure all tests pass
+- [x] 21. Final checkpoint - Ensure all tests pass
   - Run `npm run build` and `npm test` in `kit/engine`, each as its own call, and note the default suite run time (must be under 60 seconds). Run `npm run bench` once more. Run `git status` and `git log --oneline` as separate calls. Ensure all tests pass, ask the user if questions arise.
   - Report plainly: real `git status` output, the commit list, test results with time, the measured route times, and anything not done or not verified. Do not report credit figures. Do not push.
   - _Requirements: 20.6, 21.1, 21.3, 21.4, 21.5, 21.6, 21.7_
