@@ -92,7 +92,7 @@ export function gitViolations(command: string): string[] {
         problems.push(`git ${sub} is not allowed: it rewrites history or deletes untracked work`);
         break;
       case 'reset':
-        if (has('--hard', '--merge', '--keep')) problems.push('git reset --hard is not allowed: it discards work');
+        problems.push('git reset is not allowed in any form: fix staging with `git restore --staged <path>`');
         break;
       default:
         break;
