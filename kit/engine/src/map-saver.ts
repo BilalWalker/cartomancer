@@ -40,6 +40,7 @@ function toFile(map: EngineMap): MapFile {
       width: p.width,
       height: p.height,
       rotationDegrees: p.rotationDegrees,
+      ...(p.blockHeight !== undefined ? { blockHeight: p.blockHeight } : {}),
     })),
     style: {
       colors: { ...map.style.colors },
