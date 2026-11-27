@@ -254,3 +254,37 @@ describe("Engine.configure", () => {
     expect(engine.configure({})).toBeUndefined();
   });
 });
+
+describe("Engine guidance", () => {
+  const at = (x: number, y: number) => ({ x, y, headingDegrees: 90 });
+
+  it("reports distance left and a sentence for a route in progress", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    engine.setDestination({ placeId: "p1" });
+    engine.feedPosition(at(0, 0), 1);
+    const guidance = engine.getGuidance();
+    expect(guidance.active).toBe(true);
+    expect(guidance.arrived).toBe(false);
+    expect(guidance.distanceLeftWorldUnits).toBeCloseTo(50);
+    expect(engine.getGuidanceSentence()).not.toBe("There is no route.");
+    expect(engine.getGuidanceSentence()).toContain("50");
+  });
+
+  it("says the player has arrived and names the place", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    engine.setDestination({ placeId: "p1" });
+    engine.feedPosition(at(0, 48), 1);
+    expect(engine.getGuidance().arrived).toBe(true);
+    expect(engine.getGuidanceSentence()).toBe("You have arrived: Bank.");
+  });
+
+  it("says there is no route, with the reason, when none was found", () => {
+    const engine = engineAt(mapText([]), 0, 0);
+    expect(engine.getGuidance()).toEqual({ active: false });
+    expect(engine.getGuidanceSentence()).toBe("There is no route.");
+    const result = engine.setDestination({ placeId: "p1" });
+    expect(engine.getGuidance().active).toBe(false);
+    const message = "message" in result ? result.message : "";
+    expect(engine.getGuidanceSentence()).toBe(`There is no route. ${message}`);
+  });
+});

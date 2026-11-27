@@ -1,14 +1,17 @@
 // The Engine class: the one object an application talks to.
 
 import { badInput, noMapLoaded } from "./errors.js";
+import { computeGuidance } from "./guidance.js";
+import { toSentence } from "./guidance-text.js";
 import { parseMap } from "./map-loader.js";
 import { findRoute } from "./route-finder.js";
-import { advance, DEFAULT_SEARCH_WINDOW } from "./route-follower.js";
+import { advance, DEFAULT_SEARCH_WINDOW, offRouteDistance } from "./route-follower.js";
 import type {
   Destination,
   EngineError,
   EngineMap,
   EngineOptions,
+  Guidance,
   LoadResult,
   NoWayResult,
   Notice,
@@ -32,6 +35,8 @@ export class Engine {
   };
   /** The last position fed to the engine; the start of any new route. */
   private lastPosition: Position | undefined;
+  /** The destination last set, kept for guidance. */
+  private destination: Destination | undefined;
 
   /** Load map file text. A failed load leaves the previous map in place. */
   loadMap(text: string): LoadResult {
@@ -44,6 +49,7 @@ export class Engine {
       this.lastNoWay = undefined;
       this.progress = 0;
       this.lastPosition = undefined;
+      this.destination = undefined;
     }
     return result;
   }
@@ -86,6 +92,7 @@ export class Engine {
     }
 
     this.progress = 0;
+    this.destination = destination;
     if ("parts" in found) {
       this.route = found;
       this.remainingRoute = found;
@@ -148,6 +155,38 @@ export class Engine {
     this.remainingRoute = undefined;
     this.lastNoWay = undefined;
     this.progress = 0;
+    this.destination = undefined;
+  }
+
+  /** Guidance data for the remaining route; inactive when there is no route. */
+  getGuidance(): Guidance {
+    const position = this.lastPosition;
+    const map = this.map;
+    if (!map || !position || !this.remainingRoute) return { active: false };
+    const widths = new Map(map.roads.map((road) => [road.id, road.width]));
+    const widthOf = (roadId: string): number => widths.get(roadId) ?? 0;
+    const off =
+      this.remainingRoute.parts.length === 0
+        ? 0
+        : offRouteDistance(this.remainingRoute, position, widthOf);
+    return computeGuidance(
+      this.remainingRoute,
+      position,
+      this.destination,
+      off,
+      this.options.rerouteMargin,
+      this.options.arrivalRadius,
+    );
+  }
+
+  /** The guidance in plain words. */
+  getGuidanceSentence(): string {
+    let placeName: string | undefined;
+    if (this.map && this.destination && "placeId" in this.destination) {
+      const id = this.destination.placeId;
+      placeName = this.map.places.find((place) => place.id === id)?.name;
+    }
+    return toSentence(this.getGuidance(), this.lastNoWay, placeName);
   }
 
   /** The whole route found for the current destination. */
