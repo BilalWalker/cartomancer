@@ -2,7 +2,11 @@
 
 ## Overview
 
-This plan builds Block B of `docs/brief.md` in TypeScript: the Views (Minimap, Full_Map, Tilted_View) inside `kit/engine/src/views/`, and the bare demo page in `kit/demo/`. The order is: the commit rule update, two Engine-side gaps (`Engine.getMap`, export and document `snapToRoad`), the canvas interface and recording canvas, camera, spatial index and visibility, style, layer pieces, label placement, hit test, smoothing, tilted projection, input state machine, the three Views, canvas adapter and input binding, exports and docs, the demo page (Town_Map, map choice, player dot, layout), a checkpoint, the Playwright frame benchmark, a second checkpoint, and last the Gate.
+This plan builds Block B of `docs/brief.md` in TypeScript: the Views (Minimap, Full_Map, Tilted_View) and their Mount_Functions inside `kit/engine/src/views/`, and the bare demo page in `kit/demo/`. The order is:
+
+1. Groups 1 to 12 hold the Engine-side gaps and all pure logic: the commit rule update, `Engine.getMap`, the `snapToRoad` export, the five `blockHeight` steps, views foundation, camera, spatial index and visibility, style, layer pieces (including road batching), label placement and layer order, hit test, smoothing, tilted projection and block height, frame gate, input state machine, and a task that commits the task status files.
+2. Groups 13 to 16 hold the three Views, the canvas adapter, input binding, accessibility, the mount functions (`mount.ts`), the public exports and the Views API doc.
+3. Groups 17 to 21 hold the demo page (which uses only the Mount_Functions), a checkpoint, the Playwright frame benchmark, a second checkpoint, and last the Gate.
 
 The Screen_Convention of the engine core applies everywhere: x grows right, y grows down, a heading is in degrees clockwise from the positive x axis. World north is the negative y direction.
 
@@ -18,20 +22,18 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
 - No skipped tests, no raised time limits, no loosened thresholds. If a property fails, report the failing property and its shrunk counterexample; do not weaken the test.
 - Every property test runs at least 100 cases (`numRuns: 100` or more), starts with the comment `// Feature: map-views, Property N: <title>`, and leaves fast-check's seed and shrunk counterexample reporting on.
 - Every task that adds a View_Error or Notice adds an example test for it (plain words, names the input, no coordinates where the requirement says so) and, for each numeric input with a range, boundary tests at the lower bound, upper bound, just below, just above, NaN, +Infinity and -Infinity (Requirements 19.15, 19.16).
-- Files under `kit/engine/src/views/` other than `canvas-adapter.ts` and `input-binding.ts` import no browser global and mention no application concept (cars, missions, hospitals, rooms) and no existing game or product.
-- The engine core behaviour stays unchanged and no engine-core test is edited to make it pass (Requirement 19.12).
+- Files under `kit/engine/src/views/` other than `canvas-adapter.ts`, `input-binding.ts` and `mount.ts` import no browser global and mention no application concept (cars, missions, hospitals, rooms) and no existing game or product. `mount.ts` reaches browser services only through the injectable `services` option.
+- The engine core behaviour stays unchanged for every map file without `blockHeight`, and no existing engine-core test is edited to make it pass (Requirements 19.12, 19.17, 23.12). New tests and the extension of the test generator are allowed; existing assertions stay as they are.
 - Test files for the Views go under `kit/engine/tests/views/`, helpers under `kit/engine/tests/views/helpers/`.
 
 ## Tasks
 
-- [ ] 1. Commit rule update
-  - [ ] 1.1 Update the commit rules steering file
-    - Edit `.kiro/steering/commit-rules.md` so it says that a piece of code and its tests go in ONE commit, never two. Replace any line that asks for tests in a separate commit (there may be none). Keep every other rule exactly as it is.
-    - Verify by reading the file back: the one-commit rule is present and every other rule is unchanged.
-    - Commit subject: `Rules: code and its tests go in one commit`
+- [x] 1. Commit rule update
+  - [x] 1.1 Update the commit rules steering file
+    - Already done and committed as `e0bdb87` (`Rules: code and its tests go in one commit`). The steering file says a piece of code and its tests go in ONE commit, never two. No further work.
     - _Requirements: 19.5_
 
-- [ ] 2. Engine-side gaps
+- [ ] 2. Engine-side gaps (all before any view code)
   - [ ] 2.1 Engine.getMap
     - Add `getMap(): EngineMap | undefined` to `kit/engine/src/engine.ts`, returning a defensive copy like `getPlaces()` does and `undefined` before a map is loaded. Add an entry with a usage example to `kit/engine/docs/api.md`.
     - Extend `tests/engine-api.test.ts`: no map, loaded map, the copy does not change engine state when edited, and the existing check that docs match exports still passes.
@@ -42,22 +44,49 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Extend the export-list check in `tests/engine-api.test.ts` so the new exports and doc entries must match.
     - Commit subject: `Engine: export and document snapToRoad`
     - _Requirements: 11.4, 11.8, 19.13_
+  - [ ] 2.3 blockHeight type and format document
+    - Add the optional field `blockHeight?: number` to `PropData` (and the map file prop shape) in `kit/engine/src/types.ts`. In `kit/engine/docs/map-file-format.md`, list `blockHeight` in the Props table as optional (finite, 0 or more, world units), state the Default_Block_Height values (`building` 12, `house` 6, `tower` 24, `wall-block` 3, any other kind 0), and state why the field is not called `height` (`width` and `height` are the ground footprint).
+    - Extend `tests/types.test.ts` with a type-level example that a Prop with and without `blockHeight` both compile. Run the whole engine-core suite unedited.
+    - Commit subject: `Engine: add optional blockHeight to props and format doc`
+    - _Requirements: 23.1, 23.2, 23.9, 23.10_
+  - [ ] 2.4 blockHeight loader check
+    - In `kit/engine/src/map-loader-checks.ts`, make the Prop check accept an absent `blockHeight` (the Prop loads as before and no `blockHeight` is added) and a finite number of 0 or more (kept in the Map). Anything else (text, NaN, +Infinity, -Infinity, below 0) returns a plain error that names the Prop identifier and `blockHeight` and states "a finite number of 0 or more", and loads no Map.
+    - Create `tests/map-loader-block-height.test.ts` with examples at 0, just below 0, a very large finite value, NaN, +Infinity, -Infinity and a text value, plus a Prop without the field that loads to the same Map as before. Run the whole engine-core suite unedited.
+    - Commit subject: `Engine: check blockHeight when loading props`
+    - _Requirements: 23.3, 23.4, 23.5, 23.11, 23.12_
+  - [ ] 2.5 blockHeight saver
+    - In `kit/engine/src/map-saver.ts`, write `blockHeight` after `rotationDegrees` only for Props that have it, so the text for maps without it stays byte-for-byte as before.
+    - Create `tests/map-saver-block-height.test.ts`: a Prop with `blockHeight` writes the key, a Prop without it writes no key, and the saved text of an existing hand-written map is unchanged. Run the whole engine-core suite unedited.
+    - Commit subject: `Engine: write blockHeight when saving props`
+    - _Requirements: 23.3, 23.6, 23.12_
+  - [ ] 2.6 Round-trip generator and property
+    - Extend the Prop generator in `tests/helpers/arbitraries.ts` to produce Props with and without a finite `blockHeight` from 0 to 1,000. Existing assertions are not edited. Create `tests/map-saver-roundtrip-block-height.test.ts` with the property. Extend `tests/helpers/arbitraries.test.ts` so the generator is checked to produce both kinds of Prop.
+    - **Property 21: Save and load round trip keeps blockHeight**
+    - **Validates: Requirements 23.7**
+    - Commit subject: `Engine tests: generate blockHeight in the round-trip property`
+    - _Requirements: 23.3, 23.4, 23.6, 23.7, 23.12_
+  - [ ] 2.7 Mirror keeps blockHeight
+    - Create `tests/mirror-block-height.test.ts` with the property over the extended generator: mirroring keeps every Prop's `blockHeight` and changes nothing beyond the existing mirror rules. Change `src/mirror.ts` only if the test shows it is needed (`mirrorMap` already copies each Prop with a spread, so no change is expected).
+    - **Property 22: Mirroring keeps blockHeight and changes nothing else**
+    - **Validates: Requirements 23.8**
+    - Commit subject: `Engine tests: mirror keeps blockHeight on props`
+    - _Requirements: 23.8, 23.12_
 
 - [ ] 3. Views foundation
   - [ ] 3.1 View_Error and Notice types
-    - Create `kit/engine/src/views/view-errors.ts` with `ViewError` and `Notice` types and plain-worded factories (`badNumber`, `outOfRange`, `badPoint`, `badSize`, `noContext`, and similar) whose messages name the input and the allowed range and contain no coordinates.
+    - Create `kit/engine/src/views/view-errors.ts` with `ViewError` and `Notice` types and plain-worded factories (`badNumber`, `outOfRange`, `badPoint`, `badSize`, `noContext`, `destroyed`, and similar) whose messages name the input and the allowed range and contain no coordinates.
     - Create `tests/views/view-errors.test.ts`: each factory's message names the input, states the range, contains no digits taken from a rejected point, and contains none of the markers `undefined`, `NaN`, `at `, `Error:`, `stack`.
     - Commit subject: `Views: add plain-worded error and notice types`
     - _Requirements: 2.4, 2.5, 19.15_
   - [ ] 3.2 Canvas interface and recording canvas
-    - Create `src/views/canvas-interface.ts` (the `CanvasInterface` of the design) and `src/views/recording-canvas.ts` (`RecordingCanvas` storing each call in order with arguments and the current fill colour, stroke colour, line width, and the accumulated transform matrix; `getCalls()` and `findCalls(op)`).
+    - Create `src/views/canvas-interface.ts` (the `CanvasInterface` of the design) and `src/views/recording-canvas.ts` (`RecordingCanvas` storing each call in order with arguments and the current fill colour, stroke colour, line width, and the accumulated transform matrix; `getCalls()`, `findCalls(op)`, and a count of paths begun).
     - Create `tests/views/canvas-interface-recording.test.ts`: draw a small fixed scene and assert the exact ordered call list and stored state, including nested save and restore and a translate then rotate.
     - Commit subject: `Views: add canvas interface and recording canvas`
     - _Requirements: 1.1, 1.3, 1.4, 1.5_
   - [ ] 3.3 Boundary test for browser globals and dependencies
-    - Create `tests/views/views-boundary.test.ts`: scan every file in `src/views/` except `canvas-adapter.ts` and `input-binding.ts` for the identifiers `window`, `document`, `HTMLCanvasElement`, `ResizeObserver`, `matchMedia`, and for the whole words car, mission, hospital, room (case-insensitive); assert `package.json` still has no `dependencies` field.
+    - Create `tests/views/views-boundary.test.ts`: scan every file in `src/views/` except `canvas-adapter.ts`, `input-binding.ts` and `mount.ts` for the identifiers `window`, `document`, `HTMLCanvasElement`, `ResizeObserver`, `requestAnimationFrame`, `matchMedia`, and for the whole words car, mission, hospital, room (case-insensitive); assert `package.json` still has no `dependencies` field. The scan skips files that do not exist yet, so the test passes now and guards each later file.
     - Commit subject: `Views tests: guard the browser boundary`
-    - _Requirements: 1.6, 1.7, 19.10_
+    - _Requirements: 1.6, 1.7, 19.10, 19.18_
 
 - [ ] 4. Camera
   - [ ] 4.1 Camera and transforms
@@ -83,7 +112,7 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Commit subject: `Views: add spatial index and map inspection`
     - _Requirements: 3.7, 3.8, 3.9, 3.10, 3.11_
   - [ ] 5.2 Visible region and visible set
-    - Add `visibleRegion(camera, margin)` and `computeVisibleSet(index, region)` to `visible-set.ts`. Create `tests/views/helpers/naive-visibility-check.ts` (shares no code with `visible-set.ts`) and `tests/views/visible-set-model.test.ts`: the property, plus an example on the 5,000-road generated map (from `bench/generate-large-map.ts`) in which a region over at most 5% of the roads tests at most 25% of the roads (expose a count of roads tested).
+    - Add `visibleRegion(camera, margin)` and `computeVisibleSet(index, region)` to `visible-set.ts` (the margin covers the largest road width, the route line width in world units and the largest block height). Create `tests/views/helpers/naive-visibility-check.ts` (shares no code with `visible-set.ts`) and `tests/views/visible-set-model.test.ts`: the property, plus an example on the 5,000-road generated map (from `bench/generate-large-map.ts`) in which a region over at most 5% of the roads tests at most 25% of the roads (expose a count of roads tested).
     - **Property 4: Nothing visible is left out (index equals a plain check, including whole-extent cameras)**
     - **Validates: Requirements 3.4, 3.5, 3.6**
     - Commit subject: `Views: add visible set with model-checked index`
@@ -105,16 +134,23 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Commit subject: `Views: add drawing helper that skips non-finite input`
     - _Requirements: 1.1, 1.8_
   - [ ] 7.2 Ground, blocked areas and props
-    - Create `src/views/layers-areas.ts` with `drawGround`, `drawBlockedAreas`, `drawFlatProps`: polygon fill and outline in the colour of the kind, props by kind as plain shapes (unknown kind a rectangle), a picture reference as a placeholder rectangle labelled with the kind; Notices for a polygon with fewer than 3 points and for a prop with bad width, height or rotation.
+    - Create `src/views/layers-areas.ts` with `drawGround`, `drawBlockedAreas`, `drawFlatProps`: polygon fill and outline in the colour of the kind, props by kind as plain shapes (unknown kind a rectangle), a picture reference as a placeholder rectangle labelled with the kind; Notices for a polygon with fewer than 3 points and for a prop with bad width, height or rotation. Props play no part in routes or guidance.
     - Create `tests/views/layers-areas.test.ts` with examples on the `RecordingCanvas`, including both Notices and the colour of each kind.
     - Commit subject: `Views: draw ground, blocked areas and props`
     - _Requirements: 6.2, 6.3, 6.4, 6.6, 6.7_
-  - [ ] 7.3 Roads
-    - Create `src/views/layers-roads.ts` with `drawRoadOutlines`, `drawRoadFills` (outlines of all visible roads first, round joins and caps, width in world units, at least 1 px, outline skipped under 2 px for footpath and corridor, dash from the style, kind told apart by width and colour), one-way arrowheads at least 40 px apart, and `drawBlockedRoadMarks` (blocked colour plus dash). A road with a width that is not finite or not above 0 is skipped with a Notice naming the road.
-    - Create `tests/views/layers-roads.test.ts` with examples: outlines before fills, minimum width, skipped outline, arrow spacing, blocked road dash, bad width Notice.
-    - Commit subject: `Views: draw roads, one-way arrows and blocked roads`
-    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9_
-  - [ ] 7.4 Route line, markers and input validation
+  - [ ] 7.3 Road batching with path-count property
+    - Create `src/views/road-batching.ts`: `batchUsableRoads` groups visible Usable_Roads by (kind, pixel width) with the width rounded to 0.25 px and raised to the 1 px floor, giving an outline list (roads under the 2 px footpath and corridor rule get no outline batch) and a fill list; `batchBlockedRoads` groups Blocked_Roads by pixel width; `drawRoadPass` draws one path per batch (one `moveTo` and `lineTo` per road, one `stroke`, round joins and caps set once per batch). Batches are ordered by kind then width. A road with a width that is not finite or not above 0 is left out with a Notice naming the road.
+    - Create `tests/views/road-batching-path-count.test.ts` with the property over the `RecordingCanvas` and an example that draws a map of 5,000 roads of one kind and width and checks that the number of paths begun equals the number for a map with 1 road of that kind and width. Add examples for the 1 px floor, the skipped outline and the bad width Notice.
+    - **Property 18: Path count does not depend on the number of roads**
+    - **Validates: Requirements 5.10, 5.11, 22.1, 22.2, 22.5**
+    - Commit subject: `Views: batch roads into one path per kind and width`
+    - _Requirements: 5.5, 5.6, 5.9, 5.10, 5.11, 22.1, 22.2, 22.5, 22.11_
+  - [ ] 7.4 Roads layer
+    - Create `src/views/layers-roads.ts` with `drawRoadOutlines`, `drawRoadFills`, `drawOneWayArrows` and `drawBlockedRoadMarks`, built on `road-batching.ts`: all outline batches before all fill batches, kind told apart by width and colour, dash from the style for a kind, arrowheads at least 40 px apart in one path per kind per pass, and Blocked_Roads as one dashed path per width in the blocked colour.
+    - Create `tests/views/road-batching-order.test.ts` with examples on the `RecordingCanvas`: outlines before fills, dash for a styled kind, arrow spacing and one arrow path per kind per pass, blocked roads as one dashed path.
+    - Commit subject: `Views: draw road outlines, fills, arrows and blocked roads`
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.7, 5.8, 22.3, 22.4_
+  - [ ] 7.5 Route line, markers and input validation
     - Create `src/views/layers-route.ts` with `drawRouteLine` (remaining route only, outline below fill, round joins and caps, width kept between 4 and 12 px at every zoom), `drawDestinationMarker` (only while a route is active), `drawPlayerMarker` (10 to 24 px across, pointer for the heading), and `validatePosition` and `validateRoute` (finite coordinates of absolute value at most 1,000,000, finite heading; a route with a non-finite point draws no line and gives a Notice).
     - Create `tests/views/route-line.test.ts` with the property and examples: no line without a route, width limits at zoom extremes, marker sizes, bad position returns a `ViewError` and keeps the previous position, No_Way_Result message is exposed and no line is drawn.
     - **Property 6: Route line lies on the remaining route**
@@ -156,11 +192,11 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Commit subject: `Views: add smoothing with a no-overshoot property`
     - _Requirements: 13.1, 13.2, 13.3, 13.7, 13.8, 13.9_
   - [ ] 10.2 Camera smoothing, reduced motion and timestamps
-    - Add `advanceCamera(current, target, dtMs, durationMs, reducedMotion)` and a `FrameClock` helper to `smoothing.ts`: reduced motion jumps to the target, a non-finite timestamp gives a `ViewError` and keeps the camera, an earlier timestamp gives an interval of 0 and a Notice, an interval over 1000 ms is cut to 1000, a duration outside 1 to 5000 gives a `ViewError`. Add examples to `tests/views/smoothing.test.ts`.
+    - Add `advanceCamera(current, target, dtMs, durationMs, reducedMotion)` and a `FrameClock` helper to `smoothing.ts`: reduced motion jumps to the target in the same frame, a non-finite timestamp gives a `ViewError` and keeps the camera, an earlier timestamp gives an interval of 0 and a Notice, an interval over 1000 ms is cut to 1000, a duration outside 1 to 5000 gives a `ViewError`. Add examples to `tests/views/smoothing.test.ts`.
     - Commit subject: `Views: add camera smoothing, reduced motion and clock checks`
-    - _Requirements: 13.1, 13.4, 13.5, 13.6, 13.10, 13.11, 13.12, 13.13_
+    - _Requirements: 13.1, 13.4, 13.5, 13.6, 13.10, 13.11, 13.12, 13.13, 22.9_
 
-- [ ] 11. Tilted projection
+- [ ] 11. Tilted projection and block height
   - [ ] 11.1 Tilted projection and its inverse
     - Create `src/views/tilted-projection.ts` with `projectTilted` (forward component times sin of the tilt, height lifted by height times cos of the tilt) and `unprojectTilted` (height 0). Create `tests/views/tilted-round-trip.test.ts` with the property and examples at the tilt limits 20 and 70 and a tilt out of range (`ViewError`).
     - **Property 14: Tilted projection round trip at ground level**
@@ -168,37 +204,53 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Commit subject: `Views: add tilted projection with a round-trip property`
     - _Requirements: 12.2, 12.8, 12.9, 12.12_
   - [ ] 11.2 Depth order
-    - Add `depthOf` and `sortByDepth` (nearer after farther, ties within 0.001 by ascending identifier) to `tilted-projection.ts`. Add examples to `tests/views/tilted-round-trip.test.ts` or a new `tests/views/tilted-depth.test.ts`: order for hand-placed blocks, tie rule.
+    - Add `depthOf` and `sortByDepth` (nearer after farther, ties within 0.001 by ascending identifier) to `tilted-projection.ts`. Create `tests/views/tilted-depth.test.ts` with examples: order for hand-placed blocks, tie rule.
     - Commit subject: `Views: add depth order for the tilted view`
     - _Requirements: 12.6, 12.7_
+  - [ ] 11.3 Block height
+    - Create `src/views/block-height.ts` with `RAISED_KINDS` (`building`, `house`, `tower`, `wall-block`), `DEFAULT_BLOCK_HEIGHTS` (12, 6, 24, 3), `blockHeightValue(prop)` (the Prop's `blockHeight`, else the default of a raised kind, else 0), `blockHeightOf(prop, heightFactors)` (value times the kind's height factor, never the footprint `height` field; a non-finite or negative result returns a Notice naming the Prop so the caller draws it flat), `validateHeightFactor(kind, factor)` (0 to 100) and `largestBlockHeight(props, factors)` for the visible region margin.
+    - Create `tests/views/block-height.test.ts` with examples: defaults per kind, `blockHeight` over the default, `blockHeight` on a non-raised kind (value kept, Prop stays flat), the factor, the footprint `height` never used, flat fallback with Notice for a negative or non-finite height, margin from the largest height, factor boundaries (0, 100, just below, just above, NaN, +Infinity, -Infinity).
+    - Commit subject: `Views: add block height with default heights and factors`
+    - _Requirements: 12.13, 12.14, 12.15, 12.16, 12.17, 12.18, 23.13, 23.14_
 
-- [ ] 12. Input state machine
-  - [ ] 12.1 Pointer drag and selection
+- [ ] 12. Frame gate, input state machine and task status
+  - [ ] 12.1 Frame gate
+    - Create `src/views/frame-gate.ts` with `FrameGate.shouldDraw(inputs)` (version counters for Map, Route, Position, Camera, Viewport and Style, a `settling` flag and a `canvasVisible` flag; true on any change, true while settling, true once more when settling ends, false and versions not remembered while the canvas is hidden or has a size of 0) and `drawIfDue(gate, inputs, draw)` that calls the draw function only when the gate says so. No clock is read.
+    - Create `tests/views/frame-gate-unchanged.test.ts` with the property: drawing `drawMapLayers` through `drawIfDue` twice on the `RecordingCanvas` with no change between the two leaves zero calls for the second. Create `tests/views/frame-gate-changes.test.ts` with one example per change type (Map, Route, Position, Camera, Viewport, Style) asserting exactly one more frame and then zero calls, the one last frame after settling ends, a camera at rest in the same frame under reduced motion, and a hidden canvas that makes zero calls and draws again at the first frame with a valid size.
+    - **Property 19: An unchanged frame makes zero drawing calls**
+    - **Validates: Requirements 14.4, 14.9, 14.10, 22.6**
+    - Commit subject: `Views: add frame gate with unchanged-frame property`
+    - _Requirements: 14.4, 14.9, 14.10, 22.6, 22.7, 22.8, 22.9, 22.10, 22.12_
+  - [ ] 12.2 Pointer drag and selection
     - Create `src/views/input-state-machine.ts` with `InputEvent`, `InputCommand`, `InputState`, `processEvents` for pointer down, move and up: pan commands from drag deltas, a selection when released within 6 px and 500 ms, events with non-finite x, y or timestamp dropped with a Notice. Create `tests/views/input-pan-sum.test.ts` with the property and examples for selection, drag and dropped events.
     - **Property 16: Pointer drag commands sum to the total screen displacement**
     - **Validates: Requirements 15.12**
     - Commit subject: `Views: add pointer input reducer with a pan-sum property`
     - _Requirements: 11.1, 15.2, 15.3, 15.11, 15.12, 15.13_
-  - [ ] 12.2 Wheel, pinch and keys
-    - Extend `processEvents`: wheel to zoom at the pointer with a factor from 0.5 to 2, two-finger pinch to zoom at the midpoint by the ratio of distances (no command under 1 px distance), keys as in Requirement 15.5 and 15.6 (arrows pan by 10% of the viewport, plus 1.25, minus 0.8, Home fit, F follow, brackets for the next and previous place, Enter activate), unused keys give no command. Add examples to `tests/views/input-keys.test.ts`.
+  - [ ] 12.3 Wheel, pinch and keys
+    - Extend `processEvents`: wheel to zoom at the pointer with a factor from 0.5 to 2, two-finger pinch to zoom at the midpoint by the ratio of distances (no command under 1 px distance), keys as in Requirements 15.5 and 15.6 (arrows pan by 10% of the viewport, plus 1.25, minus 0.8, Home fit, F follow, brackets for the next and previous place, Enter activate), unused keys give no command. Create `tests/views/input-keys.test.ts` with examples.
     - Commit subject: `Views: add wheel, pinch and key commands to the input reducer`
     - _Requirements: 15.1, 15.4, 15.5, 15.6, 15.14, 15.15_
+  - [ ] 12.4 Record task status for the pure logic groups
+    - Update the status of tasks 1 to 12 in `.kiro/specs/map-views/tasks.md` and, if it exists, `.kiro/specs/map-views/tasks.meta.json`, and commit those two files together as one commit. Run `npm run build` and `npm test` in `kit/engine` first, each as its own call. If neither file changed, make no commit.
+    - Commit subject: `Specs: record map-views task status`
+    - _Requirements: 19.2, 19.5_
 
 - [ ] 13. The three views
   - [ ] 13.1 Minimap
-    - Create `src/views/minimap.ts`: player-centred camera whose rotation is the negated heading, smoothing through `advanceCamera`, clip to a circle with a rim, the North_Mark on the rim rotating with the map, the layers of `drawMapLayers`, `resize` keeps the centre, map inspection notices. Add a small hand-written fixture `tests/views/helpers/small-town.ts`.
-    - Create `tests/views/minimap-player-centred.test.ts` and `tests/views/minimap-north-mark.test.ts` with the two properties, plus an example that draws the fixture on the `RecordingCanvas`.
+    - Create `src/views/minimap.ts`: player-centred camera whose rotation is the negated heading, smoothing through `advanceCamera`, clip to a circle with a rim, the North_Mark on the rim rotating with the map, the layers of `drawMapLayers`, `resize` keeps the centre, map inspection notices, and `draw` goes through the `FrameGate`. Add a small hand-written fixture `tests/views/helpers/small-town.ts`.
+    - Create `tests/views/minimap-player-centred.test.ts` and `tests/views/minimap-north-mark.test.ts` with the two properties, plus an example that draws the fixture on the `RecordingCanvas` and one that a second unchanged draw makes zero calls.
     - **Property 8: Minimap keeps the player centred with heading up**
     - **Property 9: North mark points to world north**
     - **Validates: Requirements 9.7, 9.8**
     - Commit subject: `Views: add minimap with centring and north mark properties`
-    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.6, 9.7, 9.8, 13.1, 16.3_
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.6, 9.7, 9.8, 13.1, 16.3, 22.6_
   - [ ] 13.2 Minimap zoom limits and small size
-    - Add `setZoomLimits(min, max)` and `setZoom(z)` to `minimap.ts` (defaults 0.5 and 4, range 0.001 to 1000, minimum below maximum, the player marker does not move) and the Notice for a viewport under 40 by 40 with no circle drawn. Add examples with boundaries to `tests/views/minimap-zoom.test.ts`.
+    - Add `setZoomLimits(min, max)` and `setZoom(z)` to `minimap.ts` (defaults 0.5 and 4, range 0.001 to 1000, minimum below maximum, a zoom outside the limits is an error, the player marker does not move) and the Notice for a viewport under 40 by 40 with no circle drawn. Create `tests/views/minimap-zoom.test.ts` with examples and boundaries.
     - Commit subject: `Views: add minimap zoom limits and small size notice`
     - _Requirements: 9.5, 9.9, 9.10, 9.11_
   - [ ] 13.3 Full map camera operations
-    - Create `src/views/full-map.ts` with the camera at rotation 0, `pan`, `zoomAt` (clamped to the zoom limits with a Notice, defaults of the fit zoom and 8), `fit` (extent with a 5% margin, extent of at least 1 unit, empty map gives a `ViewError`), `follow`, the pan clamp that keeps at least 20% of the extent in view, `resize` keeps the centre. Create `tests/views/full-map-camera.test.ts` with examples and boundaries.
+    - Create `src/views/full-map.ts` with the camera at rotation 0, `pan`, `zoomAt` (clamped to the zoom limits with a Notice, defaults of the fit zoom and 8), `fit` (extent with a 5% margin, extent of at least 1 unit, empty map gives a `ViewError`), `follow`, the pan clamp that keeps at least 20% of the extent in view, `resize` keeps the centre, and `draw` through the `FrameGate`. Create `tests/views/full-map-camera.test.ts` with examples and boundaries.
     - Commit subject: `Views: add full map pan, zoom, fit and follow`
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.9, 10.10, 10.11, 10.12, 16.3_
   - [ ] 13.4 Full map selection sets the destination
@@ -212,101 +264,124 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Add `focusNextPlace`, `focusPreviousPlace` and `activateFocusedPlace` to `full-map.ts` (order by identifier, a visible focus ring drawn on the focused place, Enter sets the destination, announcements for no places and no selected place returned as text for the live region). Create `tests/views/full-map-focus.test.ts`.
     - Commit subject: `Views: add full map place focus by keyboard`
     - _Requirements: 15.6, 15.16, 15.17_
-  - [ ] 13.6 Tilted view
-    - Create `src/views/tilted-view.ts`: player-centred heading-up camera with the player in the lower half, ground layers first, raised blocks (kinds `building`, `house`, `tower`, `wall-block`) with top and darker side faces in depth order, other props flat, visible region widened by the largest block height, `resize` keeps the centre.
-    - Create `tests/views/tilted-depth-order.test.ts` with the property over the `RecordingCanvas` and an example drawing the fixture.
+  - [ ] 13.6 Tilted view with block heights
+    - Create `src/views/tilted-view.ts`: player-centred heading-up camera with the player in the lower half, ground layers first, raised blocks (kinds in `RAISED_KINDS`) with top and darker side faces in depth order, each block's height from `blockHeightOf` (flat with a Notice when the height is not usable, a Prop outside the raised kinds drawn flat), other props flat, visible region widened by `largestBlockHeight`, `resize` keeps the centre, and `draw` through the `FrameGate`.
+    - Create `tests/views/tilted-depth-order.test.ts` with the depth property and `tests/views/tilted-block-height.test.ts` with the block-height property, both over the `RecordingCanvas`, plus an example drawing the fixture and an example with `blockHeight` over the default, a `blockHeight` of 0 and a footprint `height` that is not used as a block height.
     - **Property 13: Raised blocks are drawn nearer after farther**
-    - **Validates: Requirements 12.11**
-    - Commit subject: `Views: add tilted view with raised blocks and depth order`
-    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.10, 12.11_
+    - **Property 20: Raised block top lies above its footprint by the block height**
+    - **Validates: Requirements 12.11, 12.15, 12.17, 12.19**
+    - Commit subject: `Views: add tilted view with raised blocks and block heights`
+    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.10, 12.11, 12.14, 12.15, 12.16, 12.17, 12.18, 12.19, 23.13_
   - [ ] 13.7 Tilted view settings
-    - Add `setTiltAngle` (20 to 70, default 45), `setHeightFactor(kind, factor)` (0 to 100) and the flat-with-Notice rule for a block height that is not finite or below 0 to `tilted-view.ts`. Add examples with boundaries to `tests/views/tilted-settings.test.ts`.
+    - Add `setTiltAngle` (20 to 70, default 45) and `setHeightFactor(kind, factor)` (0 to 100, default 1) to `tilted-view.ts`, each returning a `ViewError` and keeping the previous value for an input out of range. Create `tests/views/tilted-settings.test.ts` with examples and boundaries, and an example that a changed factor changes the drawn top lift.
     - Commit subject: `Views: add tilt angle and height factor settings`
-    - _Requirements: 12.8, 12.9, 12.13, 12.14_
+    - _Requirements: 12.8, 12.9, 12.13_
 
-- [ ] 14. Canvas adapter and input binding
-  - [ ] 14.1 Canvas adapter and frame gate
-    - Create `src/views/canvas-adapter.ts` (`CanvasAdapter implements CanvasInterface` on a 2D context, `mount(canvas)` returning a `ViewError` when there is no 2D context, pixel size from CSS size times the pixel ratio rounded, one scale by the ratio, ratio limited to 3 and to a 16384 px side with a Notice, bad ratio replaced by 1 with a Notice, a bad CSS size returns a `ViewError` and keeps the previous size) and `src/views/frame-gate.ts` (draw only when the camera, position, route, style or viewport changed).
-    - Create `tests/views/canvas-adapter.test.ts` and `tests/views/frame-gate.test.ts` using hand-written fake context and canvas objects.
-    - Commit subject: `Views: add canvas adapter and frame gate`
-    - _Requirements: 1.2, 1.9, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7, 14.8, 16.7_
+- [ ] 14. Canvas adapter, input binding and accessibility
+  - [ ] 14.1 Canvas adapter
+    - Create `src/views/canvas-adapter.ts` (`CanvasAdapter implements CanvasInterface` on a 2D context, `mount(canvas)` returning a `ViewError` when there is no 2D context, pixel size from CSS size times the pixel ratio rounded, one scale by the ratio, ratio limited to 3 and to a 16384 px side with a Notice, bad ratio replaced by 1 with a Notice, a bad CSS size returns a `ViewError` and keeps the previous size).
+    - Create `tests/views/canvas-adapter.test.ts` using hand-written fake context and canvas objects, with boundaries for the ratio (0.5, 8, just below, just above, NaN, infinities) and the size.
+    - Commit subject: `Views: add canvas adapter with pixel ratio handling`
+    - _Requirements: 1.2, 1.9, 14.1, 14.2, 14.3, 14.5, 14.6, 14.7, 14.8, 16.7_
   - [ ] 14.2 Input binding
-    - Create `src/views/input-binding.ts`: attach pointer, wheel, touch and key listeners to a canvas, build plain `InputEvent` records, call `processEvents`, apply the commands to a `FullMap`, call `preventDefault` for wheel and touch, set `touch-action: none`, and return a function that removes the listeners. Create `tests/views/input-binding.test.ts` with a fake event target.
+    - Create `src/views/input-binding.ts`: attach pointer, wheel, touch and key listeners to a canvas, build plain `InputEvent` records, call `processEvents`, apply the commands to a `FullMap`, call `preventDefault` for wheel and touch, set `touch-action: none`, and return a function that removes every listener it added. Create `tests/views/input-binding.test.ts` with a fake event target that counts added and removed listeners.
     - Commit subject: `Views: add input binding for the full map`
     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.10, 15.15_
   - [ ] 14.3 Canvas accessibility
-    - Add to `input-binding.ts` (or a new `src/views/accessibility.ts` if the file grows past a few hundred lines) the accessible name and key description of each canvas, a visible focus indicator style with contrast of at least 3 to 1, and an `aria-live="polite"` element that receives the guidance sentence and the focus announcements. Add `tests/views/accessibility.test.ts` with a fake element and a contrast check of the focus colour against the page background.
+    - Add to `input-binding.ts` (or a new `src/views/accessibility.ts` if the file grows past a few hundred lines) the accessible name and key description of each canvas, a visible focus indicator style with contrast of at least 3 to 1, and an `aria-live="polite"` element that receives the guidance sentence and the focus announcements. Create `tests/views/accessibility.test.ts` with a fake element and a contrast check of the focus colour against the page background.
     - Commit subject: `Views: add canvas names, focus style and live guidance text`
     - _Requirements: 15.7, 15.8, 15.9_
 
-- [ ] 15. Public surface and docs
-  - [ ] 15.1 Views exports
-    - Create `src/views/index.ts` re-exporting the documented View functions and types, and re-export them from `src/index.ts` without changing the existing exports. Add `tests/views/exports.test.ts` listing the expected export names.
-    - Commit subject: `Views: add public exports`
-    - _Requirements: 19.14_
-  - [ ] 15.2 Views API doc
-    - Create `kit/engine/docs/views-api.md` with one entry per exported function and type: description, inputs with units and ranges, outputs, View_Errors, one usage example. Add a test in `tests/views/exports.test.ts` that the export list and the doc entries match exactly.
-    - Commit subject: `Views: add API reference doc`
-    - _Requirements: 19.14_
+- [ ] 15. Mount functions
+  - [ ] 15.1 Mount core and mountMinimap
+    - Create `src/views/mount.ts` with the `MountServices` option (request and cancel frame, resize observer, reduced-motion query, pixel ratio; defaults to the real globals, reached only here), argument validation (canvas element, Engine functions the View reads, options ranges, a module-level `WeakSet` of mounted canvases), the Frame_Loop (reads Position, Route, remaining Route, Guidance and Map from the Engine on each frame, keeps exactly one pending frame request, passes the frame timestamp on), `destroy()` (cancels the frame, removes every listener, disconnects every observer, clears the mounted mark; a second call does nothing; controls after it return a destroyed `ViewError`) and `mountMinimap` with its handle (`setZoomLimits`, `setZoom`, `destroy`). Mounting order: validate, create the adapter, then register side effects, so a failure leaves nothing behind.
+    - Create `tests/views/helpers/stand-ins.ts` (fake canvas, frame scheduler, resize observer, reduced-motion query and Engine, each counting what is added and removed) and `tests/views/mount-functions.test.ts` with examples: a valid mount, the loop reading from the Engine each frame, one pending frame, a reduced-motion change used from the next frame, the second `destroy()`, controls after `destroy()`.
+    - Create `kit/engine/docs/views-api.md` with the mounting section: the three Mount_Functions, the options, the Mount_Handle, the View_Errors and `destroy()`, and the usage example for `mountMinimap`.
+    - Commit subject: `Views: add mount core and mountMinimap`
+    - _Requirements: 13.6, 21.1, 21.2, 21.4, 21.5, 21.6, 21.7, 21.8, 21.9, 21.10, 21.17, 21.18_
+  - [ ] 15.2 mountFullMap
+    - Add `mountFullMap` to `mount.ts`: the same validation and mounting order, binds the input of Requirement 15 through `input-binding.ts` and the accessibility parts, and returns a handle with `pan`, `zoomAt`, `fit`, `follow`, `select` and `destroy`. Add examples to `tests/views/mount-functions.test.ts` (input bound, handle controls reach the view, every listener added by the input binding is removed by `destroy()`). Add the usage example for `mountFullMap` to `views-api.md`.
+    - Commit subject: `Views: add mountFullMap`
+    - _Requirements: 21.1, 21.2, 21.3, 21.4, 21.8, 21.17_
+  - [ ] 15.3 mountTiltedView
+    - Add `mountTiltedView` to `mount.ts`: the same validation and mounting order, handle with `setTiltAngle`, `setHeightFactor` and `destroy`, options `tiltAngleDegrees` and `heightFactors` validated with the ranges of Requirement 12. Add examples to `tests/views/mount-functions.test.ts` and the usage example for `mountTiltedView` to `views-api.md`.
+    - Commit subject: `Views: add mountTiltedView`
+    - _Requirements: 21.1, 21.2, 21.4, 21.13, 21.17_
+  - [ ] 15.4 Mount errors and destroy-leaves-nothing
+    - Create `tests/views/mount-errors.test.ts` with one example for each View_Error of Requirement 21 criteria 10 to 14 on each Mount_Function (not a canvas, Engine missing a function, option not an object or out of range with boundaries for the Zoom limits, smoothing duration, tilt angle and height factor, canvas already mounted, controls after destroy), each checking plain words, the named input and nothing left behind (Requirement 21.15). Create `tests/views/mount-destroy-leaves-nothing.test.ts` with the property.
+    - **Property 17: Destroy leaves nothing behind**
+    - **Validates: Requirements 21.8, 21.15, 21.19**
+    - Commit subject: `Views tests: mount errors and destroy leaves nothing`
+    - _Requirements: 21.8, 21.9, 21.10, 21.11, 21.12, 21.13, 21.14, 21.15, 21.18, 21.19_
 
-- [ ] 16. Demo page
-  - [ ] 16.1 Scaffold the demo package
+- [ ] 16. Public surface and docs
+  - [ ] 16.1 Views exports
+    - Create `src/views/index.ts` re-exporting the documented View functions and types (including the three Mount_Functions and the public Draw_Functions), and re-export them from `src/index.ts` without changing the existing exports. Create `tests/views/exports.test.ts` listing the expected export names.
+    - Commit subject: `Views: add public exports`
+    - _Requirements: 19.14, 21.7_
+  - [ ] 16.2 Views API doc
+    - Complete `kit/engine/docs/views-api.md` with one entry per remaining exported function and type: description, inputs with units and ranges, outputs, View_Errors, one usage example. Add a test in `tests/views/exports.test.ts` that the export list and the doc entries match exactly, and that the doc has a usage example for each of the three Mount_Functions.
+    - Commit subject: `Views: add API reference doc`
+    - _Requirements: 19.14, 21.17_
+
+- [ ] 17. Demo page
+  - [ ] 17.1 Scaffold the demo package
     - Create `kit/demo/package.json` (no `dependencies`; devDependencies vite, vitest, typescript, @playwright/test; scripts `build` = `tsc --noEmit`, `test` = `vitest --run`, `dev`, `bench`, `gate`), `tsconfig.json` (strict), `vite.config.ts`, `vitest.config.ts`, `index.html` with an empty body and `src/main.ts` with an empty export, and a smoke test `tests/smoke.test.ts` that asserts there is no `dependencies` field and strict mode is on. Run `npm install` in `kit/demo` and commit the lockfile with it. Check that `.gitignore` already ignores `node_modules/` and `dist/`.
     - Commit subject: `Demo: add package scaffold`
     - _Requirements: 17.1_
-  - [ ] 16.2 Town_Map
-    - Create `kit/demo/src/town-map.ts`: a hand-written `MapFile` of an invented town with at least 12 nodes, 3 road kinds, 6 places, 1 one-way road, 1 blocked area, 6 props of which at least 3 are raised kinds, and no real-world data. Create `kit/engine/tests/views/example-town-map.test.ts` that loads it with `parseMap`, checks the counts, and draws it on the `RecordingCanvas` in each View with a route, a player and a destination, asserting the presence of roads, blocked areas, props, route line, player marker, destination marker and place labels.
+  - [ ] 17.2 Town_Map
+    - Create `kit/demo/src/town-map.ts`: a hand-written `MapFile` of an invented town with at least 12 nodes, 3 road kinds, 6 places, 1 one-way road, 1 blocked area, 6 props of which at least 3 are raised kinds (one with its own `blockHeight`), and no real-world data. Create `kit/engine/tests/views/example-town-map.test.ts` that loads it with `parseMap`, checks the counts, and draws it on the `RecordingCanvas` in each View with a route, a player and a destination, asserting the presence of roads, blocked areas, props, route line, player marker, destination marker and place labels.
     - Commit subject: `Demo: add the town map with draw examples in each view`
     - _Requirements: 17.2, 17.10, 19.8_
-  - [ ] 16.3 Map choice
+  - [ ] 17.3 Map choice
     - Create `kit/demo/src/map-choice.ts` with `chooseMap(name)` returning the Town_Map text or the Large_Generated_Map text from the engine generator with a fixed seed, with a plain error for an unknown name. Create `kit/demo/tests/map-choice.test.ts`: the same seed twice gives equal text, the large map has 5,000 roads and loads, unknown name gives the error.
     - Commit subject: `Demo: add map choice between town and large map`
     - _Requirements: 17.3, 17.12_
-  - [ ] 16.4 Player dot
+  - [ ] 17.4 Player dot
     - Create `kit/demo/src/player-dot.ts`: position, heading from the latest movement, speed from 1 to 200 world units per second (default 30; an invalid speed keeps the previous and returns a message naming speed and range), stop at the map extent widened by 50 units with a message, timestamp-driven. Create `kit/demo/tests/player-dot.test.ts` with examples and boundaries.
     - Commit subject: `Demo: add arrow-key player dot`
     - _Requirements: 17.5, 17.6, 17.13, 17.14_
-  - [ ] 16.5 Reduced motion and status text
-    - Create `kit/demo/src/reduced-motion.ts` (reads the setting and reports changes through an injected media query object) and `kit/demo/src/status-text.ts` (pure formatting of the guidance sentence, distance left, the No_Way_Result message, road count and blocked-road notices, map load errors, and the no-usable-road notice). Create tests for both.
+  - [ ] 17.5 Reduced motion and status text
+    - Create `kit/demo/src/reduced-motion.ts` (reads the setting and reports changes through an injected media query object, passed to the Mount_Functions as their reduced-motion service) and `kit/demo/src/status-text.ts` (pure formatting of the guidance sentence, distance left, the No_Way_Result message, road count and blocked-road notices, map load errors, and the no-usable-road notice). Create tests for both.
     - Commit subject: `Demo: add reduced motion reader and status text`
     - _Requirements: 13.4, 13.5, 13.6, 17.8, 17.9, 17.11, 17.12, 17.15_
-  - [ ] 16.6 Page layout
+  - [ ] 17.6 Page layout
     - Fill `kit/demo/index.html` and `src/demo.css`: a statement that this is a demonstration of the Views and not an application, three canvases side by side at 1200 px and wider and in one column at 375 px (canvases 300 to 375 px wide, no horizontal scrolling), a map choice, a speed control, a status area, controls of at least 44 by 44 px with text labels and visible focus. Extend `tests/smoke.test.ts` to read the HTML and CSS and assert the notice text, the labels, the 44 px minimum size rule and the media queries.
     - Commit subject: `Demo: add page layout for three views`
     - _Requirements: 16.1, 16.2, 16.4, 16.5, 17.4, 17.11_
-  - [ ] 16.7 Wire the page
-    - Fill `kit/demo/src/main.ts`: load the chosen map into the `Engine` (on failure show the errors and keep the previous map), mount the three Views on their canvases through `CanvasAdapter`, bind input on the Full_Map, move the dot with the arrow keys while no canvas has focus, feed the position and a timestamp each frame, draw each View, show the status text. Keep the logic in small testable functions; add `tests/main-wiring.test.ts` using fake canvases and the `RecordingCanvas` for a load, a click, a position feed and a failed load. Run `npm run build` in `kit/demo` to check the Vite build.
+  - [ ] 17.7 Wire the page with the mount functions
+    - Fill `kit/demo/src/main.ts`: load the chosen map into the `Engine` (on failure show the errors and keep the previous map), mount the three Views only with `mountMinimap`, `mountFullMap` and `mountTiltedView` (no direct adapter, input binding or frame loop code in the demo), move the dot with the arrow keys while no canvas has focus, feed only the position and a timestamp to the Engine each frame, show the status text. Keep the logic in small testable functions; add `tests/main-wiring.test.ts` using fake canvases and the engine stand-ins for a load, a click, a position feed and a failed load, and a test that `main.ts` imports none of `CanvasAdapter`, `bindInput` or `requestAnimationFrame` directly. Run `npm run build` in `kit/demo` to check the Vite build.
     - Commit subject: `Demo: wire engine and views into the page`
-    - _Requirements: 16.3, 17.1, 17.5, 17.7, 17.8, 17.9, 17.12_
+    - _Requirements: 16.3, 17.1, 17.5, 17.7, 17.8, 17.9, 17.12, 21.16_
 
-- [ ] 17. Checkpoint - Demo page
+- [ ] 18. Checkpoint - Demo page
   - Run `npm run build` and `npm test` in `kit/engine` and in `kit/demo`, each as its own call, and note the run time of each (the engine default suite must stay under 60 seconds). Run `npm run bench` in `kit/engine` once for the route times. Run `git status` and `git log --oneline` as separate calls.
   - Update the task status in `.kiro/specs/map-views/tasks.md` and `.kiro/specs/map-views/tasks.meta.json` (if it exists), and commit those two files together as one commit with the subject `Specs: record map-views task status`. If the status files did not change, make no commit.
   - Report plainly: real `git status` output, the commit list, test results with time, the measured route times, and anything not done or not verified. No frame times exist yet at this point. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
   - _Requirements: 19.2, 19.5, 19.6, 19.7_
 
-- [ ] 18. Frame benchmark
-  - [ ] 18.1 Playwright frame benchmark
-    - Create `kit/demo/playwright.config.ts` (starts the Vite server, a Chromium project, a separate command from the default suite) and `kit/demo/bench/frame-bench.spec.ts`: load the Large_Generated_Map, move the player along a fixed seeded path for at least 300 frames, measure each View's draw time with `performance.now()` and the interval between animation frames, measure the Full_Map at the fit zoom and at 4 px per world unit, and print the median, 95th percentile and maximum in ms with 2 decimals, plus browser name and version, Node version, viewport, Device_Pixel_Ratio and machine description. No pass or fail threshold on the numbers. It fails with a plain reason only when fewer than 300 frames were measured (stating both numbers), a time is not finite or is negative (naming the View and the measurement), or the page or browser cannot run.
+- [ ] 19. Frame benchmark
+  - [ ] 19.1 Playwright frame benchmark
+    - Create `kit/demo/playwright.config.ts` (starts the Vite server, a Chromium project, a separate command from the default suite) and `kit/demo/bench/frame-bench.spec.ts`: load the Large_Generated_Map, move the player along a fixed seeded path for at least 300 frames, measure each View's draw time with `performance.now()` and the interval between animation frames, measure the Full_Map at the fit zoom and at 4 px per world unit, count the paths begun per frame for each View with a counting wrapper around the Canvas_Interface, and print the median, 95th percentile and maximum in ms with 2 decimals, plus browser name and version, Node version, viewport, Device_Pixel_Ratio and machine description. No pass or fail threshold on the numbers. It fails with a plain reason only when fewer than 300 frames were measured (stating both numbers), a time is not finite or is negative (naming the View and the measurement), or the page or browser cannot run.
     - Add a Node-level test `kit/demo/tests/bench-stats.test.ts` for the statistics helper (median, 95th percentile, maximum, the failure reasons) in `kit/demo/bench/bench-stats.ts`.
     - Run `npm run bench` once (generous timeout) and put the printed numbers in the commit body. The benchmark stays out of `npm test`.
     - Commit subject: `Demo: add Playwright frame benchmark`
-    - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.8, 18.9, 18.10_
+    - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.8, 18.9, 18.10, 22.13_
 
-- [ ] 19. Checkpoint - End of block
+- [ ] 20. Checkpoint - End of block
   - Run `npm run build` and `npm test` in `kit/engine` and in `kit/demo`, each as its own call, with run times. Run `npm run bench` in `kit/engine` and `npm run bench` in `kit/demo` once more. Run `git status` and `git log --oneline` as separate calls.
   - Update the task status in `tasks.md` and `tasks.meta.json` (if it exists) and commit those two files together with the subject `Specs: record map-views task status`.
-  - Report plainly: real `git status` output, the commit list, test results with time, measured route times, measured frame times (median, 95th percentile, maximum for each View, with the machine description), and anything not done or not verified. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
-  - _Requirements: 18.7, 19.2, 19.3, 19.4, 19.5, 19.6, 19.7, 19.12_
+  - Report plainly: real `git status` output, the commit list, test results with time, measured route times, measured frame times (median, 95th percentile, maximum for each View, with the machine description) and paths begun per frame, and anything not done or not verified. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
+  - _Requirements: 18.7, 19.2, 19.3, 19.4, 19.5, 19.6, 19.7, 19.12, 19.17_
 
-- [ ] 20. Gate (last task)
+- [ ] 21. Gate (last task)
   - If the Gate fails, the project stops here: report the failing step plainly and start no further block.
-  - [ ] 20.1 Playwright gate check
+  - [ ] 21.1 Playwright gate check
     - Create `kit/demo/bench/gate.spec.ts` and a `gate` script. On the Large_Generated_Map, driven by mouse and keyboard: click a place on the Full_Map and check that the route line is drawn on the three Views; move the player along the route and check that the travelled part disappears and no new route is requested; leave the route by more than the reroute margin for longer than the reroute delay and check that a new route is drawn from the player to the same destination. Report, without a threshold, the number of frames with an interval above 50 ms for each View during these steps. Repeat the same steps at a 375 px wide viewport with touch input, and check there is no horizontal scrolling and each canvas is 300 to 375 px wide. Fail with a plain reason if the map does not load within 30 seconds (stating the time waited) or if the click returns a No_Way_Result (reporting its message).
     - Add a Node test for any pure helper the gate uses (for example the frame-interval counter).
     - Commit subject: `Demo: add Playwright gate check on the large map`
     - _Requirements: 16.1, 16.2, 16.6, 20.1, 20.2, 20.3, 20.4, 20.5, 20.6, 20.9, 20.10_
-  - [ ] 20.2 Run the gate and report
+  - [ ] 21.2 Run the gate and report
     - Run `npm run gate` in `kit/demo`. Ask the user to try the same three steps by hand on the Demo_Page and to say what they saw. Update the task status in `tasks.md` and `tasks.meta.json` (if it exists) and commit those two files together with the subject `Specs: record map-views gate result`.
     - Report plainly: real `git status` output, the commit list, the gate result for each step, the frames over 50 ms for each View, and the frame benchmark numbers. If any step failed, say that the Gate failed, name the step, and state that the project stops there. Do not report credit figures. Do not push.
     - _Requirements: 20.7, 20.8_
@@ -314,9 +389,13 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
 ## Notes
 
 - Property tests are required tasks and carry no `*` marker. They are written inside the task of the code they test, so code and tests always land in one commit.
-- Property numbers 1 to 16 match the design. Requirement 19.3 names 14 properties; design Properties 1 and 2 together cover the transform round trip.
+- Property numbers 1 to 22 match the design. Requirement 19.3 names 14 properties; design Properties 1 and 2 together cover the transform round trip. Properties 17 to 22 come from Requirements 21, 22, 12 and 23: 17 in task 15.4, 18 in task 7.3, 19 in task 12.1, 20 in task 13.6, 21 in task 2.6, 22 in task 2.7.
+- Property 19 is first proved on the gate over `drawMapLayers` (task 12.1); each View task (13.1, 13.3, 13.6) adds an example that its own `draw` makes zero calls when nothing changed.
 - Requirement 8.9 (destination label kept) and the other criteria without a listed property are covered by example tests in their tasks.
-- The Gate task is the last task. The end-of-block checkpoint (task 19) comes before it and reports build, tests and frame times; task 20.2 reports the Gate result.
+- Requirement 12 criteria 15 to 18 (defaults, fallback, factor, margin) are examples in task 11.3; criterion 19 is Property 20 in task 13.6.
+- The pure logic stays in groups 1 to 12; groups 13 to 16 hold the three Views, adapter, binding and mount; the demo page (group 17) uses only the Mount_Functions.
+- The Gate task is the last task. The end-of-block checkpoint (task 20) comes before it and reports build, tests and frame times; task 21.2 reports the Gate result.
+- Task 1.1 is already committed as `e0bdb87` and is marked done.
 - Waves below hold one task each because every task is its own commit on the same branch and later tasks edit files that earlier tasks created.
 
 ## Task Dependency Graph
@@ -324,54 +403,66 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
 ```json
 {
   "waves": [
-    { "id": 0, "tasks": ["1.1"] },
-    { "id": 1, "tasks": ["2.1"] },
-    { "id": 2, "tasks": ["2.2"] },
-    { "id": 3, "tasks": ["3.1"] },
-    { "id": 4, "tasks": ["3.2"] },
-    { "id": 5, "tasks": ["3.3"] },
-    { "id": 6, "tasks": ["4.1"] },
-    { "id": 7, "tasks": ["4.2"] },
-    { "id": 8, "tasks": ["5.1"] },
-    { "id": 9, "tasks": ["5.2"] },
-    { "id": 10, "tasks": ["6.1"] },
-    { "id": 11, "tasks": ["6.2"] },
-    { "id": 12, "tasks": ["7.1"] },
-    { "id": 13, "tasks": ["7.2"] },
-    { "id": 14, "tasks": ["7.3"] },
-    { "id": 15, "tasks": ["7.4"] },
-    { "id": 16, "tasks": ["8.1"] },
-    { "id": 17, "tasks": ["8.2"] },
-    { "id": 18, "tasks": ["8.3"] },
-    { "id": 19, "tasks": ["9.1"] },
-    { "id": 20, "tasks": ["10.1"] },
-    { "id": 21, "tasks": ["10.2"] },
-    { "id": 22, "tasks": ["11.1"] },
-    { "id": 23, "tasks": ["11.2"] },
-    { "id": 24, "tasks": ["12.1"] },
-    { "id": 25, "tasks": ["12.2"] },
-    { "id": 26, "tasks": ["13.1"] },
-    { "id": 27, "tasks": ["13.2"] },
-    { "id": 28, "tasks": ["13.3"] },
-    { "id": 29, "tasks": ["13.4"] },
-    { "id": 30, "tasks": ["13.5"] },
-    { "id": 31, "tasks": ["13.6"] },
-    { "id": 32, "tasks": ["13.7"] },
-    { "id": 33, "tasks": ["14.1"] },
-    { "id": 34, "tasks": ["14.2"] },
-    { "id": 35, "tasks": ["14.3"] },
-    { "id": 36, "tasks": ["15.1"] },
-    { "id": 37, "tasks": ["15.2"] },
-    { "id": 38, "tasks": ["16.1"] },
-    { "id": 39, "tasks": ["16.2"] },
-    { "id": 40, "tasks": ["16.3"] },
-    { "id": 41, "tasks": ["16.4"] },
-    { "id": 42, "tasks": ["16.5"] },
-    { "id": 43, "tasks": ["16.6"] },
-    { "id": 44, "tasks": ["16.7"] },
-    { "id": 45, "tasks": ["18.1"] },
-    { "id": 46, "tasks": ["20.1"] },
-    { "id": 47, "tasks": ["20.2"] }
+    { "id": 0, "tasks": ["2.1"] },
+    { "id": 1, "tasks": ["2.2"] },
+    { "id": 2, "tasks": ["2.3"] },
+    { "id": 3, "tasks": ["2.4"] },
+    { "id": 4, "tasks": ["2.5"] },
+    { "id": 5, "tasks": ["2.6"] },
+    { "id": 6, "tasks": ["2.7"] },
+    { "id": 7, "tasks": ["3.1"] },
+    { "id": 8, "tasks": ["3.2"] },
+    { "id": 9, "tasks": ["3.3"] },
+    { "id": 10, "tasks": ["4.1"] },
+    { "id": 11, "tasks": ["4.2"] },
+    { "id": 12, "tasks": ["5.1"] },
+    { "id": 13, "tasks": ["5.2"] },
+    { "id": 14, "tasks": ["6.1"] },
+    { "id": 15, "tasks": ["6.2"] },
+    { "id": 16, "tasks": ["7.1"] },
+    { "id": 17, "tasks": ["7.2"] },
+    { "id": 18, "tasks": ["7.3"] },
+    { "id": 19, "tasks": ["7.4"] },
+    { "id": 20, "tasks": ["7.5"] },
+    { "id": 21, "tasks": ["8.1"] },
+    { "id": 22, "tasks": ["8.2"] },
+    { "id": 23, "tasks": ["8.3"] },
+    { "id": 24, "tasks": ["9.1"] },
+    { "id": 25, "tasks": ["10.1"] },
+    { "id": 26, "tasks": ["10.2"] },
+    { "id": 27, "tasks": ["11.1"] },
+    { "id": 28, "tasks": ["11.2"] },
+    { "id": 29, "tasks": ["11.3"] },
+    { "id": 30, "tasks": ["12.1"] },
+    { "id": 31, "tasks": ["12.2"] },
+    { "id": 32, "tasks": ["12.3"] },
+    { "id": 33, "tasks": ["12.4"] },
+    { "id": 34, "tasks": ["13.1"] },
+    { "id": 35, "tasks": ["13.2"] },
+    { "id": 36, "tasks": ["13.3"] },
+    { "id": 37, "tasks": ["13.4"] },
+    { "id": 38, "tasks": ["13.5"] },
+    { "id": 39, "tasks": ["13.6"] },
+    { "id": 40, "tasks": ["13.7"] },
+    { "id": 41, "tasks": ["14.1"] },
+    { "id": 42, "tasks": ["14.2"] },
+    { "id": 43, "tasks": ["14.3"] },
+    { "id": 44, "tasks": ["15.1"] },
+    { "id": 45, "tasks": ["15.2"] },
+    { "id": 46, "tasks": ["15.3"] },
+    { "id": 47, "tasks": ["15.4"] },
+    { "id": 48, "tasks": ["16.1"] },
+    { "id": 49, "tasks": ["16.2"] },
+    { "id": 50, "tasks": ["17.1"] },
+    { "id": 51, "tasks": ["17.2"] },
+    { "id": 52, "tasks": ["17.3"] },
+    { "id": 53, "tasks": ["17.4"] },
+    { "id": 54, "tasks": ["17.5"] },
+    { "id": 55, "tasks": ["17.6"] },
+    { "id": 56, "tasks": ["17.7"] },
+    { "id": 57, "tasks": ["19.1"] },
+    { "id": 58, "tasks": ["21.1"] },
+    { "id": 59, "tasks": ["21.2"] }
   ]
 }
 ```
