@@ -288,3 +288,57 @@ describe("Engine guidance", () => {
     expect(engine.getGuidanceSentence()).toBe(`There is no route. ${message}`);
   });
 });
+
+describe("Engine rerouting", () => {
+  const at = (x: number, y: number) => ({ x, y, headingDegrees: 0 });
+
+  it("finds a new route from the player after the delay beyond the margin", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    engine.setDestination({ point: { x: 100, y: 3 } });
+    const first = engine.getRoute();
+    engine.feedPosition(at(60, 50), 100);
+    expect(engine.getRoute()).toBe(first);
+    engine.feedPosition(at(60, 50), 1099);
+    expect(engine.getRoute()).toBe(first);
+    engine.feedPosition(at(60, 50), 1100);
+    const next = engine.getRoute();
+    expect(next).not.toBe(first);
+    expect(next?.parts[0]?.start).toMatchObject({ x: 60, y: 50 });
+    expect(engine.getRemainingRoute()).toBe(next);
+    expect(engine.getLastNoWayResult()).toBeUndefined();
+  });
+
+  it("does not reroute on a short wobble off the road", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    engine.setDestination({ point: { x: 100, y: 3 } });
+    const first = engine.getRoute();
+    engine.feedPosition(at(30, 40), 100);
+    engine.feedPosition(at(30, 40), 900);
+    engine.feedPosition(at(40, 0), 950);
+    engine.feedPosition(at(30, 40), 1000);
+    engine.feedPosition(at(30, 40), 1900);
+    expect(engine.getRoute()).toBe(first);
+  });
+
+  it("clears the route and keeps the reason when a reroute finds no way", () => {
+    const engine = engineAt(mapText([]), 0, 0);
+    engine.setDestination({ point: { x: 100, y: 3 } });
+    expect(engine.getRoute()).toBeDefined();
+    engine.feedPosition(at(60, 50), 100);
+    engine.feedPosition(at(60, 50), 1100);
+    expect(engine.getRoute()).toBeUndefined();
+    expect(engine.getRemainingRoute()).toBeUndefined();
+    expect(engine.getLastNoWayResult()).toBeDefined();
+    expect(engine.getGuidanceSentence()).toBe(`There is no route. ${engine.getLastNoWayResult()?.message}`);
+  });
+
+  it("uses the configured delay", () => {
+    const engine = engineAt(joinedMapText(), 0, 0);
+    engine.configure({ rerouteDelayMs: 200 });
+    engine.setDestination({ point: { x: 100, y: 3 } });
+    const first = engine.getRoute();
+    engine.feedPosition(at(60, 50), 100);
+    engine.feedPosition(at(60, 50), 300);
+    expect(engine.getRoute()).not.toBe(first);
+  });
+});

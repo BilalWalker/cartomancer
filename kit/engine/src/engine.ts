@@ -4,6 +4,7 @@ import { badInput, noMapLoaded } from "./errors.js";
 import { computeGuidance } from "./guidance.js";
 import { toSentence } from "./guidance-text.js";
 import { parseMap } from "./map-loader.js";
+import { Rerouter } from "./rerouter.js";
 import { findRoute } from "./route-finder.js";
 import { advance, DEFAULT_SEARCH_WINDOW, offRouteDistance } from "./route-follower.js";
 import type {
@@ -37,6 +38,8 @@ export class Engine {
   private lastPosition: Position | undefined;
   /** The destination last set, kept for guidance. */
   private destination: Destination | undefined;
+  /** Decides when the player has left the route; reset with each new destination. */
+  private rerouter: Rerouter | undefined;
 
   /** Load map file text. A failed load leaves the previous map in place. */
   loadMap(text: string): LoadResult {
@@ -49,6 +52,7 @@ export class Engine {
       this.lastNoWay = undefined;
       this.progress = 0;
       this.lastPosition = undefined;
+      this.rerouter = undefined;
       this.destination = undefined;
     }
     return result;
@@ -92,6 +96,7 @@ export class Engine {
     }
 
     this.progress = 0;
+    this.rerouter = undefined;
     this.destination = destination;
     if ("parts" in found) {
       this.route = found;
@@ -124,8 +129,48 @@ export class Engine {
       const result = advance(this.route, this.progress, this.lastPosition, this.options.searchWindow);
       this.progress = result.progress;
       this.remainingRoute = result.remaining;
+      this.rerouteIfLeft(this.map, this.lastPosition, timestampMs);
     }
     return undefined;
+  }
+
+  /** Ask the rerouter whether the player has left the route; if so, find a new route. */
+  private rerouteIfLeft(map: EngineMap, position: Position, timestampMs: number): void {
+    if (!this.remainingRoute || !this.destination) return;
+    const widths = new Map(map.roads.map((road) => [road.id, road.width]));
+    const decision = this.getRerouter().update(
+      this.remainingRoute,
+      position,
+      timestampMs,
+      (roadId) => widths.get(roadId) ?? 0,
+    );
+    if (!decision.requestReroute) return;
+    const found = findRoute(map, position, this.destination);
+    this.progress = 0;
+    if ("parts" in found) {
+      this.route = found;
+      this.remainingRoute = found;
+      this.lastNoWay = undefined;
+    } else {
+      this.route = undefined;
+      this.remainingRoute = undefined;
+      this.lastNoWay = found;
+    }
+  }
+
+  /** The rerouter for the current options; rebuilt when the options change. */
+  private getRerouter(): Rerouter {
+    if (
+      !this.rerouter ||
+      this.rerouter.margin !== this.options.rerouteMargin ||
+      this.rerouter.delayMs !== this.options.rerouteDelayMs
+    ) {
+      this.rerouter = new Rerouter({
+        margin: this.options.rerouteMargin,
+        delayMs: this.options.rerouteDelayMs,
+      });
+    }
+    return this.rerouter;
   }
 
   /**
@@ -155,6 +200,7 @@ export class Engine {
     this.remainingRoute = undefined;
     this.lastNoWay = undefined;
     this.progress = 0;
+    this.rerouter = undefined;
     this.destination = undefined;
   }
 
