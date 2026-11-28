@@ -6,6 +6,51 @@ function readJson(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(url, "utf8")) as Record<string, unknown>;
 }
 
+function readText(name: string): string {
+  return readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
+}
+
+describe("demo page layout", () => {
+  const html = readText("index.html");
+  const css = readText("src/demo.css");
+
+  it("states that the page is a demonstration and not an application", () => {
+    expect(html).toContain("demonstration of the map views and not an");
+    expect(html).toContain("application");
+  });
+
+  it("has three canvases, a map choice, a speed control and a status area", () => {
+    expect(html.match(/<canvas /g)?.length).toBe(3);
+    expect(html).toContain('id="map-choice"');
+    expect(html).toContain('id="speed-input"');
+    expect(html).toContain('id="status-guidance"');
+  });
+
+  it("gives every control a text label", () => {
+    expect(html).toContain('<label for="map-choice">');
+    expect(html).toContain('<label for="speed-input">');
+    expect(html.match(/<canvas [^>]*aria-label="[^"]+"/g)?.length).toBe(3);
+  });
+
+  it("sets a 44 px minimum size for controls and a visible focus rule", () => {
+    expect(css).toMatch(/min-width:\s*44px/);
+    expect(css).toMatch(/min-height:\s*44px/);
+    expect(css).toMatch(/:focus-visible[\s\S]*outline:\s*3px solid/);
+  });
+
+  it("keeps canvases 300 to 375 px wide in one column and avoids horizontal scroll", () => {
+    expect(css).toMatch(/min-width:\s*300px/);
+    expect(css).toMatch(/max-width:\s*375px/);
+    expect(css).toMatch(/grid-template-columns:\s*1fr;/);
+    expect(css).toMatch(/overflow-x:\s*hidden/);
+  });
+
+  it("shows three columns from 1200 px", () => {
+    expect(css).toMatch(/@media \(min-width:\s*1200px\)/);
+    expect(css).toMatch(/repeat\(3,/);
+  });
+});
+
 describe("demo package scaffold", () => {
   it("has no dependencies field", () => {
     const pkg = readJson("package.json");

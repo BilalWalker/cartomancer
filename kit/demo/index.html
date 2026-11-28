@@ -4,8 +4,62 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cartomancer views demo</title>
+    <link rel="stylesheet" href="/src/demo.css" />
   </head>
   <body>
+    <header class="page-header">
+      <h1>Map views demonstration</h1>
+      <p id="demo-notice" class="notice">
+        This page is a demonstration of the map views and not an
+        application. It uses an invented map and no real-world map data.
+      </p>
+    </header>
+
+    <main>
+      <section class="controls" aria-label="Controls">
+        <div class="control">
+          <label for="map-choice">Map</label>
+          <select id="map-choice">
+            <option value="town">Town map</option>
+            <option value="large">Large generated map</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="speed-input">Speed (world units per second, 1 to 200)</label>
+          <input id="speed-input" type="number" inputmode="decimal" min="1" max="200" step="1" value="30" />
+        </div>
+        <p class="hint">
+          Move the player dot with the arrow keys while no map has keyboard
+          focus. Click or tap the full map to set a destination.
+        </p>
+      </section>
+
+      <section class="views" aria-label="Map views">
+        <figure class="view">
+          <figcaption><h2>Minimap</h2></figcaption>
+          <canvas id="minimap-canvas" width="340" height="340" tabindex="0" aria-label="Minimap"></canvas>
+        </figure>
+        <figure class="view">
+          <figcaption><h2>Full map</h2></figcaption>
+          <canvas id="fullmap-canvas" width="340" height="340" tabindex="0" aria-label="Full map"></canvas>
+        </figure>
+        <figure class="view">
+          <figcaption><h2>Tilted view</h2></figcaption>
+          <canvas id="tilted-canvas" width="340" height="340" tabindex="0" aria-label="Tilted view"></canvas>
+        </figure>
+      </section>
+
+      <section class="status" aria-label="Status">
+        <h2>Status</h2>
+        <p id="status-guidance" aria-live="polite">No destination set.</p>
+        <p id="status-distance"></p>
+        <p id="status-roads"></p>
+        <p id="status-notices"></p>
+        <p id="status-message" role="status"></p>
+        <p id="status-errors" role="alert"></p>
+      </section>
+    </main>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

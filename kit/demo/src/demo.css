@@ -1,0 +1,150 @@
+:root {
+  --page-bg: #f4f1ea;
+  --ink: #1d2733;
+  --panel: #ffffff;
+  --line: #5b6b7c;
+  --accent: #1b5e8c;
+  --focus: #c2410c;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--page-bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  padding: 16px;
+  line-height: 1.45;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.notice {
+  margin: 0 0 16px;
+  padding: 12px;
+  border-left: 6px solid var(--accent);
+  background: var(--panel);
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+label {
+  font-weight: 600;
+}
+
+select,
+input,
+button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 12px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+}
+
+select:focus-visible,
+input:focus-visible,
+button:focus-visible,
+canvas:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.hint {
+  margin: 0;
+}
+
+.views {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.view {
+  margin: 0;
+  min-width: 0;
+}
+
+.view figcaption {
+  margin-bottom: 4px;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  min-width: 300px;
+  max-width: 375px;
+  height: 340px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+}
+
+.status {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.status p {
+  margin: 4px 0;
+}
+
+@media (min-width: 1200px) {
+  body {
+    padding: 24px;
+  }
+
+  .controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+
+  .hint {
+    flex-basis: 100%;
+  }
+
+  .views {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  canvas {
+    max-width: none;
+    height: 420px;
+  }
+}
