@@ -75,6 +75,14 @@
     "15.4 Mount errors and destroy-leaves-nothing": {
       "status": "passed",
       "lastRunTimestamp": 1795693408688
+    },
+    "19.2 Frame_Loop map version check, waiting mount and refusal": {
+      "status": "passed",
+      "lastRunTimestamp": 1795698473226
+    },
+    "22.1 Guidance text verbatim": {
+      "status": "passed",
+      "lastRunTimestamp": 1795701272330
     }
   },
   "executionHistory": {
@@ -1000,6 +1008,233 @@
         "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
         "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
         "timestamp": 1795695386835
+      }
+    ],
+    "19.1 Engine.getMapVersion": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795698126713
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795698263356
+      }
+    ],
+    "19.2 Frame_Loop map version check, waiting mount and refusal": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795698270358
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795698538221
+      }
+    ],
+    "19.3 Controls and input while no map, pending settings, API doc": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795698546897
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795698805542
+      }
+    ],
+    "19. Map version and maps that arrive later": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795698805671
+      }
+    ],
+    "20.1 Perspective projection math": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795698812860
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795699173058
+      }
+    ],
+    "20.2 Tilted ground layers under perspective": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795699180045
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795699419184
+      }
+    ],
+    "20.3 Tilted roads under perspective": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795699425911
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795699436777
+      }
+    ],
+    "20.4 Tilted pictures in depth bands": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795699438346
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795699442825
+      }
+    ],
+    "20.5 Tilted view uses the perspective, default 35 degrees": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795699736646
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795700453743
+      }
+    ],
+    "20.6 Measurable perspective criteria and doc": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795700461490
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795700618577
+      }
+    ],
+    "20. Tilted view with a clearly visible perspective": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795700618741
+      }
+    ],
+    "21.1 Readable north mark and colour": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795700627125
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795700876048
+      }
+    ],
+    "21.2 Small minimap notice for the letter": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795700886793
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701023960
+      }
+    ],
+    "21. North mark and small minimap": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701024153
+      }
+    ],
+    "22.3 Tilt slider": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701036925
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701040961
+      }
+    ],
+    "22.1 Guidance text verbatim": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701184978
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701333796
+      }
+    ],
+    "22.2 Mount once, load maps into the engine only": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701334260
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701345747
+      }
+    ],
+    "22. Demo status text, one-time mount and tilt slider": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701346084
+      }
+    ],
+    "23.1 Audit and update dev dependencies": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701346585
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701779303
+      }
+    ],
+    "23. Dev tooling audit": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701779427
+      }
+    ],
+    "24. Checkpoint - Amendments recorded": [
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701784389
+      },
+      {
+        "executionId": "04502130-19cc-4347-a888-8bd26e227d65",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795701819515
       }
     ]
   }
