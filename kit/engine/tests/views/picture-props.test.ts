@@ -10,9 +10,14 @@ import {
   type ImageLookup,
 } from "../../src/views/image-lookup.js";
 import { drawFlatProps } from "../../src/views/layers-areas.js";
+import { FullMap } from "../../src/views/full-map.js";
+import { Minimap } from "../../src/views/minimap.js";
 import { RecordingCanvas } from "../../src/views/recording-canvas.js";
 import { DEFAULT_STYLE } from "../../src/views/style.js";
+import { TiltedView } from "../../src/views/tilted-view.js";
+import { isViewError } from "../../src/views/view-errors.js";
 import type { VisibleSet } from "../../src/views/visible-set.js";
+import { smallTown } from "./helpers/small-town.js";
 
 const camera: Camera = {
   centerX: 50,
@@ -184,6 +189,63 @@ describe("picture props in drawMapLayers", () => {
       images: { a: entry("a") },
     });
     expect(rec.findCalls("drawImage")).toHaveLength(0);
+  });
+});
+
+describe("picture props on every view", () => {
+  it("is an image or a placeholder on the Full_Map, the Minimap and the Tilted_View", () => {
+    // Feature: map-views, Property 23 (extended): A Picture_Prop is an image or a placeholder on every view
+    // **Validates: Requirements 24.4, 24.5, 24.10, 24.11, 24.17**
+    const refArb = fc.constantFrom("a", "b", "c", "");
+    const lookupArb = fc.constantFrom<"none" | "some" | "throws" | "bad-size">(
+      "none",
+      "some",
+      "throws",
+      "bad-size",
+    );
+    const position = { x: 40, y: 40, headingDegrees: 0 };
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(refArb, fc.constantFrom("picture:", "upload:")), { maxLength: 6 }),
+        lookupArb,
+        (specs, mode) => {
+          const props = specs.map(([ref, prefix], i) =>
+            prop(`q${i}`, prefix + ref, { x: 40 + i * 3, blockHeight: 20 }),
+          );
+          const images: ImageLookup | undefined =
+            mode === "none"
+              ? undefined
+              : mode === "some"
+                ? { a: entry("a"), b: entry("b") }
+                : mode === "throws"
+                  ? () => {
+                      throw new Error("boom");
+                    }
+                  : { a: { ...entry("a"), width: 0 }, b: { ...entry("b"), height: NaN } };
+          const base = smallTown();
+          const map: EngineMap = { ...base, places: [], blockedAreas: [], props };
+          const full = FullMap.create(map, { images });
+          const mini = Minimap.create(map, { images });
+          const tilted = TiltedView.create(map, { images });
+          if (isViewError(full) || isViewError(mini) || isViewError(tilted)) throw new Error("view not built");
+          const canvases = [new RecordingCanvas(), new RecordingCanvas(), new RecordingCanvas()];
+          const results = [
+            full.draw(canvases[0]!, { position }, 0),
+            mini.draw(canvases[1]!, { position }, 0),
+            tilted.draw(canvases[2]!, { position }, 0),
+          ];
+          for (const result of results) expect(isViewError(result)).toBe(false);
+          for (const rec of canvases) {
+            const drawn = rec.findCalls("drawImage").length + rec.findCalls("drawText").length;
+            expect(drawn).toBe(props.length);
+            for (const call of rec.findCalls("drawText")) {
+              expect(props.map((p) => p.kind)).toContain(call.args[0]);
+            }
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
   });
 });
 

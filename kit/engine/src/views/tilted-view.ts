@@ -18,7 +18,7 @@ import {
   createPictureResolver,
   type ImageLookup,
 } from "./image-lookup.js";
-import { drawBlockedAreas, drawFlatProps, drawGround } from "./layers-areas.js";
+import { drawBackgroundPicture, drawBlockedAreas, drawFlatProps, drawGround } from "./layers-areas.js";
 import { drawPlaceLabels, drawPlaceMarkers } from "./layers-places.js";
 import { drawBlockedRoadMarks, drawRoadFills, drawRoadOutlines } from "./layers-roads.js";
 import {
@@ -376,6 +376,7 @@ export class TiltedView {
     canvas.save();
     this.applyGroundTransform(canvas, camera);
     notices.push(...drawGround(canvas, this.style, region));
+    notices.push(...drawBackgroundPicture(canvas, this.map.backgroundPicture, resolve, region));
     notices.push(...drawBlockedAreas(canvas, this.style, areas, camera.zoom));
     notices.push(...drawFlatProps(canvas, this.style, flat, camera.zoom, resolve));
     notices.push(...drawRoadOutlines(canvas, this.map, visible.roadIds, camera, this.style));

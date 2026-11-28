@@ -48,6 +48,14 @@ describe("views boundary", () => {
     }
   });
 
+  it("keeps label-placement, hit-test and visible-set free of image-lookup", () => {
+    for (const name of ["label-placement.ts", "hit-test.ts", "visible-set.ts"]) {
+      const entry = Object.entries(viewSources).find(([path]) => fileName(path) === name);
+      expect(entry, `${name} was not found`).toBeDefined();
+      expect(/image-lookup/.test(entry![1]), `${name} imports image-lookup`).toBe(false);
+    }
+  });
+
   it("keeps the engine package free of runtime dependencies", () => {
     const pkg = JSON.parse(Object.values(packageText)[0]);
     expect(pkg).not.toHaveProperty("dependencies");
