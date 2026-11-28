@@ -116,4 +116,60 @@ required. These are the rules the loader checks:
   - `dash` is optional. When present it is a list of finite numbers, each 0 or
     more. An empty list is allowed.
 
-The engine does not check that a colour text is a valid colour.
+The Engine loader accepts any colour text. The Views apply the colour rule.
+
+### Colour rule
+
+A colour is usable when it is a text of `#rgb`, `#rrggbb` or `#rrggbbaa`
+(hex digits of either case) and nothing else. When a colour in the map is not
+usable, the Views use the default colour for that key and give a Notice such
+as: The style colour "ground" is not a colour like #rgb, #rrggbb or #rrggbbaa,
+so the default colour #f0ecdf is used.
+
+A key the Views do not read is ignored. A key the map does not set takes its
+default.
+
+### Colour keys
+
+| Key | Default |
+| --- | --- |
+| `road.main` | `#fffdf7` |
+| `road.side` | `#ece6d6` |
+| `road.footpath` | `#d9cfb6` |
+| `road.corridor` | `#dcd3e6` |
+| `roadOutline` | `#8a8272` |
+| `ground` | `#f0ecdf` |
+| `blockedArea.mountain` | `#9a8f7e` |
+| `blockedArea.water` | `#9cc4dc` |
+| `blockedArea.wall` | `#6e6a66` |
+| `blockedRoad` | `#b3261e` |
+| `prop` | `#b8b09c` |
+| `raisedBlockTop` | `#c9c2ae` |
+| `raisedBlockSide` | `#a39b86` |
+| `routeLine` | `#0b4fb3` |
+| `routeLineOutline` | `#06285c` |
+| `playerMarker` | `#d1360f` |
+| `destinationMarker` | `#7a1fa2` |
+| `placeLabelText` | `#1a1a1a` |
+| `placeLabelBackground` | `#ffffff` |
+| `rim` | `#3a3a3a` |
+| `northMark` | `#b3261e` |
+
+### Line style keys
+
+Width is in CSS pixels. Dash is a list of lengths in CSS pixels, `none` when
+there is no dash.
+
+| Key | Default width | Default dash |
+| --- | --- | --- |
+| `road.main` | 1 | none |
+| `road.side` | 1 | none |
+| `road.footpath` | 1 | 6, 4 |
+| `road.corridor` | 1 | none |
+| `roadOutline` | 2 | none |
+| `blockedRoad` | 2 | 8, 5 |
+| `blockedAreaOutline` | 1.5 | none |
+| `propOutline` | 1 | none |
+| `routeLine` | 6 | none |
+| `routeLineOutline` | 2 | none |
+| `rim` | 3 | none |
