@@ -191,11 +191,22 @@ export class FakeEngine implements MinimapEngine {
   position: Position | undefined = { x: 10, y: 20, headingDegrees: 30 };
   remainingRoute: Route | undefined = undefined;
   sentence = "Go straight on.";
-  reads = { map: 0, position: 0, remainingRoute: 0, sentence: 0 };
+  /** The Map_Version: 1 with the map the engine starts with; a test that clears `map` also sets this to 0. */
+  mapVersion = 1;
+  reads = { map: 0, mapVersion: 0, position: 0, remainingRoute: 0, sentence: 0 };
 
+  getMapVersion(): number {
+    this.reads.mapVersion++;
+    return this.mapVersion;
+  }
   getMap(): EngineMap | undefined {
     this.reads.map++;
     return this.map;
+  }
+  /** Like a successful `Engine.loadMap`: sets the map and raises the version by 1. */
+  loadMap(map: EngineMap): void {
+    this.map = map;
+    this.mapVersion++;
   }
   getPosition(): Position | undefined {
     this.reads.position++;

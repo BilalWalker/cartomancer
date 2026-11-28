@@ -6,7 +6,6 @@ import {
   badServiceOption,
   canvasAlreadyMounted,
   noFrameService,
-  noMapToShow,
   serviceFailed,
   badItemCoordinate,
   badNumber,
@@ -70,7 +69,6 @@ describe("view error and notice factories", () => {
 
 describe("mount error factories", () => {
   const mountCases: [string, string, string, string][] = [
-    ["noMapToShow", noMapToShow().message, "engine", "no map"],
     ["badOptions", badOptions().message, "options", "object"],
     ["canvasAlreadyMounted", canvasAlreadyMounted().message, "canvas", "already has a view"],
     ["badImagesOption", badImagesOption().message, "images", "object or a function"],

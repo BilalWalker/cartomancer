@@ -47,7 +47,7 @@ import {
   isViewError,
   missingEngineFunction,
   noFrameService,
-  noMapToShow,
+  noMapLoadedYet,
   notACanvas,
   outOfRange,
   serviceFailed,
@@ -183,6 +183,8 @@ export type FullMapCanvas = MountableCanvas & BindableCanvas;
 
 /** The part of an Engine a Minimap reads. */
 export interface MinimapEngine {
+  /** The number of successful map loads; 0 before the first. Read on every frame. */
+  getMapVersion(): number;
   getMap(): EngineMap | undefined;
   getPosition(): Position | undefined;
   getRemainingRoute(): Route | undefined;
@@ -193,6 +195,7 @@ export interface MinimapEngine {
 export interface FullMapEngine extends MinimapEngine, DestinationTarget {}
 
 const MINIMAP_ENGINE_FUNCTIONS = [
+  "getMapVersion",
   "getMap",
   "getPosition",
   "getRemainingRoute",
@@ -429,6 +432,8 @@ interface CoreView {
   resize(width: number, height: number): ViewError | undefined;
   draw(canvas: CanvasAdapter, state: MinimapState, timestampMs: number): { notices: Notice[] } | ViewError;
   getNotices(): Notice[];
+  /** Replaces the map; a ViewError means it was refused and the old map is kept. */
+  setMap(map: EngineMap): ViewError | undefined;
   /** Only the Views that smooth their camera have it. */
   setReducedMotion?(reducedMotion: boolean): void;
 }
@@ -436,6 +441,8 @@ interface CoreView {
 /** What a Mount_Function adds to the core. */
 interface ViewSpec<V extends CoreView, P> {
   kind: ViewKind;
+  /** True for the Views that smooth their camera and so follow the reduced-motion setting. */
+  usesMotion?: boolean;
   engineFunctions: readonly string[];
   /** Validates the options of this View, after the base options, and returns what `build` needs. */
   plan(given: never): P | ViewError;
@@ -448,7 +455,8 @@ interface ViewSpec<V extends CoreView, P> {
 }
 
 interface MountCore<V> {
-  view: V;
+  /** The View, or undefined while no map has been loaded. */
+  getView(): V | undefined;
   isDestroyed(): boolean;
   destroy(): void;
   /** Reads the CSS size of the canvas again and resizes the View. */
@@ -485,14 +493,22 @@ function mountView<V extends CoreView, P>(
   if (isViewError(resolved)) return resolved;
   const services = resolved;
   const reader = engine as MinimapEngine;
-  const map = reader.getMap();
-  if (map === undefined) return noMapToShow();
 
-  // 2. Build the View and the adapter. Nothing on the canvas has changed yet.
+  // 2. Build the View (when a map is already loaded) and the adapter. Nothing
+  // on the canvas has changed yet. With no map yet (Map_Version 0) the View is
+  // built by the Frame_Loop at the frame that sees the first map.
   const cssWidth = canvas.clientWidth;
   const cssHeight = canvas.clientHeight;
-  const view = spec.build(map, cssWidth, cssHeight, plan);
-  if (isViewError(view)) return view;
+  let handledVersion = reader.getMapVersion();
+  let view: V | undefined;
+  if (handledVersion > 0) {
+    const map = reader.getMap();
+    if (map !== undefined) {
+      const built = spec.build(map, cssWidth, cssHeight, plan);
+      if (isViewError(built)) return built;
+      view = built;
+    }
+  }
   const adapter = CanvasAdapter.mount(canvas);
   if (isViewError(adapter)) return adapter;
 
@@ -521,8 +537,15 @@ function mountView<V extends CoreView, P>(
   let lastProblem: string | undefined;
   let lastSentence: string | undefined;
 
+  const bindHooks = {
+    report,
+    announce: (text: string): void => {
+      if (!isDestroyed) live?.announce(text);
+    },
+  };
+
   const applyMotion = (): void => {
-    if (motion !== undefined) view.setReducedMotion?.(motion.matches);
+    if (motion !== undefined) view?.setReducedMotion?.(motion.matches);
   };
 
   const applySize = (): ViewError | undefined => {
@@ -530,7 +553,7 @@ function mountView<V extends CoreView, P>(
     const height = canvas.clientHeight;
     const result = adapter.resize(width, height, services.devicePixelRatio());
     if (isViewError(result)) return result;
-    const error = view.resize(width, height);
+    const error = view?.resize(width, height);
     if (error) return error;
     for (const notice of result.notices) report(notice);
     return undefined;
@@ -542,7 +565,46 @@ function mountView<V extends CoreView, P>(
     if (error) report({ message: error.message });
   };
 
+  /** Builds the View for the first map, with its input and motion setting. A failure is one Notice. */
+  const buildFirst = (map: EngineMap): void => {
+    const built = spec.build(map, canvas.clientWidth, canvas.clientHeight, plan);
+    if (isViewError(built)) {
+      report({ message: built.message });
+      return;
+    }
+    try {
+      view = built;
+      unbind = spec.bind?.(built, bindHooks);
+      applyMotion();
+    } catch {
+      view = undefined;
+      report({ message: serviceFailed().message });
+      return;
+    }
+    for (const notice of built.getNotices()) report(notice);
+  };
+
+  /** Reads the map when the Map_Version is new; one Notice and the old map kept when the View refuses it. */
+  const checkMapVersion = (): void => {
+    const version = reader.getMapVersion();
+    if (!(version > 0) || version === handledVersion) return;
+    handledVersion = version;
+    const map = reader.getMap();
+    if (map === undefined) return;
+    if (view === undefined) {
+      buildFirst(map);
+      return;
+    }
+    const refused = view.setMap(map);
+    if (refused) {
+      report({ message: refused.message });
+      return;
+    }
+    for (const notice of view.getNotices()) report(notice);
+  };
+
   const runFrame = (timestampMs: number): void => {
+    checkMapVersion();
     const position = reader.getPosition();
     const remainingRoute = reader.getRemainingRoute();
     const sentence = reader.getGuidanceSentence();
@@ -555,7 +617,7 @@ function mountView<V extends CoreView, P>(
         // A failing callback of the application must not stop the view.
       }
     }
-    if (position === undefined) return;
+    if (position === undefined || view === undefined) return;
     const destination = remainingRoute?.destination;
     const state: MinimapState = {
       position,
@@ -613,17 +675,12 @@ function mountView<V extends CoreView, P>(
     if (given.liveRegion !== undefined) live = createLiveRegion(given.liveRegion);
     observer = services.createResizeObserver(onSizeChange);
     observer.observe(canvas);
-    if (view.setReducedMotion !== undefined) {
+    if (spec.usesMotion === true) {
       motion = services.matchReducedMotion();
       applyMotion();
       motion.addListener(applyMotion);
     }
-    unbind = spec.bind?.(view, {
-      report,
-      announce: (text) => {
-        if (!isDestroyed) live?.announce(text);
-      },
-    });
+    if (view !== undefined) unbind = spec.bind?.(view, bindHooks);
     mountedCanvases.add(canvas);
     schedule();
   } catch {
@@ -634,11 +691,11 @@ function mountView<V extends CoreView, P>(
     return serviceFailed();
   }
 
-  for (const notice of view.getNotices()) report(notice);
+  if (view !== undefined) for (const notice of view.getNotices()) report(notice);
   for (const notice of sized.notices) report(notice);
 
   return {
-    view,
+    getView: () => view,
     isDestroyed: () => isDestroyed,
     destroy(): void {
       if (isDestroyed) return;
@@ -669,6 +726,7 @@ export function mountMinimap(
     options,
     {
       kind: "minimap",
+      usesMotion: true,
       engineFunctions: MINIMAP_ENGINE_FUNCTIONS,
       plan: (given: MinimapMountOptions) => minimapZoomPlan(given),
       build(map, width, height, plan) {
@@ -690,11 +748,17 @@ export function mountMinimap(
     },
   );
   if (isViewError(core)) return core;
-  const { view, isDestroyed } = core;
+  const { getView, isDestroyed } = core;
   return {
     destroy: core.destroy,
-    setZoom: (zoom) => (isDestroyed() ? destroyed() : view.setZoom(zoom)),
-    setZoomLimits: (min, max) => (isDestroyed() ? destroyed() : view.setZoomLimits(min, max)),
+    setZoom: (zoom) => {
+      const view = getView();
+      return isDestroyed() ? destroyed() : view === undefined ? noMapLoadedYet() : view.setZoom(zoom);
+    },
+    setZoomLimits: (min, max) => {
+      const view = getView();
+      return isDestroyed() ? destroyed() : view === undefined ? noMapLoadedYet() : view.setZoomLimits(min, max);
+    },
     resize: () => (isDestroyed() ? destroyed() : core.applySize()),
   };
 }
@@ -758,7 +822,13 @@ export function mountFullMap(
     },
   );
   if (isViewError(core)) return core;
-  const { view, isDestroyed } = core;
+  const { getView, isDestroyed } = core;
+  /** Runs a control on the View; a destroyed handle or a missing first map is a ViewError. */
+  const withView = <R>(run: (view: FullMap) => R): R | ViewError => {
+    if (isDestroyed()) return destroyed();
+    const view = getView();
+    return view === undefined ? noMapLoadedYet() : run(view);
+  };
 
   const change = (result: FullMapChange | ViewError): ViewError | undefined => {
     if (isViewError(result)) return result;
@@ -774,12 +844,12 @@ export function mountFullMap(
 
   return {
     destroy: core.destroy,
-    pan: (dx, dy) => (isDestroyed() ? destroyed() : change(view.pan(dx, dy))),
-    zoomAt: (anchor, factor) => (isDestroyed() ? destroyed() : change(view.zoomAt(anchor, factor))),
-    fit: () => (isDestroyed() ? destroyed() : change(view.fit())),
-    follow: () => (isDestroyed() ? destroyed() : change(view.follow())),
-    select: (screenPoint) => (isDestroyed() ? destroyed() : view.select(screenPoint)),
-    selectPlace: (placeId) => (isDestroyed() ? destroyed() : view.selectPlace(placeId)),
+    pan: (dx, dy) => withView((view) => change(view.pan(dx, dy))),
+    zoomAt: (anchor, factor) => withView((view) => change(view.zoomAt(anchor, factor))),
+    fit: () => withView((view) => change(view.fit())),
+    follow: () => withView((view) => change(view.follow())),
+    select: (screenPoint) => withView((view) => view.select(screenPoint)),
+    selectPlace: (placeId) => withView((view) => view.selectPlace(placeId)),
     resize: () => (isDestroyed() ? destroyed() : core.applySize()),
   };
 }
@@ -802,6 +872,7 @@ export function mountTiltedView(
     options,
     {
       kind: "tiltedView",
+      usesMotion: true,
       engineFunctions: MINIMAP_ENGINE_FUNCTIONS,
       plan: (given: TiltedViewMountOptions) => tiltedPlan(given),
       build(map, width, height, plan) {
@@ -825,11 +896,17 @@ export function mountTiltedView(
     },
   );
   if (isViewError(core)) return core;
-  const { view, isDestroyed } = core;
+  const { getView, isDestroyed } = core;
   return {
     destroy: core.destroy,
-    setTiltAngle: (degrees) => (isDestroyed() ? destroyed() : view.setTiltAngle(degrees)),
-    setHeightFactor: (kind, factor) => (isDestroyed() ? destroyed() : view.setHeightFactor(kind, factor)),
+    setTiltAngle: (degrees) => {
+      const view = getView();
+      return isDestroyed() ? destroyed() : view === undefined ? noMapLoadedYet() : view.setTiltAngle(degrees);
+    },
+    setHeightFactor: (kind, factor) => {
+      const view = getView();
+      return isDestroyed() ? destroyed() : view === undefined ? noMapLoadedYet() : view.setHeightFactor(kind, factor);
+    },
     resize: () => (isDestroyed() ? destroyed() : core.applySize()),
   };
 }

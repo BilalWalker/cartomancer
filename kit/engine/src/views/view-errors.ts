@@ -94,10 +94,10 @@ export function missingEngineFunction(name: string): ViewError {
   );
 }
 
-/** The engine argument has no map loaded, so there is nothing to show. */
-export function noMapToShow(): ViewError {
+/** A control that needs a map was used before the first map was loaded. */
+export function noMapLoadedYet(): ViewError {
   return error(
-    'The input "engine" has no map loaded, so no view was mounted. Load a map first.',
+    "No map has been loaded yet, so this control has nothing to act on. Load a map first.",
     "engine",
   );
 }

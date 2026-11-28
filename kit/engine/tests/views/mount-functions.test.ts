@@ -408,15 +408,15 @@ describe("mountMinimap: refused input leaves nothing behind", () => {
     }
   });
 
-  it("refuses an engine that has no map loaded", () => {
+  it("mounts on an engine that has no map loaded yet (Requirement 25.11 replaced the refusal)", () => {
     const engine = new FakeEngine();
     engine.map = undefined;
-    const canvas = new FakeCanvas();
-    const stand = makeStandIns();
-    const { error } = refused({}, { engine, canvas, stand });
-    expect(error.message).toContain("no map");
-    plain(error);
-    expectNothingLeft(canvas, stand);
+    engine.mapVersion = 0;
+    const { canvas, stand } = mount({}, { engine });
+    const afterMount = canvas.context.calls;
+    stand.scheduler.runFrame(0);
+    expect(canvas.context.calls).toBe(afterMount);
+    expect(stand.scheduler.pending).toBe(1);
   });
 
   it("refuses options that are not an object", () => {
