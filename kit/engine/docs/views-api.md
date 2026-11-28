@@ -139,6 +139,17 @@ degrees), centred on the player with the heading up the screen, in which buildin
 are raised blocks that show the side faces looking towards the viewer, with the route line, the
 player, the markers and the place names.
 
+The default tilt angle is 35 degrees. The focal distance of the perspective is
+`1.5 * H / tan(tilt)` CSS pixels, where `H` is the viewport height. Two measurable criteria
+hold for the default tilt (tests: `tests/views/tilted-criteria-26.test.ts`, on a recording
+canvas at 400 by 300 and at 375 by 500 CSS pixels):
+
+- A road segment of fixed width across the heading is drawn at most 60% as wide at the far edge
+  (the top of the viewport) as at the player. With this rule the ratio is 0.5.
+- A `building` with the default height of 12 world units and a 12 by 12 footprint, centred 20
+  world units ahead of the player, has side faces whose screen area is at least 25% of the
+  screen area of its top face. Measured: 1.62 at 400 by 300 and 1.54 at 375 by 500.
+
 - Inputs: `mountTiltedView(canvas, engine, options?)`.
   - `canvas`: as for `mountMinimap`.
   - `engine`: as for `mountMinimap`.
