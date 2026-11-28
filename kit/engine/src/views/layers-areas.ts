@@ -9,6 +9,7 @@ import type { LineStyle, ResolvedStyle } from "./style.js";
 import {
   createPictureResolver,
   pictureRefOfKind,
+  type ImageEntry,
   type PictureResolver,
   type ResolvedPicture,
 } from "./image-lookup.js";
@@ -79,39 +80,65 @@ export function drawBackgroundPicture(
   resolve: PictureResolver,
   region: WorldRegion,
 ): Notice[] {
-  if (background === undefined) return [];
+  const checked = checkBackgroundPicture(background, resolve);
+  if (checked.size === undefined) return checked.notices;
+  const { entry, width: w, height: h } = checked.size;
+  if (region.maxX < 0 || region.minX > w || region.maxY < 0 || region.minY > h) return [];
+  canvas.save();
+  canvas.setGlobalAlpha(checked.size.opacity);
+  canvas.drawImage(entry.image, 0, 0, w, h);
+  canvas.restore();
+  return [];
+}
+
+/**
+ * Checks a background picture and looks its image up. Gives the Notices for a
+ * bad scale or opacity or a missing image, or, when it can be drawn, its entry,
+ * its opacity and its size in world units. No background gives neither.
+ */
+export function checkBackgroundPicture(
+  background: BackgroundPictureData | undefined,
+  resolve: PictureResolver,
+): {
+  notices: Notice[];
+  size?: { entry: ImageEntry; opacity: number; width: number; height: number };
+} {
+  if (background === undefined) return { notices: [] };
   const { scale, opacity, ref } = background;
   if (!Number.isFinite(scale) || scale <= 0) {
-    return [
-      notice(
-        'The background picture field "scale" must be a finite number above 0, so it was not drawn.',
-      ),
-    ];
+    return {
+      notices: [
+        notice(
+          'The background picture field "scale" must be a finite number above 0, so it was not drawn.',
+        ),
+      ],
+    };
   }
   if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) {
-    return [
-      notice(
-        'The background picture field "opacity" must be a number from 0 to 1, so it was not drawn.',
-      ),
-    ];
+    return {
+      notices: [
+        notice(
+          'The background picture field "opacity" must be a number from 0 to 1, so it was not drawn.',
+        ),
+      ],
+    };
   }
   const found = resolve(ref);
   if (!("entry" in found)) {
     const notices: Notice[] = [];
     if (found.missing !== undefined) notices.push(found.missing);
-    notices.push(
-      notice(`The background picture "${ref}" is missing, so it was not drawn.`),
-    );
-    return notices;
+    notices.push(notice(`The background picture "${ref}" is missing, so it was not drawn.`));
+    return { notices };
   }
-  const w = found.entry.width * scale;
-  const h = found.entry.height * scale;
-  if (region.maxX < 0 || region.minX > w || region.maxY < 0 || region.minY > h) return [];
-  canvas.save();
-  canvas.setGlobalAlpha(opacity);
-  canvas.drawImage(found.entry.image, 0, 0, w, h);
-  canvas.restore();
-  return [];
+  return {
+    notices: [],
+    size: {
+      entry: found.entry,
+      opacity,
+      width: found.entry.width * scale,
+      height: found.entry.height * scale,
+    },
+  };
 }
 
 /** Draws each blocked area as a filled polygon in the colour of its kind, with an outline. */

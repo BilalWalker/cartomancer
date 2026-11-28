@@ -203,6 +203,21 @@ function clippedScreenPolygon(
   return { screen: projectAll(frame, clipped), tooNear };
 }
 
+/**
+ * A world polygon clipped to the depth range and projected to screen points,
+ * with the Focal_Distance in use. `screen` is undefined when nothing of the
+ * polygon lies in range; `tooNear` is true when a corner is nearer than the
+ * near clip. A view that cannot project returns a ViewError.
+ */
+export function projectGroundPolygon(
+  world: readonly Point[],
+  view: TiltedGroundView,
+): { screen: Point[] | undefined; tooNear: boolean; focalDistancePx: number } | ViewError {
+  const frame = makeFrame(view);
+  if (isViewError(frame)) return frame;
+  return { ...clippedScreenPolygon(frame, world), focalDistancePx: frame.f };
+}
+
 /** Fills the ground under the whole Viewport with the ground colour. */
 export function drawTiltedGround(
   canvas: CanvasInterface,
@@ -302,6 +317,14 @@ function propBadField(prop: PropData): string | undefined {
   if (!Number.isFinite(prop.rotationDegrees)) return "rotation";
   if (!Number.isFinite(prop.x) || !Number.isFinite(prop.y)) return "position";
   return undefined;
+}
+
+/** The Notice for a prop with a width, height, rotation or position that cannot be drawn. */
+export function badPropNotice(prop: PropData): Notice | undefined {
+  const bad = propBadField(prop);
+  if (bad === undefined) return undefined;
+  const rule = bad === "width" || bad === "height" ? "must be a finite number above 0" : "must be finite";
+  return notice(`The prop "${prop.id}" has a ${bad} that ${rule}, so it was not drawn.`);
 }
 
 /** The world outline of a flat prop: a rectangle, a diamond or a circle by kind. */
