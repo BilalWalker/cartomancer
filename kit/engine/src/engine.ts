@@ -40,6 +40,8 @@ export class Engine {
   private destination: Destination | undefined;
   /** Decides when the player has left the route; reset with each new destination. */
   private rerouter: Rerouter | undefined;
+  /** 0 before any load, raised by 1 on every successful loadMap. */
+  private mapVersion = 0;
 
   /** Load map file text. A failed load leaves the previous map in place. */
   loadMap(text: string): LoadResult {
@@ -49,6 +51,7 @@ export class Engine {
     const result = parseMap(text);
     if ("map" in result) {
       this.map = result.map;
+      this.mapVersion += 1;
       this.notices = result.notices;
       this.route = undefined;
       this.remainingRoute = undefined;
@@ -69,6 +72,11 @@ export class Engine {
   /** A copy of the loaded map for read access, or undefined before a map is loaded. */
   getMap(): EngineMap | undefined {
     return this.map ? structuredClone(this.map) : undefined;
+  }
+
+  /** The number of successful loads so far; 0 before any. Reads a counter, copies nothing. */
+  getMapVersion(): number {
+    return this.mapVersion;
   }
 
   /** A copy of the last position fed to the engine, or undefined before one is fed or after a map is loaded. */

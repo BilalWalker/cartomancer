@@ -720,3 +720,12 @@ describe("Property 27: malformed input leaves state unchanged", () => {
     expect([...seen].sort()).toEqual(["configure", "feedPosition", "loadMap", "setDestination"]);
   });
 });
+
+describe("Engine.getMapVersion in the public surface", () => {
+  it("is a documented public Engine method that returns a whole number", () => {
+    const engine = new Engine();
+    expect(typeof engine.getMapVersion).toBe("function");
+    expect(Number.isInteger(engine.getMapVersion())).toBe(true);
+    expect(rawFiles["../docs/api.md"]).toContain("`getMapVersion()`");
+  });
+});

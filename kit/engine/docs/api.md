@@ -21,6 +21,7 @@ Methods:
 - `loadMap(text)`: takes the map file text, returns a `LoadResult`. A failed load keeps the previous map.
 - `getPlaces()`: returns every place as `PlaceData[]`.
 - `getMap()`: returns a copy of the loaded `EngineMap`, or nothing before a map is loaded. Editing the copy does not change the engine.
+- `getMapVersion()`: returns the map version, a whole number. It is 0 before any map is loaded, rises by exactly 1 on every successful `loadMap`, and stays the same when a load fails (bad map text, or a value that is not text). It returns a stored number and copies no map, so it is cheap enough to read on every frame. An application can compare it with the last value it saw to find out that a new map arrived.
 - `getPosition()`: returns a copy of the last `Position` given to `feedPosition`, or nothing before one is fed or after a new map is loaded.
 - `getBlockedRoads()`: returns the roads left out of routing, each with its notices.
 - `setDestination(destination)`: takes a `Destination`, returns a `Route`, a `NoWayResult` or an `EngineError`.
@@ -42,6 +43,10 @@ engine.feedPosition({ x: 0, y: 0, headingDegrees: 0 }, performance.now());
 console.log(engine.getGuidanceSentence());
 const map = engine.getMap(); // a copy; undefined before a map is loaded
 console.log(map?.roads.length);
+let seenVersion = 0;
+if (engine.getMapVersion() !== seenVersion) {
+  seenVersion = engine.getMapVersion(); // 1 after the first successful load
+}
 console.log(engine.getPosition()); // { x: 0, y: 0, headingDegrees: 0 }
 ```
 
