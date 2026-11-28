@@ -146,6 +146,10 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
   const cancelFrame = deps.cancelFrame ?? ((handle: number): void => globalThis.cancelAnimationFrame(handle));
   let handles: Array<{ destroy(): void }> = [];
   let tiltedHandle: TiltedViewHandle | undefined;
+  let fullMapHandle: FullMapHandle | undefined;
+  /** Set by a map switch; the next frame calls `fit` once the Views have read the new map. */
+  let fitPending = false;
+  let mountErrors: string[] = [];
   let tiltDegrees = deps.initialTiltDegrees ?? DEFAULT_TILT_DEGREES;
   let tiltMessageShown = false;
   let dot: PlayerDot | undefined;
@@ -164,6 +168,7 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
     for (const handle of handles) handle.destroy();
     handles = [];
     tiltedHandle = undefined;
+    fullMapHandle = undefined;
   };
 
   const mountViews = (): string[] => {
@@ -183,6 +188,7 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
       else handles.push(result);
     }
     if (!isViewError(tilted)) tiltedHandle = tilted;
+    if (!isViewError(fullMap)) fullMapHandle = fullMap;
     return errors;
   };
 
@@ -201,8 +207,8 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
       return false;
     }
 
-    // The mounts read the map once, so the Views are destroyed and mounted again.
-    destroyViews();
+    // The Views stay mounted. Each one reads the new map by itself at its next
+    // frame (map version), so the switch only loads the map into the Engine.
     hasMap = true;
     const start = startPosition(result.map);
     dot = createPlayerDot(start, mapExtent(result.map));
@@ -210,7 +216,7 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
     dotMessage = "";
     viewMessage = "";
     engine.feedPosition(start, 0);
-    const mountErrors = mountViews();
+    fitPending = true;
 
     tiltMessageShown = false;
     setText(status.errors, mountErrors.join(" "));
@@ -229,6 +235,12 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
 
   const frame = (timestampMs: number): void => {
     if (dot === undefined) return;
+    if (fitPending) {
+      fitPending = false;
+      // The View frame loops were registered before this one, so they have read the new map.
+      const error = fullMapHandle?.fit();
+      if (error !== undefined) viewMessage = error.message;
+    }
     const step = dot.step(timestampMs);
     dotMessage = step.message ?? "";
     engine.feedPosition(step.position, timestampMs);
@@ -241,6 +253,10 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
     frame(timestampMs);
     loopHandle = requestFrame(loop);
   };
+
+  // The three Views are mounted once, here, also while no map is loaded.
+  mountErrors = mountViews();
+  setText(status.errors, mountErrors.join(" "));
 
   return {
     loadChoice,

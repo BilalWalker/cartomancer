@@ -16,6 +16,7 @@ function setup(options: { focused?: () => boolean; failMinimap?: boolean; initia
   const tiltMounts: Array<number | undefined> = [];
   const tiltCalls: number[] = [];
   const destroyed: string[] = [];
+  const fitCalls: number[] = [];
   const handle = (name: string) => ({
     destroy: () => {
       destroyed.push(name);
@@ -29,7 +30,13 @@ function setup(options: { focused?: () => boolean; failMinimap?: boolean; initia
     },
     mountFullMap(canvas: FakeCanvas) {
       calls.push(canvas.name);
-      return handle("fullMap") as never;
+      return {
+        ...handle("fullMap"),
+        fit: () => {
+          fitCalls.push(1);
+          return undefined;
+        },
+      } as never;
     },
     mountTiltedView(canvas: FakeCanvas, _engine: Engine, opts?: { tiltAngleDegrees?: number }) {
       calls.push(canvas.name);
@@ -64,7 +71,7 @@ function setup(options: { focused?: () => boolean; failMinimap?: boolean; initia
     cancelFrame: () => {},
     ...(options.initialTilt === undefined ? {} : { initialTiltDegrees: options.initialTilt }),
   };
-  return { demo: createDemo(deps), engine, calls, destroyed, status, tiltMounts, tiltCalls };
+  return { demo: createDemo(deps), engine, calls, destroyed, status, tiltMounts, tiltCalls, fitCalls };
 }
 
 const key = (name: string) => ({ key: name, preventDefault: () => {} });
@@ -79,13 +86,39 @@ describe("demo wiring", () => {
     expect(status.errors.textContent).toBe("");
   });
 
-  it("switching the map destroys the views and mounts them again", () => {
-    const { demo, calls, destroyed } = setup();
-    demo.loadChoice("town");
-    demo.loadChoice("town");
-    expect(destroyed.sort()).toEqual(["fullMap", "minimap", "tilted"]);
-    expect(calls.length).toBe(6);
+  it("mounts the three views once at page start, before any map is loaded", () => {
+    const { demo, calls, engine } = setup();
+    expect(calls).toEqual(["minimap", "fullMap", "tilted"]);
     expect(demo.viewCount).toBe(3);
+    expect(engine.getMapVersion()).toBe(0);
+  });
+
+  it("switching the map loads it into the engine and never destroys or mounts again", () => {
+    const { demo, calls, destroyed, engine } = setup();
+    demo.loadChoice("town");
+    demo.loadChoice("large");
+    demo.loadChoice("town");
+    expect(engine.getMapVersion()).toBe(3);
+    expect(destroyed).toEqual([]);
+    expect(calls).toEqual(["minimap", "fullMap", "tilted"]);
+    expect(demo.viewCount).toBe(3);
+  });
+
+  it("a switch resets the dot to the start and fits the full map once at the next frame", () => {
+    const { demo, engine, fitCalls } = setup();
+    demo.loadChoice("town");
+    expect(fitCalls.length).toBe(0);
+    demo.frame(16);
+    expect(fitCalls.length).toBe(1);
+    demo.keyDown(key("ArrowRight"));
+    demo.frame(1000);
+    demo.frame(2000);
+    demo.keyUp(key("ArrowRight"));
+    demo.loadChoice("town");
+    const start = engine.getPosition()!;
+    expect(start.x).toBe(engine.getMap()!.nodes[0]!.x);
+    demo.frame(3000);
+    expect(fitCalls.length).toBe(2);
   });
 
   it("a click that sets a destination shows guidance after a position feed", () => {
@@ -178,12 +211,15 @@ describe("demo wiring", () => {
     expect(status.errors.textContent).toBe("");
   });
 
-  it("a map change mounts the tilted view with the current tilt", () => {
-    const { demo, tiltMounts } = setup();
+  it("the tilt slider keeps working on the same handle after a map change", () => {
+    const { demo, tiltMounts, tiltCalls } = setup();
     demo.loadChoice("town");
     demo.setTiltAngle(45);
-    demo.loadChoice("town");
-    expect(tiltMounts).toEqual([35, 45]);
+    demo.loadChoice("large");
+    expect(demo.setTiltAngle(60)).toBeNull();
+    expect(tiltMounts).toEqual([35]);
+    expect(tiltCalls).toEqual([45, 60]);
+    expect(demo.tiltDegrees).toBe(60);
   });
 
   it("main.ts mounts only through the mount functions", () => {

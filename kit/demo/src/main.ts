@@ -1,4 +1,5 @@
-// The demo page. The Views are mounted only through the Mount_Functions; the
+// The demo page. The Views are mounted only through the Mount_Functions, once,
+// when createDemo runs; a map switch only loads the map into the Engine. The
 // logic is in page.ts.
 
 import { Engine, mountFullMap, mountMinimap, mountTiltedView } from "../../engine/src/index.js";
