@@ -24,7 +24,7 @@ import {
   validateSmoothingDuration,
 } from "./smoothing.js";
 import { resolveStyle, type ResolvedStyle } from "./style.js";
-import { badNumber, badSize, isViewError, notice, type Notice, type ViewError } from "./view-errors.js";
+import { badNumber, badSize, isViewError, notice, outOfRange, type Notice, type ViewError } from "./view-errors.js";
 import {
   buildSpatialIndex,
   computeVisibleSet,
@@ -37,6 +37,15 @@ export const DEFAULT_MINIMAP_SIZE_PX = 200;
 
 /** Default Minimap zoom, in CSS pixels per world unit. */
 export const DEFAULT_MINIMAP_ZOOM = 1;
+
+/** Default lowest and highest Minimap zoom. */
+export const DEFAULT_MINIMAP_ZOOM_MIN = 0.5;
+export const DEFAULT_MINIMAP_ZOOM_MAX = 4;
+/** The range any zoom limit must lie in. */
+const ZOOM_RANGE_MIN = 0.001;
+const ZOOM_RANGE_MAX = 1000;
+/** Below this viewport side, in CSS pixels, no circle is drawn. */
+const MIN_MINIMAP_SIZE_PX = 40;
 
 /** Size of the North_Mark triangle along the radius, in CSS pixels. */
 const NORTH_MARK_LENGTH_PX = 12;
@@ -129,6 +138,8 @@ export class Minimap {
   private width: number;
   private height: number;
   private zoom: number;
+  private zoomMin = DEFAULT_MINIMAP_ZOOM_MIN;
+  private zoomMax = DEFAULT_MINIMAP_ZOOM_MAX;
   private smoothingDurationMs: number;
   private reducedMotion: boolean;
 
@@ -247,6 +258,47 @@ export class Minimap {
     return undefined;
   }
 
+  /** The current zoom limits, in CSS pixels per world unit. */
+  getZoomLimits(): { min: number; max: number } {
+    return { min: this.zoomMin, max: this.zoomMax };
+  }
+
+  /** The current zoom, in CSS pixels per world unit. */
+  getZoom(): number {
+    return this.zoom;
+  }
+
+  /**
+   * Sets the lowest and highest zoom. Each must be a finite number from 0.001
+   * to 1000 and the minimum must be below the maximum, otherwise the previous
+   * limits are kept. A current zoom outside the new limits is moved to the
+   * nearest limit.
+   */
+  setZoomLimits(min: number, max: number): ViewError | undefined {
+    const rule = `a number from ${ZOOM_RANGE_MIN} to ${ZOOM_RANGE_MAX}`;
+    const inRange = (v: number): boolean =>
+      typeof v === "number" && Number.isFinite(v) && v >= ZOOM_RANGE_MIN && v <= ZOOM_RANGE_MAX;
+    if (!inRange(min)) return outOfRange("minimum zoom", rule);
+    if (!inRange(max)) return outOfRange("maximum zoom", rule);
+    if (!(min < max)) return outOfRange("minimum zoom", "below the maximum zoom");
+    this.zoomMin = min;
+    this.zoomMax = max;
+    this.zoom = Math.min(Math.max(this.zoom, min), max);
+    return undefined;
+  }
+
+  /**
+   * Sets the zoom. It must be a finite number inside the current limits,
+   * otherwise the previous zoom is kept. The player marker stays at the centre.
+   */
+  setZoom(zoom: number): ViewError | undefined {
+    if (typeof zoom !== "number" || !Number.isFinite(zoom) || zoom < this.zoomMin || zoom > this.zoomMax) {
+      return outOfRange("zoom", `a number from ${this.zoomMin} to ${this.zoomMax}`);
+    }
+    this.zoom = zoom;
+    return undefined;
+  }
+
   /** The radius of the clip circle (inside the rim), in CSS pixels. */
   private radius(): number {
     return Math.max(Math.min(this.width, this.height) / 2 - this.style.rimStyle.widthPx / 2, 0.5);
@@ -326,6 +378,9 @@ export class Minimap {
   }
 
   private paint(canvas: CanvasInterface, camera: Camera, state: MinimapState): Notice[] {
+    if (camera.viewportWidth < MIN_MINIMAP_SIZE_PX || camera.viewportHeight < MIN_MINIMAP_SIZE_PX) {
+      return [notice(`The minimap needs at least ${MIN_MINIMAP_SIZE_PX} by ${MIN_MINIMAP_SIZE_PX} CSS pixels, so no circle was drawn.`)];
+    }
     const region = visibleRegion(camera, 0);
     if (isViewError(region)) return [notice(`${region.message} Nothing was drawn.`)];
     const visible = computeVisibleSet(this.index, region);
