@@ -57,5 +57,11 @@ tiltInput.addEventListener("input", () => {
 document.addEventListener("keydown", (event) => demo.keyDown(event));
 document.addEventListener("keyup", (event) => demo.keyUp(event));
 
+// Test-only hook: the Frame_Benchmark opens the page with "?bench" and needs the
+// Full_Map handle to set the zoom. Without that query nothing is exposed.
+if (new URLSearchParams(window.location.search).has("bench")) {
+  (window as unknown as { __benchHandles: { fullMap: unknown } }).__benchHandles = { fullMap: demo.fullMap };
+}
+
 demo.loadChoice(shownMap);
 demo.start();

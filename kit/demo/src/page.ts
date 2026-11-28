@@ -105,6 +105,8 @@ export interface Demo {
   stop(): void;
   /** How many Views are mounted now. */
   readonly viewCount: number;
+  /** The handle of the mounted Full_Map, for the Frame_Benchmark's camera control. */
+  readonly fullMap: FullMapHandle | undefined;
 }
 
 const ARROWS: Record<string, "left" | "right" | "up" | "down"> = {
@@ -318,6 +320,9 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
     },
     get viewCount() {
       return handles.length;
+    },
+    get fullMap() {
+      return fullMapHandle;
     },
   };
 }
