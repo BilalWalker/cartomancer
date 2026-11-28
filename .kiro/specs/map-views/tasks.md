@@ -33,63 +33,63 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Already done and committed as `e0bdb87` (`Rules: code and its tests go in one commit`). The steering file says a piece of code and its tests go in ONE commit, never two. No further work.
     - _Requirements: 19.5_
 
-- [ ] 2. Engine-side gaps (all before any view code)
-  - [ ] 2.1 Engine.getMap
+- [x] 2. Engine-side gaps (all before any view code)
+  - [x] 2.1 Engine.getMap
     - Add `getMap(): EngineMap | undefined` to `kit/engine/src/engine.ts`, returning a defensive copy like `getPlaces()` does and `undefined` before a map is loaded. Add an entry with a usage example to `kit/engine/docs/api.md`.
     - Extend `tests/engine-api.test.ts`: no map, loaded map, the copy does not change engine state when edited, and the existing check that docs match exports still passes.
     - Commit subject: `Engine: add getMap for read access to the loaded map`
     - _Requirements: 19.13_
-  - [ ] 2.2 Export and document snapToRoad
+  - [x] 2.2 Export and document snapToRoad
     - Add `snapToRoad`, `isNoUsableRoad` and the `NoUsableRoadResult` type to `kit/engine/src/index.ts`. Add one entry each to `kit/engine/docs/api.md` with a usage example. No change to `snapping.ts` logic.
     - Extend the export-list check in `tests/engine-api.test.ts` so the new exports and doc entries must match.
     - Commit subject: `Engine: export and document snapToRoad`
     - _Requirements: 11.4, 11.8, 19.13_
-  - [ ] 2.3 blockHeight type and format document
+  - [x] 2.3 blockHeight type and format document
     - Add the optional field `blockHeight?: number` to `PropData` (and the map file prop shape) in `kit/engine/src/types.ts`. In `kit/engine/docs/map-file-format.md`, list `blockHeight` in the Props table as optional (finite, 0 or more, world units), state the Default_Block_Height values (`building` 12, `house` 6, `tower` 24, `wall-block` 3, any other kind 0), and state why the field is not called `height` (`width` and `height` are the ground footprint).
     - Extend `tests/types.test.ts` with a type-level example that a Prop with and without `blockHeight` both compile. Run the whole engine-core suite unedited.
     - Commit subject: `Engine: add optional blockHeight to props and format doc`
     - _Requirements: 23.1, 23.2, 23.9, 23.10_
-  - [ ] 2.4 blockHeight loader check
+  - [x] 2.4 blockHeight loader check
     - In `kit/engine/src/map-loader-checks.ts`, make the Prop check accept an absent `blockHeight` (the Prop loads as before and no `blockHeight` is added) and a finite number of 0 or more (kept in the Map). Anything else (text, NaN, +Infinity, -Infinity, below 0) returns a plain error that names the Prop identifier and `blockHeight` and states "a finite number of 0 or more", and loads no Map.
     - Create `tests/map-loader-block-height.test.ts` with examples at 0, just below 0, a very large finite value, NaN, +Infinity, -Infinity and a text value, plus a Prop without the field that loads to the same Map as before. Run the whole engine-core suite unedited.
     - Commit subject: `Engine: check blockHeight when loading props`
     - _Requirements: 23.3, 23.4, 23.5, 23.11, 23.12_
-  - [ ] 2.5 blockHeight saver
+  - [x] 2.5 blockHeight saver
     - In `kit/engine/src/map-saver.ts`, write `blockHeight` after `rotationDegrees` only for Props that have it, so the text for maps without it stays byte-for-byte as before.
     - Create `tests/map-saver-block-height.test.ts`: a Prop with `blockHeight` writes the key, a Prop without it writes no key, and the saved text of an existing hand-written map is unchanged. Run the whole engine-core suite unedited.
     - Commit subject: `Engine: write blockHeight when saving props`
     - _Requirements: 23.3, 23.6, 23.12_
-  - [ ] 2.6 Round-trip generator and property
+  - [x] 2.6 Round-trip generator and property
     - Extend the Prop generator in `tests/helpers/arbitraries.ts` to produce Props with and without a finite `blockHeight` from 0 to 1,000. Existing assertions are not edited. Create `tests/map-saver-roundtrip-block-height.test.ts` with the property. Extend `tests/helpers/arbitraries.test.ts` so the generator is checked to produce both kinds of Prop.
     - **Property 21: Save and load round trip keeps blockHeight**
     - **Validates: Requirements 23.7**
     - Commit subject: `Engine tests: generate blockHeight in the round-trip property`
     - _Requirements: 23.3, 23.4, 23.6, 23.7, 23.12_
-  - [ ] 2.7 Mirror keeps blockHeight
+  - [x] 2.7 Mirror keeps blockHeight
     - Create `tests/mirror-block-height.test.ts` with the property over the extended generator: mirroring keeps every Prop's `blockHeight` and changes nothing beyond the existing mirror rules. Change `src/mirror.ts` only if the test shows it is needed (`mirrorMap` already copies each Prop with a spread, so no change is expected).
     - **Property 22: Mirroring keeps blockHeight and changes nothing else**
     - **Validates: Requirements 23.8**
     - Commit subject: `Engine tests: mirror keeps blockHeight on props`
     - _Requirements: 23.8, 23.12_
 
-- [ ] 3. Views foundation
-  - [ ] 3.1 View_Error and Notice types
+- [x] 3. Views foundation
+  - [x] 3.1 View_Error and Notice types
     - Create `kit/engine/src/views/view-errors.ts` with `ViewError` and `Notice` types and plain-worded factories (`badNumber`, `outOfRange`, `badPoint`, `badSize`, `noContext`, `destroyed`, and similar) whose messages name the input and the allowed range and contain no coordinates.
     - Create `tests/views/view-errors.test.ts`: each factory's message names the input, states the range, contains no digits taken from a rejected point, and contains none of the markers `undefined`, `NaN`, `at `, `Error:`, `stack`.
     - Commit subject: `Views: add plain-worded error and notice types`
     - _Requirements: 2.4, 2.5, 19.15_
-  - [ ] 3.2 Canvas interface and recording canvas
+  - [x] 3.2 Canvas interface and recording canvas
     - Create `src/views/canvas-interface.ts` (the `CanvasInterface` of the design) and `src/views/recording-canvas.ts` (`RecordingCanvas` storing each call in order with arguments and the current fill colour, stroke colour, line width, and the accumulated transform matrix; `getCalls()`, `findCalls(op)`, and a count of paths begun).
     - Create `tests/views/canvas-interface-recording.test.ts`: draw a small fixed scene and assert the exact ordered call list and stored state, including nested save and restore and a translate then rotate.
     - Commit subject: `Views: add canvas interface and recording canvas`
     - _Requirements: 1.1, 1.3, 1.4, 1.5_
-  - [ ] 3.3 Boundary test for browser globals and dependencies
+  - [x] 3.3 Boundary test for browser globals and dependencies
     - Create `tests/views/views-boundary.test.ts`: scan every file in `src/views/` except `canvas-adapter.ts`, `input-binding.ts` and `mount.ts` for the identifiers `window`, `document`, `HTMLCanvasElement`, `ResizeObserver`, `requestAnimationFrame`, `matchMedia`, and for the whole words car, mission, hospital, room (case-insensitive); assert `package.json` still has no `dependencies` field. The scan skips files that do not exist yet, so the test passes now and guards each later file.
     - Commit subject: `Views tests: guard the browser boundary`
     - _Requirements: 1.6, 1.7, 19.10, 19.18_
 
-- [ ] 4. Camera
-  - [ ] 4.1 Camera and transforms
+- [x] 4. Camera
+  - [x] 4.1 Camera and transforms
     - Create `src/views/camera.ts` with `Camera`, `createCamera`, `worldToScreen`, `screenToWorld` as in the design (translate to viewport centre, rotate, scale, translate by minus the centre; validation returning a `ViewError`, previous state kept).
     - Create `tests/views/helpers/view-arbitraries.ts` with camera, viewport and point generators, and `tests/views/camera-round-trip.test.ts` and `tests/views/camera-no-shear.test.ts`. Add examples: rotation 0 moves x right and y down, rotation 90 maps +x to +y, rotation r and r+360 agree within 0.001, range and non-finite cases.
     - **Property 1: Transform round trip (world to screen to world)**
@@ -98,59 +98,59 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - **Validates: Requirements 2.7, 2.8, 2.9, 2.10**
     - Commit subject: `Views: add camera transforms with round-trip properties`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10_
-  - [ ] 4.2 Camera pan and zoom at an anchor
+  - [x] 4.2 Camera pan and zoom at an anchor
     - Add `panCamera` and `zoomCamera` to `camera.ts` (zoom keeps the world point under the anchor fixed; invalid factor or anchor returns a `ViewError`; unchanged camera on error). Add `tests/views/full-map-zoom-anchor.test.ts` with the property and examples: pan keeps the world point under the pointer, factor 0, NaN and negative factor errors.
     - **Property 10: Zoom keeps the anchor point fixed in world space**
     - **Validates: Requirements 10.8**
     - Commit subject: `Views: add camera pan and anchored zoom`
     - _Requirements: 10.1, 10.2, 10.8, 10.9_
 
-- [ ] 5. Spatial index and visibility
-  - [ ] 5.1 Item bounds, map checks and the spatial index
+- [x] 5. Spatial index and visibility
+  - [x] 5.1 Item bounds, map checks and the spatial index
     - Create `src/views/visible-set.ts` with item bounding boxes and `buildSpatialIndex(map)` (uniform grid, cell size from the median road length with a minimum of 10 world units, built once per map), and `src/views/map-inspect.ts` with `inspectMap(map)` returning the notices for no roads, empty map and no usable road (Requirements 3.8 to 3.10) or a `ViewError` naming the item kind and identifier for a non-finite coordinate (3.11).
     - Create `tests/views/visible-set-index.test.ts` and `tests/views/map-inspect.test.ts` with examples for each notice and the error, and for an index over a hand-written map.
     - Commit subject: `Views: add spatial index and map inspection`
     - _Requirements: 3.7, 3.8, 3.9, 3.10, 3.11_
-  - [ ] 5.2 Visible region and visible set
+  - [x] 5.2 Visible region and visible set
     - Add `visibleRegion(camera, margin)` and `computeVisibleSet(index, region)` to `visible-set.ts` (the margin covers the largest road width, the route line width in world units and the largest block height). Create `tests/views/helpers/naive-visibility-check.ts` (shares no code with `visible-set.ts`) and `tests/views/visible-set-model.test.ts`: the property, plus an example on the 5,000-road generated map (from `bench/generate-large-map.ts`) in which a region over at most 5% of the roads tests at most 25% of the roads (expose a count of roads tested).
     - **Property 4: Nothing visible is left out (index equals a plain check, including whole-extent cameras)**
     - **Validates: Requirements 3.4, 3.5, 3.6**
     - Commit subject: `Views: add visible set with model-checked index`
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-- [ ] 6. Style
-  - [ ] 6.1 Default style and contrast
+- [x] 6. Style
+  - [x] 6.1 Default style and contrast
     - Create `src/views/style.ts` with `DEFAULT_STYLE` (one entry per item of Requirement 4.3) and `contrastRatio` (WCAG relative luminance). Create `tests/views/style-contrast.test.ts` using a contrast function written in the test itself: label text on label background at least 4.5, route line against every road kind colour and the ground at least 3.
     - Commit subject: `Views: add default style and contrast check`
     - _Requirements: 4.3, 4.5, 4.6, 4.7_
-  - [ ] 6.2 Resolve the map style
+  - [x] 6.2 Resolve the map style
     - Add `resolveStyle(style)` to `style.ts`: fill every missing key from `DEFAULT_STYLE`, replace an unusable colour or an out-of-range line width (0 to 100) or dash (0 to 1000) with the default and return a Notice naming the key. Create `tests/views/style-resolution.test.ts`: a style that sets only some keys (the rest equal the defaults exactly), bad colour, width and dash cases with boundaries.
     - Commit subject: `Views: resolve map style over the default style`
     - _Requirements: 4.1, 4.2, 4.4, 4.8, 19.9_
 
-- [ ] 7. Layer pieces
-  - [ ] 7.1 Safe drawing helper
+- [x] 7. Layer pieces
+  - [x] 7.1 Safe drawing helper
     - Create `src/views/draw-safe.ts`: wrappers over `CanvasInterface` that skip a call with a non-finite number, add a Notice naming the operation, and send nothing non-finite on. Create `tests/views/draw-safe.test.ts` with examples for each wrapped operation.
     - Commit subject: `Views: add drawing helper that skips non-finite input`
     - _Requirements: 1.1, 1.8_
-  - [ ] 7.2 Ground, blocked areas and props
+  - [x] 7.2 Ground, blocked areas and props
     - Create `src/views/layers-areas.ts` with `drawGround`, `drawBlockedAreas`, `drawFlatProps`: polygon fill and outline in the colour of the kind, props by kind as plain shapes (unknown kind a rectangle), a picture reference as a placeholder rectangle labelled with the kind; Notices for a polygon with fewer than 3 points and for a prop with bad width, height or rotation. Props play no part in routes or guidance.
     - Create `tests/views/layers-areas.test.ts` with examples on the `RecordingCanvas`, including both Notices and the colour of each kind.
     - Commit subject: `Views: draw ground, blocked areas and props`
     - _Requirements: 6.2, 6.3, 6.4, 6.6, 6.7_
-  - [ ] 7.3 Road batching with path-count property
+  - [x] 7.3 Road batching with path-count property
     - Create `src/views/road-batching.ts`: `batchUsableRoads` groups visible Usable_Roads by (kind, pixel width) with the width rounded to 0.25 px and raised to the 1 px floor, giving an outline list (roads under the 2 px footpath and corridor rule get no outline batch) and a fill list; `batchBlockedRoads` groups Blocked_Roads by pixel width; `drawRoadPass` draws one path per batch (one `moveTo` and `lineTo` per road, one `stroke`, round joins and caps set once per batch). Batches are ordered by kind then width. A road with a width that is not finite or not above 0 is left out with a Notice naming the road.
     - Create `tests/views/road-batching-path-count.test.ts` with the property over the `RecordingCanvas` and an example that draws a map of 5,000 roads of one kind and width and checks that the number of paths begun equals the number for a map with 1 road of that kind and width. Add examples for the 1 px floor, the skipped outline and the bad width Notice.
     - **Property 18: Path count does not depend on the number of roads**
     - **Validates: Requirements 5.10, 5.11, 22.1, 22.2, 22.5**
     - Commit subject: `Views: batch roads into one path per kind and width`
     - _Requirements: 5.5, 5.6, 5.9, 5.10, 5.11, 22.1, 22.2, 22.5, 22.11_
-  - [ ] 7.4 Roads layer
+  - [x] 7.4 Roads layer
     - Create `src/views/layers-roads.ts` with `drawRoadOutlines`, `drawRoadFills`, `drawOneWayArrows` and `drawBlockedRoadMarks`, built on `road-batching.ts`: all outline batches before all fill batches, kind told apart by width and colour, dash from the style for a kind, arrowheads at least 40 px apart in one path per kind per pass, and Blocked_Roads as one dashed path per width in the blocked colour.
     - Create `tests/views/road-batching-order.test.ts` with examples on the `RecordingCanvas`: outlines before fills, dash for a styled kind, arrow spacing and one arrow path per kind per pass, blocked roads as one dashed path.
     - Commit subject: `Views: draw road outlines, fills, arrows and blocked roads`
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.7, 5.8, 22.3, 22.4_
-  - [ ] 7.5 Route line, markers and input validation
+  - [x] 7.5 Route line, markers and input validation
     - Create `src/views/layers-route.ts` with `drawRouteLine` (remaining route only, outline below fill, round joins and caps, width kept between 4 and 12 px at every zoom), `drawDestinationMarker` (only while a route is active), `drawPlayerMarker` (10 to 24 px across, pointer for the heading), and `validatePosition` and `validateRoute` (finite coordinates of absolute value at most 1,000,000, finite heading; a route with a non-finite point draws no line and gives a Notice).
     - Create `tests/views/route-line.test.ts` with the property and examples: no line without a route, width limits at zoom extremes, marker sizes, bad position returns a `ViewError` and keeps the previous position, No_Way_Result message is exposed and no line is drawn.
     - **Property 6: Route line lies on the remaining route**
@@ -158,80 +158,80 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Commit subject: `Views: draw route line and markers with a route property`
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10_
 
-- [ ] 8. Labels and layer order
-  - [ ] 8.1 Label placement
+- [x] 8. Labels and layer order
+  - [x] 8.1 Label placement
     - Create `src/views/label-placement.ts` with `placeLabels(candidates, viewport)` as in the design (priority order, 4 px gap, move inside the viewport when it fits, leave out when it does not fit, leave out and Notice for non-finite or non-positive size). Create `tests/views/label-placement-overlap.test.ts` (property) and `tests/views/label-placement-example.test.ts` (destination place placed when it fits, priority order, same input same result, viewport nudging).
     - **Property 7: Place labels never overlap**
     - **Validates: Requirements 8.8**
     - Commit subject: `Views: add label placement with a no-overlap property`
     - _Requirements: 8.2, 8.3, 8.4, 8.5, 8.7, 8.8, 8.9, 8.10_
-  - [ ] 8.2 Place markers and labels layer
+  - [x] 8.2 Place markers and labels layer
     - Create `src/views/layers-places.ts` with `drawPlaceMarkers` and `drawPlaceLabels` (font 11 to 16 px at every zoom, label background and text colours, labels from `placeLabels`, an empty name gives a marker with no label and a Notice naming the place). Create `tests/views/layers-places.test.ts` with examples.
     - Commit subject: `Views: draw place markers and labels`
     - _Requirements: 8.1, 8.6, 8.11_
-  - [ ] 8.3 Fixed layer order
+  - [x] 8.3 Fixed layer order
     - Create `src/views/draw-map-layers.ts` with `drawMapLayers(...)` calling the layers in the order ground, blocked areas, flat props, road outlines, road fills, blocked road marks, route line, destination marker, place markers, place labels, player marker. Create `tests/views/layer-order.test.ts` with the property over the `RecordingCanvas` call log, grouped by layer.
     - **Property 5: Layer order**
     - **Validates: Requirements 6.5**
     - Commit subject: `Views: draw map layers in a fixed order`
     - _Requirements: 6.1, 6.5_
 
-- [ ] 9. Hit test
-  - [ ] 9.1 Hit test for place markers
+- [x] 9. Hit test
+  - [x] 9.1 Hit test for place markers
     - Create `src/views/hit-test.ts` with `hitTestPlace(places, point, radiusPx)` (nearest within the radius, lowest id on a tie within 0.001 px, none when out of range). Create `tests/views/helpers/naive-nearest-place.ts` (shares no code) and `tests/views/hit-test.test.ts` with the property and examples at the 20 px boundary.
     - **Property 12: Hit test returns the nearest place within range**
     - **Validates: Requirements 11.9**
     - Commit subject: `Views: add place hit test with a model-checked property`
     - _Requirements: 11.2, 11.3, 11.9_
 
-- [ ] 10. Smoothing
-  - [ ] 10.1 Smoothing step functions
+- [x] 10. Smoothing
+  - [x] 10.1 Smoothing step functions
     - Create `src/views/smoothing.ts` with `advanceSmoothed` and `advanceSmoothedHeading` (exponential approach, 95% of the change within the duration, default 300 ms, no overshoot, exact end at the target, shortest turn of at most 180 degrees using the engine's `signedAngleDifference`). Create `tests/views/smoothing.test.ts` with the property and examples (95% at 300 ms, duration limits 1 and 5000).
     - **Property 15: Smoothing moves monotonically toward the target without overshoot (and takes the shortest turn)**
     - **Validates: Requirements 13.8, 13.9**
     - Commit subject: `Views: add smoothing with a no-overshoot property`
     - _Requirements: 13.1, 13.2, 13.3, 13.7, 13.8, 13.9_
-  - [ ] 10.2 Camera smoothing, reduced motion and timestamps
+  - [x] 10.2 Camera smoothing, reduced motion and timestamps
     - Add `advanceCamera(current, target, dtMs, durationMs, reducedMotion)` and a `FrameClock` helper to `smoothing.ts`: reduced motion jumps to the target in the same frame, a non-finite timestamp gives a `ViewError` and keeps the camera, an earlier timestamp gives an interval of 0 and a Notice, an interval over 1000 ms is cut to 1000, a duration outside 1 to 5000 gives a `ViewError`. Add examples to `tests/views/smoothing.test.ts`.
     - Commit subject: `Views: add camera smoothing, reduced motion and clock checks`
     - _Requirements: 13.1, 13.4, 13.5, 13.6, 13.10, 13.11, 13.12, 13.13, 22.9_
 
-- [ ] 11. Tilted projection and block height
-  - [ ] 11.1 Tilted projection and its inverse
+- [x] 11. Tilted projection and block height
+  - [x] 11.1 Tilted projection and its inverse
     - Create `src/views/tilted-projection.ts` with `projectTilted` (forward component times sin of the tilt, height lifted by height times cos of the tilt) and `unprojectTilted` (height 0). Create `tests/views/tilted-round-trip.test.ts` with the property and examples at the tilt limits 20 and 70 and a tilt out of range (`ViewError`).
     - **Property 14: Tilted projection round trip at ground level**
     - **Validates: Requirements 12.12**
     - Commit subject: `Views: add tilted projection with a round-trip property`
     - _Requirements: 12.2, 12.8, 12.9, 12.12_
-  - [ ] 11.2 Depth order
+  - [x] 11.2 Depth order
     - Add `depthOf` and `sortByDepth` (nearer after farther, ties within 0.001 by ascending identifier) to `tilted-projection.ts`. Create `tests/views/tilted-depth.test.ts` with examples: order for hand-placed blocks, tie rule.
     - Commit subject: `Views: add depth order for the tilted view`
     - _Requirements: 12.6, 12.7_
-  - [ ] 11.3 Block height
+  - [x] 11.3 Block height
     - Create `src/views/block-height.ts` with `RAISED_KINDS` (`building`, `house`, `tower`, `wall-block`), `DEFAULT_BLOCK_HEIGHTS` (12, 6, 24, 3), `blockHeightValue(prop)` (the Prop's `blockHeight`, else the default of a raised kind, else 0), `blockHeightOf(prop, heightFactors)` (value times the kind's height factor, never the footprint `height` field; a non-finite or negative result returns a Notice naming the Prop so the caller draws it flat), `validateHeightFactor(kind, factor)` (0 to 100) and `largestBlockHeight(props, factors)` for the visible region margin.
     - Create `tests/views/block-height.test.ts` with examples: defaults per kind, `blockHeight` over the default, `blockHeight` on a non-raised kind (value kept, Prop stays flat), the factor, the footprint `height` never used, flat fallback with Notice for a negative or non-finite height, margin from the largest height, factor boundaries (0, 100, just below, just above, NaN, +Infinity, -Infinity).
     - Commit subject: `Views: add block height with default heights and factors`
     - _Requirements: 12.13, 12.14, 12.15, 12.16, 12.17, 12.18, 23.13, 23.14_
 
-- [ ] 12. Frame gate, input state machine and task status
-  - [ ] 12.1 Frame gate
+- [x] 12. Frame gate, input state machine and task status
+  - [x] 12.1 Frame gate
     - Create `src/views/frame-gate.ts` with `FrameGate.shouldDraw(inputs)` (version counters for Map, Route, Position, Camera, Viewport and Style, a `settling` flag and a `canvasVisible` flag; true on any change, true while settling, true once more when settling ends, false and versions not remembered while the canvas is hidden or has a size of 0) and `drawIfDue(gate, inputs, draw)` that calls the draw function only when the gate says so. No clock is read.
     - Create `tests/views/frame-gate-unchanged.test.ts` with the property: drawing `drawMapLayers` through `drawIfDue` twice on the `RecordingCanvas` with no change between the two leaves zero calls for the second. Create `tests/views/frame-gate-changes.test.ts` with one example per change type (Map, Route, Position, Camera, Viewport, Style) asserting exactly one more frame and then zero calls, the one last frame after settling ends, a camera at rest in the same frame under reduced motion, and a hidden canvas that makes zero calls and draws again at the first frame with a valid size.
     - **Property 19: An unchanged frame makes zero drawing calls**
     - **Validates: Requirements 14.4, 14.9, 14.10, 22.6**
     - Commit subject: `Views: add frame gate with unchanged-frame property`
     - _Requirements: 14.4, 14.9, 14.10, 22.6, 22.7, 22.8, 22.9, 22.10, 22.12_
-  - [ ] 12.2 Pointer drag and selection
+  - [x] 12.2 Pointer drag and selection
     - Create `src/views/input-state-machine.ts` with `InputEvent`, `InputCommand`, `InputState`, `processEvents` for pointer down, move and up: pan commands from drag deltas, a selection when released within 6 px and 500 ms, events with non-finite x, y or timestamp dropped with a Notice. Create `tests/views/input-pan-sum.test.ts` with the property and examples for selection, drag and dropped events.
     - **Property 16: Pointer drag commands sum to the total screen displacement**
     - **Validates: Requirements 15.12**
     - Commit subject: `Views: add pointer input reducer with a pan-sum property`
     - _Requirements: 11.1, 15.2, 15.3, 15.11, 15.12, 15.13_
-  - [ ] 12.3 Wheel, pinch and keys
+  - [x] 12.3 Wheel, pinch and keys
     - Extend `processEvents`: wheel to zoom at the pointer with a factor from 0.5 to 2, two-finger pinch to zoom at the midpoint by the ratio of distances (no command under 1 px distance), keys as in Requirements 15.5 and 15.6 (arrows pan by 10% of the viewport, plus 1.25, minus 0.8, Home fit, F follow, brackets for the next and previous place, Enter activate), unused keys give no command. Create `tests/views/input-keys.test.ts` with examples.
     - Commit subject: `Views: add wheel, pinch and key commands to the input reducer`
     - _Requirements: 15.1, 15.4, 15.5, 15.6, 15.14, 15.15_
-  - [ ] 12.4 Record task status for the pure logic groups
+  - [x] 12.4 Record task status for the pure logic groups
     - Update the status of tasks 1 to 12 in `.kiro/specs/map-views/tasks.md` and, if it exists, `.kiro/specs/map-views/tasks.meta.json`, and commit those two files together as one commit. Run `npm run build` and `npm test` in `kit/engine` first, each as its own call. If neither file changed, make no commit.
     - Commit subject: `Specs: record map-views task status`
     - _Requirements: 19.2, 19.5_

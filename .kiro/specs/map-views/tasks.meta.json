@@ -1,0 +1,557 @@
+{
+  "pbtResults": {
+    "2.6 Round-trip generator and property": {
+      "status": "passed",
+      "lastRunTimestamp": 1795684315780
+    },
+    "2.7 Mirror keeps blockHeight": {
+      "status": "passed",
+      "lastRunTimestamp": 1795684430869
+    },
+    "4.1 Camera and transforms": {
+      "status": "passed",
+      "lastRunTimestamp": 1795684872969
+    },
+    "4.2 Camera pan and zoom at an anchor": {
+      "status": "passed",
+      "lastRunTimestamp": 1795684974560
+    },
+    "5.2 Visible region and visible set": {
+      "status": "passed",
+      "lastRunTimestamp": 1795685260801
+    },
+    "7.3 Road batching with path-count property": {
+      "status": "passed",
+      "lastRunTimestamp": 1795685876230
+    },
+    "7.5 Route line, markers and input validation": {
+      "status": "passed",
+      "lastRunTimestamp": 1795686184422
+    },
+    "8.1 Label placement": {
+      "status": "passed",
+      "lastRunTimestamp": 1795686294758
+    },
+    "8.3 Fixed layer order": {
+      "status": "passed",
+      "lastRunTimestamp": 1795686624314
+    },
+    "9.1 Hit test for place markers": {
+      "status": "passed",
+      "lastRunTimestamp": 1795686723064
+    },
+    "10.1 Smoothing step functions": {
+      "status": "passed",
+      "lastRunTimestamp": 1795686845097
+    },
+    "11.1 Tilted projection and its inverse": {
+      "status": "passed",
+      "lastRunTimestamp": 1795687239565
+    },
+    "12.1 Frame gate": {
+      "status": "passed",
+      "lastRunTimestamp": 1795687515418
+    },
+    "12.2 Pointer drag and selection": {
+      "status": "passed",
+      "lastRunTimestamp": 1795687629510
+    }
+  },
+  "executionHistory": {
+    "2.1 Engine.getMap": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795683778469
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795683899232
+      }
+    ],
+    "2.2 Export and document snapToRoad": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795683903838
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795683998684
+      }
+    ],
+    "2.3 blockHeight type and format document": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684004339
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684080463
+      }
+    ],
+    "2.4 blockHeight loader check": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684085016
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684192488
+      }
+    ],
+    "2.5 blockHeight saver": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684197179
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684263232
+      }
+    ],
+    "2.6 Round-trip generator and property": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684267666
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684340054
+      }
+    ],
+    "2.7 Mirror keeps blockHeight": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684344896
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684454814
+      }
+    ],
+    "2. Engine-side gaps (all before any view code)": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684454950
+      }
+    ],
+    "3.1 View_Error and Notice types": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684460175
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684554617
+      }
+    ],
+    "3.2 Canvas interface and recording canvas": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684559807
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684680785
+      }
+    ],
+    "3.3 Boundary test for browser globals and dependencies": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684685417
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684752080
+      }
+    ],
+    "3. Views foundation": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684752196
+      }
+    ],
+    "4.1 Camera and transforms": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684756869
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684905500
+      }
+    ],
+    "4.2 Camera pan and zoom at an anchor": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684910474
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684995506
+      }
+    ],
+    "4. Camera": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795684995579
+      }
+    ],
+    "5.1 Item bounds, map checks and the spatial index": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685000297
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685133499
+      }
+    ],
+    "5.2 Visible region and visible set": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685138085
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685309112
+      }
+    ],
+    "5. Spatial index and visibility": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685309180
+      }
+    ],
+    "6.1 Default style and contrast": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685313691
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685405176
+      }
+    ],
+    "6.2 Resolve the map style": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685409652
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685520402
+      }
+    ],
+    "6. Style": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685520540
+      }
+    ],
+    "7.1 Safe drawing helper": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685526608
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685617864
+      }
+    ],
+    "7.2 Ground, blocked areas and props": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685622856
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685743461
+      }
+    ],
+    "7.3 Road batching with path-count property": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685748344
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685913959
+      }
+    ],
+    "7.4 Roads layer": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795685919398
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686047927
+      }
+    ],
+    "7.5 Route line, markers and input validation": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686052929
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686207935
+      }
+    ],
+    "7. Layer pieces": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686208008
+      }
+    ],
+    "8.1 Label placement": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686213300
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686325533
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687007193
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687158773
+      }
+    ],
+    "8.2 Place markers and labels layer": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686330511
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686472709
+      }
+    ],
+    "8.3 Fixed layer order": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686477576
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686656049
+      }
+    ],
+    "8. Labels and layer order": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686656221
+      }
+    ],
+    "9.1 Hit test for place markers": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686662859
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686754885
+      }
+    ],
+    "9. Hit test": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686755042
+      }
+    ],
+    "10.1 Smoothing step functions": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686760425
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686868493
+      }
+    ],
+    "10.2 Camera smoothing, reduced motion and timestamps": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795686873725
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687001770
+      }
+    ],
+    "10. Smoothing": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687001905
+      }
+    ],
+    "11.1 Tilted projection and its inverse": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687158942
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687262699
+      }
+    ],
+    "11.2 Depth order": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687263211
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687349412
+      }
+    ],
+    "11.3 Block height": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687349599
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687437609
+      }
+    ],
+    "11. Tilted projection and block height": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687437731
+      }
+    ],
+    "12.1 Frame gate": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687438051
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687537244
+      }
+    ],
+    "12.2 Pointer drag and selection": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687537880
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687649280
+      }
+    ],
+    "12.3 Wheel, pinch and keys": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687648607
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687767440
+      }
+    ],
+    "12.4 Record task status for the pure logic groups": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687767572
+      },
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687793951
+      }
+    ],
+    "12. Frame gate, input state machine and task status": [
+      {
+        "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795687794037
+      }
+    ]
+  }
+}
