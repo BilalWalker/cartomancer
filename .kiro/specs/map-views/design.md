@@ -12,11 +12,13 @@ Pictures (Requirement 24) follow one rule: the caller loads, the Views draw. A c
 
 Logic and drawing are split the same way the engine core splits pure logic from nothing browser-specific: every draw call goes through a Canvas_Interface; a Recording_Canvas stores calls for Node tests; a Canvas_Adapter implements the interface on a real `CanvasRenderingContext2D`. Browser globals are allowed in exactly three Views files: `canvas-adapter.ts`, `input-binding.ts` and `mount.ts` (Requirement 19.18). Input handling is split the same way: a pure input state machine turns a sequence of pointer/key events into pan, zoom and selection commands; a thin binding layer attaches real DOM listeners and feeds them into the state machine.
 
+Five later amendments (Requirements 25 to 29, and Requirement 12 criteria 20 and 21) change the design in five places, each described in its own section below. (1) The Engine gets `getMapVersion()`, and a mounted View reads `getMap()` only when that number changes, so a View is mounted once, may be mounted before any map exists, and is never mounted again when the map changes ("Map version and the Frame_Loop"). (2) The Tilted_View uses a real Perspective_Projection, a projective map of the ground plane with a Focal_Distance, instead of an affine squash; the default Tilt_Angle is 35 degrees (the current code default of 45 changes) and is checked with worked numbers against criteria 26.3 and 26.4 ("Perspective_Projection of the Tilted_View"). (3) The North_Mark becomes the letter `N` with a tick and gets a new default colour with measured contrast and hue difference ("North_Mark"). (4) The Demo_Page shows the Engine's own guidance sentence verbatim, has a tilt slider and no longer mounts its Views again ("Demo page changes"). (5) A fixed audit procedure keeps the dev tooling free of fixable vulnerabilities ("Dev tooling audit").
+
 ## Architecture
 
 ### Module layout inside `kit/engine/`
 
-The Views add a `views/` subtree beside the existing engine-core files, so the existing `src/index.ts`, `engine.ts`, etc. (Block A) are untouched except for the three Engine-side additions this design calls out as production code (`Engine.getMap()`, the `snapToRoad` export, and the optional Prop field `blockHeight`, see "Engine API gaps to close"):
+The Views add a `views/` subtree beside the existing engine-core files, so the existing `src/index.ts`, `engine.ts`, etc. (Block A) are untouched except for the four Engine-side additions this design calls out as production code (`Engine.getMap()`, the `snapToRoad` export, the optional Prop field `blockHeight`, and `Engine.getMapVersion()`, see "Engine API gaps to close"):
 
 ```
 kit/engine/
@@ -60,7 +62,17 @@ kit/engine/
       label-placement.ts        # placeLabels(candidates, viewport) -> placed labels
                                # (pure; no canvas access)
       hit-test.ts                # hitTestPlace(places, screenPoint, camera) -> place | undefined
-      tilted-projection.ts       # projectTilted, unprojectTilted, depthOrder (pure)
+      tilted-projection.ts       # Perspective_Projection of the Tilted_View: focalDistanceFor,
+                               # projectTilted, unprojectTilted (any height), depthOf,
+                               # sortByDepth, tiltedFootprint, tiltedVisibleRegion,
+                               # eyeGroundPoint, near clip (pure, no canvas)
+      tilted-ground.ts           # ground layers of the Tilted_View, drawn point by point in
+                               # screen space under the identity transform: ground fill,
+                               # blocked areas, flat props, route line, markers; segment and
+                               # polygon clipping at the near clip and far depth
+      tilted-roads.ts            # splits Roads into depth pieces with a pixel width each and
+                               # hands them to road-batching.ts
+      tilted-pictures.ts         # Background_Picture and Picture_Props in depth bands
       smoothing.ts               # advanceSmoothed(current, target, dtMs, durationMs)
                                # (pure; caller supplies dtMs, no system clock read)
       input-state-machine.ts    # PointerEvent[]/KeyEvent[] -> pan/zoom/select commands
@@ -68,7 +80,8 @@ kit/engine/
       input-binding.ts          # attaches real listeners, calls input-state-machine;
                                # one of the three files allowed browser-only globals
       mount.ts                  # mountMinimap / mountFullMap / mountTiltedView,
-                               # Mount_Handle, Frame_Loop, resize observer,
+                               # Mount_Handle, Frame_Loop (map-version check, waiting
+                               # state, pending settings), resize observer,
                                # Reduced_Motion listener; the third file allowed
                                # browser-only globals (all reached through injectable
                                # stand-ins so Node tests can run it)
@@ -95,6 +108,8 @@ kit/engine/
     smoke.test.ts                # existing engine-core test; the ONE permitted edit
                                # (Requirement 19.23): allowlist scan + missing-path check
     smoke-allowlist.test.ts      # tests the allowlist check with a stand-in file list
+    engine-map-version.test.ts   # Property 26 and the examples of 25.1 to 25.5 (engine-core
+                                 # folder; a new file, no existing test edited)
     helpers/browser-global-scan.ts # pure check(files, allowlist) used by both tests above
     views/
       canvas-interface-draw-image.test.ts # drawImage on Recording_Canvas, SafeCanvas,
@@ -124,7 +139,18 @@ kit/engine/
       full-map-zoom-anchor.test.ts
       full-map-click-snaps.test.ts
       tilted-depth-order.test.ts
-      tilted-round-trip.test.ts
+      tilted-round-trip.test.ts           # Property 14 under the Perspective_Projection
+      tilted-perspective-narrowing.test.ts # Property 28
+      tilted-lens.test.ts                 # Property 29 and the worked numbers (26.3, 26.5)
+      tilted-visible-region.test.ts       # Property 30
+      tilted-criteria-26.test.ts          # criteria 26.3 and 26.4 on the Recording_Canvas for
+                                          # 400 x 300 and 375 x 500 (26.12)
+      tilted-ground-clip.test.ts          # near clip, depth pieces, face culling
+      tilted-pictures-bands.test.ts       # band count and rows (24.10 under perspective)
+      north-mark.test.ts                  # 27.2 and 27.3 with test-code contrast and hue
+                                          # functions, 27.4 to 27.6, 27.10
+      mount-map-version.test.ts           # Property 27 and the examples of 25.18
+      mount-waiting.test.ts               # 25.11 to 25.14, 25.16, pending settings
       smoothing.test.ts
       input-pan-sum.test.ts
       road-batching-path-count.test.ts    # Property 18 + 5,000-road example (22.11)
@@ -172,7 +198,13 @@ kit/demo/
                                # bench generator's Large_Generated_Map (fixed seed)
     player-dot.ts                  # arrow-key-driven dot: position + heading + speed
     reduced-motion.ts               # reads prefers-reduced-motion, feeds Views
+    page.ts                       # createDemo: mounts the Views once, loads maps into the
+                               # Engine only, tilt control, status refresh
+    status-text.ts                # guidanceStatusText (verbatim sentence) and the other
+                               # status lines
     demo.css
+  tests/                        # Default_Suite of the demo: status-text.test.ts (Property 31),
+                               # main-wiring.test.ts (mount once, tilt slider, stand-in Engine)
   bench/
     frame-bench.spec.ts            # Playwright: Frame_Benchmark (Requirement 18)
     gate.spec.ts                   # Playwright: the Gate (Requirement 20)
@@ -230,7 +262,10 @@ sequenceDiagram
 - **One spatial index built once per `setMap`, shared by all three Views.** Requirement 3.7's 5%-region/25%-roads bound rules out a linear scan per frame on the 5,000-road map; a uniform grid (cell size = a multiple of the median road length, rebuilt only when the Map changes) is simple, deterministic, and cheap to test against a brute-force "test every item" check (the model-based property pattern already used for the engine core's exhaustive search). An R-tree would also satisfy the bound but adds a dependency-free implementation cost without a speed requirement that demands it; a grid is chosen for simplicity, matching the engine core's "Dijkstra, not A*" call for the same reason (Decision 1 in `engine-core/design.md`).
 - **Camera transforms are affine and shear-free by construction.** `worldToScreen` is composed as translate(viewport centre) ∘ rotate(camera.rotationDegrees) ∘ scale(camera.zoom) ∘ translate(-camera.center), so Requirement 2.10's "no shear, no unequal scaling" holds by construction and the property test is a check on the implementation, not a design risk.
 - **Label_Placement and Hit_Test take plain screen-space data, not a `Camera`.** Both are pure functions of already-projected points and sizes; the View projects candidates with `worldToScreen` first and hands plain numbers to `label-placement.ts`/`hit-test.ts`. This keeps those two modules trivially fuzzable (Requirement 8.8/11.9 property tests) without needing a Camera generator inside them.
-- **Tilted projection is a single reversible function, not "draw up then offset".** `projectTilted(groundPoint, height, tiltAngleDegrees, camera)` and its inverse `unprojectTilted` are implemented as one pair so Requirement 12.12's round-trip property is a direct test of the pair, and `Raised_Block` footprints reuse the same function `layers.ts` uses for ground items (no duplicate math).
+- **Tilted projection is a single reversible function, not "draw up then offset".** `projectTilted(ground, height, tiltAngleDegrees, camera, focalDistancePx?)` and its inverse `unprojectTilted` are implemented as one pair under the Perspective_Projection so the round-trip property of Requirements 12.12 and 26.6 is a direct test of the pair, and `Raised_Block` footprints reuse the same function the ground layers use (no duplicate math).
+- **Perspective is a plane map with the player as pivot, not a squash.** The ground plane is mapped to the screen by a projective map (pinhole eye above and behind the player), so the scale of a ground point depends on its depth and a road across the heading is narrower at the top of the view. The Canvas_Interface can only translate, rotate and scale, so ground layers are not drawn under one transform: every vertex is projected on its own and drawn under the identity transform. Pictures, which cannot be given as vertices, are drawn in depth bands. The choice and the numbers are in "Perspective_Projection of the Tilted_View".
+- **Heights are lifted at the scale of their ground point.** A height lifts the point up the screen by `height * zoom * cos(tilt)` times the perspective scale of the ground point under it, and does not move it sideways. At the player the scale is 1, so criteria 12.2 and 12.19 hold exactly there for every height from 0 to 1,000 (Requirement 12.20), which the exact pinhole formula does not give.
+- **The View reads the map by version, not by value.** `Engine.getMap()` copies the whole Map with `structuredClone`, which costs milliseconds on the 5,000-road map and returns a new object on every call, so neither a per-frame copy nor an identity comparison is possible. `Engine.getMapVersion()` returns one whole number, the Frame_Loop compares one number per frame and copies the Map once per change (Requirement 25).
 - **Smoothing is a pure step function driven by caller-supplied `dtMs`.** `advanceSmoothed(current, target, dtMs, durationMs)` never reads `Date.now()` or `performance.now()`; the three Views and the demo page supply timestamps, keeping Requirement 13.7's determinism and matching the engine core's `Rerouter` pattern of taking every timestamp as an argument (Decision in `engine-core/design.md`, "one `Engine` class... takes every timestamp as an argument").
 - **The input state machine never imports a DOM event type.** It is typed over plain `{ kind, x, y, timestampMs, ... }` records that `input-binding.ts` constructs from real events, so Requirement 15.11's "runs in Node, tested without a browser" and the pan-sum property (Requirement 15.12) can generate event sequences directly without mocking the DOM.
 - **The demo page is a separate Vite project, not part of the engine package.** It needs `index.html`, a dev server and DOM wiring that the engine package (no runtime dependency, Node-testable) must not carry; `kit/demo/` depends on the engine package via a local path/workspace reference, matching the brief's "no server... static files" and keeping `kit/engine/`'s own `package.json` free of a `vite` devDependency it does not otherwise need. Playwright specs live under `kit/demo/bench/` since they drive this page specifically, not the engine package's Default_Suite.
@@ -239,7 +274,7 @@ sequenceDiagram
 
 ### Engine API gaps to close (production code, before the View that needs it)
 
-Reading `kit/engine/src/index.ts`, `engine.ts`, `types.ts` and `docs/api.md` against the requirements above, three gaps need Engine-side work. Each is its own task with its own commit (code and tests together), and each must be done and green before any View file that uses it is built. Requirement 19.17 makes `blockHeight` the one allowed change to Engine behaviour besides gap 1 and 2 (Requirement 19.13).
+Reading `kit/engine/src/index.ts`, `engine.ts`, `types.ts` and `docs/api.md` against the requirements above, four gaps need Engine-side work. Each is its own task with its own commit (code and tests together), and each must be done and green before any View file that uses it is built. Requirement 19.17 makes `blockHeight` the one allowed change to Engine behaviour besides gaps 1, 2 (Requirement 19.13) and 4 (Requirement 25).
 
 1. **No read access to the loaded Map's drawable fields.** `Engine` exposes `getPlaces()` and `getBlockedRoads()` but nothing returns the nodes, roads, blocked areas, props, background picture or style of the currently loaded map, which every View needs to draw (Requirements 1, 4, 5, 6, 12). **Fix:** add `Engine.getMap(): EngineMap | undefined` to `engine.ts`, returning a defensive shallow-readonly copy consistent with `getPlaces()`'s copying behavior, and re-export the already-defined `EngineMap`/`MapFile`-field types that are not yet exported if any are missing (the current `index.ts` already exports `EngineMap`, `RoadData`, `PlaceData`, `PropData`, `BlockedAreaData`, `StyleData`, `BackgroundPictureData`, so only the `getMap()` method is new). Documented in `docs/api.md` under `Engine`, with a usage example; tested in `tests/engine-api.test.ts` (engine-core's existing file) alongside the other `Engine_API` methods, and in `tests/views/style-resolution.test.ts` as a consumer.
 2. **`snapToRoad` is implemented but not part of the public surface.** `src/snapping.ts` exports `snapToRoad` and `isNoUsableRoad`, but `index.ts` re-exports neither, and `docs/api.md` documents neither — Requirement 11.4/11.8 (Full_Map converts a click to a world point, then needs the engine to snap it to the nearest Usable_Road) needs this as a called, documented function, not an internal implementation detail. **Fix:** add `snapToRoad` and `isNoUsableRoad` (and the `NoUsableRoadResult` type) to `index.ts`'s export list, document both in `docs/api.md` with a usage example, under the existing "Functions and classes" section next to `mirrorMap`. No logic changes to `snapping.ts` itself; this is a visibility/documentation fix, tested by extending `tests/engine-api.test.ts`'s export-list-matches-docs assertion to cover the new exports.
@@ -253,7 +288,9 @@ Reading `kit/engine/src/index.ts`, `engine.ts`, `types.ts` and `docs/api.md` aga
 
    The engine-core Default_Suite must stay green after each of these commits with no existing test edited (Requirements 19.12, 19.17, 23.12). Maps without `blockHeight` load and save byte-for-byte as before.
 
-Gaps 1 and 2 are engine-core production code (not Views code) and, per the commit rules, land in their own commit with their own test changes before any View file that imports them. They touch no engine-core behavior and the engine-core Default_Suite is asserted unchanged (Requirement 19.12). Gap 3 changes behaviour only for map files that carry `blockHeight`. The Views read `blockHeight` only through the Map (Requirement 23.13) and use no Prop in routing or guidance (Requirement 23.14).
+4. **No way to tell that the loaded Map changed (Requirement 25).** `Engine.getMap()` returns a deep copy on every call, so a View cannot compare Maps by identity, and copying the 5,000-road Map on every animation frame is not acceptable. **Fix:** add `Engine.getMapVersion(): number` in `engine.ts`: a private counter `mapVersion`, initially 0, raised by exactly 1 inside the success branch of `loadMap` (the branch that replaces `this.map`) and returned as it is, with no copy (Requirement 25.5). A load that fails, including a call with a value that is not text, takes the early return or the error branch, so the counter does not move (25.3). The counter is a JavaScript number that rises by 1 per load, so it is exact up to 2^53 loads. Documented in `docs/api.md` under `Engine` with the rules of 25.1 to 25.3 and a usage example in which the application mounts a View once and later calls `loadMap` again (25.19). Tested in a new `tests/engine-map-version.test.ts` (Property 26), including a spy that shows `getMapVersion` does not call `structuredClone`. One commit, code and tests together; no existing engine-core test is edited, and the documented-method check in `engine-api.test.ts` is satisfied by the `api.md` entry (25.20).
+
+Gaps 1, 2 and 4 are engine-core production code (not Views code) and, per the commit rules, land in their own commit with their own test changes before any View file that imports them. They change no existing engine-core behavior (gap 4 adds a method and a counter) and the engine-core Default_Suite is asserted unchanged (Requirement 19.12). Gap 3 changes behaviour only for map files that carry `blockHeight`. The Views read `blockHeight` only through the Map (Requirement 23.13) and use no Prop in routing or guidance (Requirement 23.14).
 
 No other gap was found: `findRoute`'s destination-snapping already covers Requirement 11.4's "snaps the world point to the nearest Usable_Road" by routing the click's world point through `Engine.setDestination({ point })`, which is the path Requirement 11.6 ("Full_Map sends the Destination to the Engine_API and computes no route itself") already requires; the Full_Map does not need to call `snapToRoad` itself for destination-setting, only for the click-lands-on-a-road property test's independent check and for any future maker use. `getGuidance()`/`getGuidanceSentence()`/`getRoute()`/`getRemainingRoute()`/`getLastNoWayResult()` already cover Requirement 7's needs.
 
@@ -503,12 +540,95 @@ Returns the nearest place within `radiusPx` (20, per Requirement 11.2), breaking
 ### `tilted-projection.ts`
 
 ```ts
-function projectTilted(ground: { x: number; y: number }, heightWorldUnits: number, tiltAngleDegrees: number, camera: Camera): { x: number; y: number };
-function unprojectTilted(screen: { x: number; y: number }, tiltAngleDegrees: number, camera: Camera): { x: number; y: number }; // height 0 only
-function depthOf(ground: { x: number; y: number }, camera: Camera): number; // for Depth_Order sort key
+const DEFAULT_TILT_DEGREES = 35;          // was 45 (Requirement 26.2)
+const PLAYER_SCREEN_FRACTION = 0.75;      // moved here from tilted-view.ts, which re-exports it
+const HORIZON_ABOVE_TOP_FRACTION = 0.75;  // the horizon row lies this many viewport heights above the top edge
+const NEAR_CLIP_FRACTION = 0.25;          // ground with depth under this share of the Focal_Distance is clipped
+
+function focalDistanceFor(tiltAngleDegrees: number, viewportHeight: number): number;        // 1.5 * H / tan(tilt)
+function validateFocalDistance(focalDistancePx: number, tiltAngleDegrees: number, viewportHeight: number): ViewError | undefined;
+
+function projectTilted(ground: { x: number; y: number }, heightWorldUnits: number, tiltAngleDegrees: number, camera: Camera, focalDistancePx?: number): { x: number; y: number } | ViewError;
+function unprojectTilted(screen: { x: number; y: number }, tiltAngleDegrees: number, camera: Camera, focalDistancePx?: number, heightWorldUnits?: number): { x: number; y: number } | ViewError; // height defaults to 0
+
+function tiltedFootprint(camera: Camera, tiltAngleDegrees: number, focalDistancePx?: number, heightWorldUnits?: number): { x: number; y: number }[] | ViewError; // the four world corners of the viewport
+function tiltedVisibleRegion(camera: Camera, tiltAngleDegrees: number, maxLiftWorldUnits: number, marginWorldUnits: number, focalDistancePx?: number): Bounds | ViewError;
+function eyeGroundPoint(camera: Camera, tiltAngleDegrees: number, focalDistancePx?: number): { x: number; y: number } | ViewError; // world point under the eye, for face culling
+function depthOf(ground: { x: number; y: number }, camera: Camera): number | ViewError; // Depth_Order sort key, unchanged
 ```
 
-`projectTilted` first rotates the ground point into the camera's heading-up frame (same rotation `camera.ts` uses), shortens the forward (screen-up) component by `sin(tiltAngleDegrees)` and lifts the point up-screen by `heightWorldUnits * cos(tiltAngleDegrees)` (Requirement 12.2), then applies the ordinary `worldToScreen` scale/translate. `unprojectTilted` undoes exactly these steps in reverse for height 0, giving Requirement 12.12's round trip by construction. `depthOf` returns the rotated, pre-tilt forward-axis coordinate (larger = nearer the viewer, i.e. lower on screen), used to sort Raised_Blocks and upright labels for Requirement 12.6/12.7/12.11, with a stable sort keyed secondarily by `propId` for the <0.001-world-unit tie rule.
+`projectTilted` and `unprojectTilted` implement the Perspective_Projection of the next section, as an exact pair for every height. `depthOf` is unchanged: it returns the rotated forward-axis offset (larger = nearer the viewer, lower on the screen), used to sort Raised_Blocks and upright labels for Requirements 12.6, 12.7 and 12.11, with a stable sort keyed secondarily by `propId` for the 0.001-world-unit tie rule. It still orders correctly under perspective, because the depth `z` of a ground point is a strictly increasing function of the forward offset (see below), so "farther" by `depthOf` is "farther" by perspective depth (Requirement 26.7).
+
+### Perspective_Projection of the Tilted_View (Requirements 12.20, 12.21 and 26)
+
+**Why the old projection goes.** The earlier projection shortened the vertical offset from the viewport centre by `sin(tilt)` and lifted heights by `cos(tilt)`, the same everywhere. That is an affine squash: a road across the heading has the same screen width at the top of the view as at the bottom, so nothing looks farther away (Requirement 26.1). The Canvas_Interface can only translate, rotate and scale, so a perspective image cannot be drawn under one canvas transform. The sections below give the math and then the drawing method that works within that limit.
+
+**The model.** The Tilted_View camera is centred on the player (the old "ahead" offset of the camera centre is removed) with the rotation `headingUpRotation(heading)`. For a world point `p`, `flat = worldToScreen(camera, p)` gives, in CSS pixels, the lateral offset `X = flat.x - W/2` (right) and the forward offset `g = -(flat.y - H/2)` (up the screen, so `g > 0` is farther from the viewer). `W` and `H` are the Viewport width and height. A height of `hw` world units is `h = hw * zoom` pixels. The lens has four numbers: the tilt `t`, the Focal_Distance `f` in CSS pixels, the principal row `A = 0.75 * H` (the player's screen row, `PLAYER_SCREEN_FRACTION`), and the principal column `W/2`.
+
+The eye is above and behind the player. It lies on the viewing line through the player that is `t` below the horizontal, at distance `f` from the player: forward offset `-f * cos(t)`, height `f * sin(t)`, both in pixels. The principal point sits at the player's row, so the optical axis meets the ground at the player, and the player stays at `(W/2, 0.75 H)` while the Viewport is a window onto the image plane (a lens shift). With `z = f + g * cos(t)` as the depth of a ground point along the optical axis:
+
+```
+x = W/2 + f * X / z
+y = A   - f * (g * sin(t) + h * cos(t)) / z          (z does not depend on h, see below)
+```
+
+**Heights.** The exact pinhole formula also lowers the depth by `h * sin(t)`. That is not used, for two reasons: at the player it gives a lift of `f*h*cos(t)/(f - h*sin(t))`, which is 2.2% above `h*cos(t)` for the 12-unit building at zoom 2 and is undefined for a block taller than the eye, while Requirement 12.20 asks for exactly `Block_Height * cos(t)` at the player for every height from 0 to 1,000. So a height lifts the point straight up the screen by `h * cos(t)` times the scale `f / z` of the ground point under it, and does not move it sideways. Vertical block edges stay vertical on the screen, and heights get smaller with depth as Requirement 26 asks.
+
+**At the player** (`X = 0`, `g = 0`, `z = f`): the lateral scale is 1, a forward step of one pixel moves the point by `sin(t)` (`dy/dg = -f^2 sin(t) / z^2 = -sin(t)`, Requirement 12.2), and a height lifts by exactly `h * cos(t)` (Requirement 12.19). Everywhere else the scale is `f / z`, which falls with distance (Requirement 12.20).
+
+**Inverse.** For a screen point `(x, y)` and a height `h` (default 0), put `q = (A - y) / f`. Then
+
+```
+g = (q * f - h * cos(t)) / (sin(t) - q * cos(t))        z = f + g * cos(t)        X = (x - W/2) * z / f
+```
+
+and the world point is `screenToWorld(camera, { x: W/2 + X, y: H/2 - g })`. The denominator is positive exactly when the row is below the horizon row, so a point on or above the horizon returns a plain-worded ViewError, as does a result with `z` under the near clip. For `h = 0` this is the algebraic inverse of the forward map, so the round trip (Requirements 12.12 and 26.6) carries only floating-point error.
+
+**The Focal_Distance rule.** `f = 1.5 * H / tan(t)`. The horizon row is `A - f * tan(t) = 0.75 H - 1.5 H = -0.75 H`, so the horizon lies 0.75 H above the top edge at every tilt, and the scale of a ground row is linear in the screen row: `scale(y) = (y + 0.75 H) / (1.5 H)`. That gives 0.5 at the top row (the Far_Edge), 1 at the player's row, and 7/6 = 1.167 at the bottom row. The ratio of Requirement 26.3 is therefore exactly 0.5 for every `W`, every `H` and every tilt, against the limit 0.6, and the top edge is on the ground (Requirement 26.5) with a margin of 0.75 H. The rule depends on `H` only, so it "scales with the viewport", and `W` has no effect on the scale of a row. A constant `f = k * A` was tried and rejected: its Far_Edge ratio is `1 - 1/(k * tan(t))`, so 26.3 holds only up to a tilt limit (with `k = 3`, 0.524 at 35 degrees but 0.667 at 45 degrees, which fails), at 20 degrees the horizon is only 0.07 H above the top edge, and the ground footprint grows without bound as the tilt falls. `validateFocalDistance` allows a caller value only if it is finite, `f * tan(t) > A` (the top edge on the ground) and `f <= 1000 * H`; the View_Error names the Focal_Distance and the range for that tilt and Viewport (Requirement 26.9). The Tilted_View always uses the rule; the optional parameter exists for the pure functions and their tests, and the Mount_Function has no focal option.
+
+**Worked numbers** (computed with the formulas above):
+
+| Viewport W x H | Focal_Distance at 35 degrees | Horizon row | Scale at the top row |
+|---|---|---|---|
+| 200 x 200 | 428.4 px | -150 | 0.5000 |
+| 400 x 300 | 642.7 px | -225 | 0.5000 |
+| 375 x 500 | 1071.1 px | -375 | 0.5000 |
+| 1600 x 1600 | 3427.6 px | -1200 | 0.5000 |
+
+| Tilt (400 x 300) | 20 | 35 | 45 | 70 |
+|---|---|---|---|---|
+| Focal_Distance (px) | 1236.4 | 642.7 | 450.0 | 163.8 |
+| Visible ground area divided by Viewport area at pivot scale (`120 / (49 sin t)`) | 7.16 | 4.27 | 3.46 | 2.61 |
+
+**Check of the 35-degree default against Requirement 26.3.** Ratio 0.5 against the limit 0.6, so a Road segment of fixed world length across the heading is half as wide at the Far_Edge as at the player, for any Viewport from 200 to 1600 px on each side. No change of the default is needed.
+
+**Check against Requirement 26.4.** The scene: a `building` of Block_Height 12, footprint 12 by 12 world units, centre 20 units ahead of the player on the heading line, zoom 2 (the Tilted_View default), tilt 35 degrees. The viewer's eye lies on the heading line, so only the face that looks towards the viewer is drawn (see "Faces"); the other three sides are edge-on or hidden. For 400 x 300: the front face covers 439.9 px squared, the top face 272.3 px squared, a ratio of 1.62 against the limit 0.25 (6.5 times the limit). For 375 x 500: 452.3 and 294.0, ratio 1.54. Over zoom 1 to 8 the ratio runs from 1.52 to 2.30 (400 x 300) and from 1.48 to 1.91 (375 x 500). The no-perspective limit of the ratio is `cot(t)` for equal height and footprint, 1.43 at 35 degrees, so criterion 26.4 holds for every allowed tilt up to 75.96 degrees, that is, for the whole range 20 to 70. The default of 35 degrees therefore passes with a wide margin and is kept (45 degrees would give a ratio near 1.0 and pass too, but shows the sides less). The lift of this block at 20 units ahead is 18.71 px against 19.66 px (`24 cos 35`) at the player, 4.8% less, which is the depth effect of Requirement 12.20.
+
+**Near clip and far limit.** A ground point is projectable when its depth is at least `0.25 f` (`NEAR_CLIP_FRACTION`); `projectTilted` returns a ViewError for a nearer one, so no point is ever divided by a depth near 0 or by a negative depth. The Viewport reaches only `z = 6f/7 = 0.857 f` at its bottom row (at every tilt), so the clip lies below the Viewport and removes only ground behind the viewer's feet. For depth in the other direction, the top row has `z = 2 f`; ground, areas and Roads are cut at `z = 2.2 f`, which keeps strokes that cross the top edge and drops what cannot be seen. Both cuts are straight lines of constant forward offset `g` (depth is linear in `g`), so a segment is clipped by interpolation and a polygon by one Sutherland-Hodgman pass per cut.
+
+**Footprint and Visible_Region.** The four corners of the Viewport unproject in closed form (heading-up frame, pixels): top corners `X = +/-W`, `g = f / cos(t)`, `z = 2f`; bottom corners `X = +/-3W/7`, `g = -f / (7 cos(t))`, `z = 6f/7`. The ground footprint is a trapezoid 2W wide at the Far_Edge, 6W/7 wide at the bottom edge and `12 H / (7 sin(t))` long, with area `120 W H / (49 sin(t))` pixels squared, 4.27 times the Viewport area at 35 degrees. Perspective preserves straight lines, so every screen point of the Viewport lies in that trapezoid. `tiltedVisibleRegion` returns the axis-aligned box of: the four corners at height 0, and the two bottom corners unprojected at the height `maxLift` (the largest Block_Height of the visible Raised_Blocks times its factor, Requirement 12.18; this is the ground position whose roof reaches the bottom row, so a block whose base is below the Viewport but whose top is inside is kept, Requirement 12.10), widened by the margin `max(largest Road width, route line width / (0.5 * zoom))` in world units (Requirement 3.3; 0.5 is the smallest scale in the Viewport). `maxLift` is capped at the height whose bottom-row unprojection reaches the near clip. `computeVisibleSet(index, region)` is unchanged and takes this box, so Property 4 still compares the index with a plain check against the same box. The box of a trapezoid that is turned by the heading is larger than the trapezoid: computed over every heading, the worst case is a heading of 45 degrees, where the box is 2.10 times the trapezoid area at 400 x 300 and 35 degrees, 2.51 times at 20 degrees and 2.57 times at 375 x 500 and 35 degrees.
+
+**Faces.** A side face of a Raised_Block is drawn only if its outward normal on the ground points towards the eye's ground point `eyeGroundPoint` (forward offset `-f cos(t)` behind the player). This is exact for the vertical-edge model and draws no hidden face. A block whose centre lies on the heading line shows its front face only; one that is off the line shows the front and one side. The faces are drawn farther edge first, then the top face, in screen space under the identity transform. A block with a footprint corner nearer than the near clip is not drawn and one Notice names the Prop.
+
+**How the ground layers are drawn under perspective.**
+
+| Option | Exact? | Cost | Verdict |
+|---|---|---|---|
+| One affine ground transform (the old squash) | No: one transform has one scale, the real scale runs from 0.5 to 1.17 over the Viewport | one pass | rejected, it is the problem |
+| Depth bands, each under its own affine transform and clip | Position inside a band is approximate | bands times the items in each band | used for pictures only |
+| Project every vertex, draw under the identity transform | Exact for vertices, because a straight edge projects to a straight edge | one pass | used for everything that has vertices |
+
+Under the identity transform: the ground is one filled rectangle of the Viewport (the horizon is outside it, so the ground covers it); Blocked_Areas and flat Props are ground polygons (a plain shape of Requirement 6.3 becomes a ground polygon, a circle one of 16 points) clipped at the two cuts and projected vertex by vertex, filled and outlined with the same pixel widths as before; the Route_Line is a polyline of projected points drawn with its outline and fill strokes at a constant pixel width (the 6 px of the Resolved_Style, inside the 4 to 12 px of Requirement 7.2), because it is an overlay and not a road surface; place markers, the Destination_Marker and the Player_Marker are upright, screen-sized shapes at the projected point, using the optional `project` argument that `drawPlaceLabels` already has (`drawPlaceMarkers`, `drawDestinationMarker` and `drawPlayerMarker` gain it), so they keep the 10 to 24 px size of Requirement 7.7. The Player_Marker pointer points up the screen, which is the heading. The layer order of Requirement 6.1 is kept; Raised_Blocks come after all ground layers and place markers, farther first, and the Player_Marker and the labels come last (Requirement 12.5).
+
+**Roads.** A Road is a stroke of world width `w`, so under perspective its screen width is `w * zoom * f / z` and falls with depth. Chosen: project the centre line and stroke it per piece. Each Road (a straight segment between two nodes) is cut at ground points so that `z_far / z_near <= 1.1` for every piece, at most 24 pieces per Road, after the two cuts above. The piece width is `w * zoom * f / z_mid` with `z_mid` the depth at the middle of the piece, floored at 1 px (Requirement 5.5), so the width at either end of a piece differs from the drawn width by at most 5%. The pieces are batched by Road kind and by pixel width rounded to 0.5 px, as `road-batching.ts` already batches by kind and width, with the piece as the item (`roadId#k` as its identifier, and the `segmentsOf` callback of `drawRoadPass` returns its screen segment), so the outline pass, the fill pass, the 2 px footpath and corridor rule of Requirement 5.6, round joins and caps, the dash of Requirement 5.4, the dashed Blocked_Road path of Requirement 5.8 and the 40 px arrowhead spacing of Requirement 5.7 are the code that already exists. Round caps hide the small step between neighbouring pieces. For the 100-unit roads of the Large_Generated_Map at 35 degrees, a Road along the heading needs 2 or 3 pieces and a Road across it needs 1.
+
+The alternative, filling each Road as a ribbon of projected quads with a disc at each node, tapers exactly and has no width state, but it needs a second implementation of the outline, the dash (dashes cannot be filled quads without cutting the Road into one quad per dash), round joins and the arrowheads, and it would change the rules of Requirement 5, which say "stroke". It was rejected. Depth bands for Roads were rejected because every Road would be drawn once per band it overlaps.
+
+The number of paths is bounded by `kinds x distinct pixel widths x passes`: the pixel widths of one world width span a factor of 2.33 over the Viewport (scale 0.5 to 1.167), at most 11 bins of 0.5 px for an 8 px Road, so at most about 90 paths for 4 kinds and 2 passes, independent of the number of Roads. Requirement 22.5 counts paths for "one kind and one width"; on the Tilted_View one world width is one pixel width only at one depth, so Property 18 on the Tilted_View places its Roads on one line across the heading (see the property).
+
+**Pictures.** A Background_Picture or Picture_Prop is an image on a ground rectangle; it cannot be given as vertices, and the Canvas_Interface has no projective `drawImage`. Chosen: depth bands. The scale of a row is linear in the screen row, so a depth band is a horizontal strip of the screen. The strips cover the rows from the Viewport bottom up to the top edge (`z` from `0.857 f` to `2 f`, a ratio of 2.33), cut so that the depth ratio per strip is 1.02, which gives at most 43 strips, and rows are rounded to whole CSS pixels so adjacent strips share an exact row and leave no seam at a whole Device_Pixel_Ratio. For each strip that the picture's projected quadrilateral overlaps: `save`, the path of the quadrilateral cut to the strip, `clip`, the transform `translate(W/2, y_k) * scale(f/z_k, f^2 sin(t) / z_k^2) * translate(-W/2, -(H/2 - g_k))` applied after the camera transform (the old ground transform with the scale `(1, sin(t))` replaced by the local scale of the strip, where `z_k` is the depth at the middle of the strip and `g_k` the forward offset of that depth), the usual `setGlobalAlpha` and one `drawImage` with the destination rectangle in world units, then `restore`. Inside a strip the placement error is at most 1% of the distance from the centre line of the screen horizontally (2 px at the edge of a 400 px Viewport, 8 px at 1600 px) and at most `10^-4` times the distance from the horizon row vertically (0.05 px at H = 300, 0.28 px at H = 1600), and the outline of the picture is exact. A picture makes between 1 and 43 `drawImage` calls per frame, which is one call per strip the picture covers and none for a picture outside the Visible_Region (Requirement 24.9). Missing pictures and the placeholder rectangle of Requirement 24.5 are polygons, drawn by the vertex path.
+
+**Performance on the 5,000-road map.** The index is built once per map version. A frame costs in proportion to the Roads in the Visible_Set, not to 5,000. The Large_Generated_Map has 5,000 Roads on 4,900 by 4,900 world units, about 2.1 per 10,000 world units squared. At the Tilted_View defaults (400 x 300, zoom 2, tilt 35 degrees) the footprint is 4.27 times the 30,000 world units squared that the Viewport shows at the player's scale, 128,000 world units squared, which holds about 27 Roads; the box of the footprint (worst heading) holds 2.1 times that, about 56. With 2 or 3 pieces per Road that is under 170 pieces, each one `moveTo` and one `lineTo` in a batch. The frame time on this map is measured by the Frame_Benchmark and reported, not assumed; the design expects the Tilted_View to cost less than the Full_Map at the whole-map fit, which draws every Road. At 20 degrees the footprint is 7.16 times the Viewport (about 45 Roads, about 112 in the worst box), and at 375 x 500 and 35 degrees about 42 (107 in the worst box); the count stays bounded at every tilt because the Far_Edge scale is fixed at 0.5. All counts use the Roads-per-area density of the Large_Generated_Map, which is uniform; they are estimates to be checked by the Frame_Benchmark, which already reports paths begun per frame (Requirement 22.13).
 
 ### `smoothing.ts`
 
@@ -548,9 +668,9 @@ Attaches `pointerdown`/`pointermove`/`pointerup`/`wheel`/`touchstart`/`touchmove
 
 Each is a small class composing the pieces above:
 
-- `Minimap`: owns a `Camera` whose `centerX/centerY` tracks the player and whose `rotationDegrees` tracks the negated heading (so heading-up means the Map rotates opposite the player's turn), both advanced through `advanceCamera` each frame; clips drawing to a circle via `CanvasInterface.clip()`; exposes `setZoomLimits(min, max)` and `setZoom(z)` guarded per Requirement 9.9/9.10; refuses to draw (Notice only) below 40x40 px (Requirement 9.11).
+- `Minimap`: owns a `Camera` whose `centerX/centerY` tracks the player and whose `rotationDegrees` tracks the negated heading (so heading-up means the Map rotates opposite the player's turn), both advanced through `advanceCamera` each frame; clips drawing to a circle via `CanvasInterface.clip()`; draws the rim and the North_Mark (a tick and the upright letter `N`, see "North_Mark"); exposes `setZoomLimits(min, max)` and `setZoom(z)` guarded per Requirement 9.9/9.10; refuses to draw (Notice only) below 40x40 px (Requirement 9.11).
 - `Full_Map`: owns a `Camera` with `rotationDegrees` pinned to 0 (Requirement 10.7); exposes `pan`, `zoomAt`, `fit`, `follow`, `setDestination`-via-selection (calling `Engine.setDestination` unless the caller supplied its own selection handler, Requirement 11.7), and wires `input-binding.ts`; enforces the ≥20%-extent-visible pan clamp (Requirement 10.4) and the zoom-limit clamp with a Notice (Requirement 10.10).
-- `Tilted_View`: owns a `Camera` like the Minimap (player-centred, heading-up) plus a `tiltAngleDegrees` (20..70, default 45, Requirement 12.8/12.9) and a per-kind height-factor table (0..100, default 1, Requirement 12.13); draws ground-plane layers first, then Raised_Blocks and upright labels in `depthOf` order (Requirement 12.5/12.6). Each Raised_Block's top face is its footprint projected with `projectTilted(point, blockHeightOf(prop, factors), tilt, camera)`, so the top lies above the footprint by `blockHeight * cos(tilt)` in world-scaled pixels (Requirement 12.19); side faces are the quads between footprint and top edges in a darker shade (Requirement 12.4).
+- `Tilted_View`: owns a `Camera` like the Minimap (player-centred, heading-up) plus a `tiltAngleDegrees` (20..70, default 35, Requirements 12.8, 12.9 and 26.2) and a per-kind height-factor table (0..100, default 1, Requirement 12.13); draws ground-plane layers first, then Raised_Blocks and upright labels in `depthOf` order (Requirement 12.5/12.6). Each Raised_Block's top face is its footprint projected with `projectTilted(point, blockHeightOf(prop, factors), tilt, camera)`, so the top lies above the footprint by `blockHeight * zoom * cos(tilt)` CSS pixels times the perspective scale of the footprint point, which is exactly `blockHeight * zoom * cos(tilt)` at the player (Requirements 12.19 and 12.20); side faces are the quads between footprint and top edges in a darker shade (Requirement 12.4).
 
 Each View's `draw(canvas, state, timestampMs)` first asks its `FrameGate` whether to draw. All Draw_Functions and View classes are exported from `views/index.ts` and stay usable without `mount.ts` (Requirement 21.7).
 
@@ -579,13 +699,140 @@ interface MountHandle { destroy(): void }
 // TiltedViewHandle: setTiltAngle, setHeightFactor
 ```
 
-Mounting order (so a failure leaves nothing behind, Requirement 21.15): (1) validate canvas, Engine functions the View reads (`getMap`, `getPosition`-side reads, `getRoute`, `getRemainingRoute`, `getGuidance`, `getGuidanceSentence`, `getLastNoWayResult`; `setDestination` for the Full_Map), options ranges, the `images` option (Requirement 21.21, see "`image-lookup.ts`" above), and that the canvas is not already mounted (a module-level `WeakSet` of mounted canvases); (2) create the `CanvasAdapter` (a `View_Error` here also stops the mount); (3) only then register side effects: size and Device_Pixel_Ratio set per Requirement 14, `ResizeObserver`, Reduced_Motion listener, `input-binding` for the Full_Map, `aria-live` guidance element and canvas name/description, and finally the first `requestFrame`.
+Mounting order (so a failure leaves nothing behind, Requirement 21.15): (1) validate canvas, Engine functions the View reads (`getMapVersion` first, so an Engine without it is refused with a View_Error that names the engine argument and `getMapVersion`, Requirement 25.16; then `getMap`, `getPosition`-side reads, `getRoute`, `getRemainingRoute`, `getGuidance`, `getGuidanceSentence`, `getLastNoWayResult`; `setDestination` for the Full_Map), options ranges, the `images` option (Requirement 21.21, see "`image-lookup.ts`" above), and that the canvas is not already mounted (a module-level `WeakSet` of mounted canvases); (2) create the `CanvasAdapter` (a `View_Error` here also stops the mount); (3) only then register side effects: size and Device_Pixel_Ratio set per Requirement 14, `ResizeObserver`, Reduced_Motion listener, `input-binding` for the Full_Map, `aria-live` guidance element and canvas name/description, and finally the first `requestFrame`.
 
-Frame_Loop, per animation frame: read the Position, Route, remaining Route, Guidance and Map from the Engine; bump the View's version counters for anything whose identity changed; call `draw(canvas, state, timestampMs)` (which consults the `FrameGate`); then schedule the next frame, keeping exactly one pending request. The timestamp is the frame's own, passed through to Smoothing; no clock is read in the pure logic (Requirements 13.7, 21.6). The application only feeds Positions to the Engine (Requirement 21.5).
+Frame_Loop, per animation frame: compare the Map_Version with `handledVersion` and, only when they differ, read and set the Map (see "Map version and the Frame_Loop"); read the Position, Route, remaining Route and Guidance from the Engine; bump the View's version counters for anything whose identity changed; call `draw(canvas, state, timestampMs)` (which consults the `FrameGate`); then schedule the next frame, keeping exactly one pending request. The timestamp is the frame's own, passed through to Smoothing; no clock is read in the pure logic (Requirements 13.7, 21.6). The application only feeds Positions to the Engine (Requirement 21.5).
 
 `destroy()` cancels the pending frame, removes every listener this mount added (input, Reduced_Motion, canvas), disconnects the resize observer, removes the canvas from the mounted set and sets a `destroyed` flag. A second call does nothing and returns no error (Requirement 21.9). After `destroy()` every control returns a View_Error stating the view has been destroyed (Requirement 21.10). Mount_Handle controls call the same validating setters as the View classes, so their View_Errors are the ones already specified in Requirements 9, 10, 11 and 12.
 
 All three validate their `Position`/`Route`/`Map` inputs per Requirement 7.9/7.10/3.11 before touching drawing state, consistent with the engine core's "guard before mutating" pattern (`engine.ts`'s own methods).
+
+### Map version and the Frame_Loop (Requirement 25)
+
+The mount core no longer builds its View unconditionally at mount. It keeps three things:
+
+```ts
+interface MountCoreState<V, P> {
+  view: V | undefined;       // undefined while the View waits for its first map
+  handledVersion: number;    // the Map_Version for which getMap() was last called
+  settings: P;               // zoom limits and zoom, or tilt angle and height factors; used when the View is built
+}
+```
+
+**At mount.** Validation is as before, with `getMapVersion` first in the list of Engine functions the View reads. Then `version = engine.getMapVersion()`.
+
+- If `version > 0`, `getMap()` is called once and the View is built at once, as today. A View_Error from the build is returned from the Mount_Function with nothing left behind (Requirement 21.15). `handledVersion = version`.
+- If `version = 0`, no View is built and `getMap()` is not called. The Mount_Function still succeeds: it creates the Canvas_Adapter and sets the canvas size (these are not Canvas_Interface drawing calls), then registers the resize observer, the Reduced_Motion listener, the input binding and the first frame request, and returns the handle (Requirement 25.11). The factory `noMapToShow` and its case in `view-errors.test.ts` are deleted, so no View reports that the engine has no map.
+
+**Per frame.**
+
+```mermaid
+flowchart TD
+    F["animation frame"] --> V{"engine.getMapVersion() equals handledVersion?"}
+    V -- yes --> D["draw as before: read Position, Route, Guidance"]
+    V -- no --> Z{"version is 0?"}
+    Z -- yes --> W["stay waiting: no getMap, no Canvas_Interface call"]
+    Z -- no --> G["handledVersion = version; map = engine.getMap()"]
+    G --> H{"view exists?"}
+    H -- no --> B["build the View from the map and the pending settings"]
+    H -- yes --> S["view.setMap(map)"]
+    B --> R{"View_Error?"}
+    S --> R
+    R -- yes --> N["report one Notice; keep the previous View and Map, if any"]
+    R -- no --> D
+    N --> D
+```
+
+- `handledVersion` is set before `setMap` or `build` runs, so a Map that the View refuses is not read again on the next frame; `getMap()` runs again only when the Map_Version changes again (Requirement 25.15). Requirement 25.6 compares with "the Map_Version of the Map that the View shows". These two readings agree whenever `setMap` succeeds. The design uses `handledVersion` because only it gives the "not again until the version changes" rule of criterion 15; a refused Map is reported once as a Notice.
+- A frame at an unchanged version makes no `getMap()` call and no copy (Requirements 25.5, 25.6). The Frame_Loop reads one whole number per frame.
+- `view.setMap(map)` bumps the View's `mapVersion` counter, so the FrameGate lets the next frame draw (Requirement 25.7, the same path as a Style change in Requirement 22.8). It builds the spatial index and the Resolved_Style once for the new Map and drops those of the old Map (Requirement 25.10). It keeps everything the caller set: Zoom limits, Zoom, Tilt_Angle, height factors, `images` and the Smoothing duration (Requirement 25.8), because these live in fields of the View that `setMap` does not touch. The Full_Map keeps its Camera on a later Map and fits only on the first Map, because `FullMap.create` fits and `setMap` does not (Requirement 25.9). After a later `loadMap` an application that wants the new Map in view calls `fit()`.
+- The first build in the Frame_Loop reads the CSS size of the canvas at that time, resizes the adapter, applies the Reduced_Motion setting, and reports the View's Notices, as at mount. After every `setMap` the Notices of the new Map are reported (for example "the map has no roads").
+- While `view` is undefined the frame still reads the Guidance sentence for `onGuidance`, but reads no Position for drawing and makes no Canvas_Interface call (Requirement 25.12). The first frame after the first `loadMap` builds and draws the View, which is no later than the next animation frame.
+
+**Controls.** Every control of a handle that needs a Map (`select`, `selectPlace`, `fit`, `follow`, `pan`, `zoomAt`) first runs the same version check as the frame (`syncMap`). A control called right after `engine.loadMap` therefore acts on the new Map and not on the previous one, which is what the Demo_Page needs when it calls `fit()` after a map switch. If after that check there is still no View, the control returns the plain-worded View_Error `noMapYet(control)`, for example `The control "fit" needs a map, and no map has been loaded yet.`, and changes nothing (Requirement 25.13). `resize()` needs no Map and works in the waiting state. The controls that only hold a setting (`setZoom`, `setZoomLimits` of the Minimap, `setTiltAngle`, `setHeightFactor`) check their value with the same functions as before. With no View they store the value in `settings`, using the stored zoom for the rule that limits must contain the zoom, and with a View they apply it and also store it, so the View that is built later starts with the latest settings.
+
+**Input binding.** `bindInput` takes a getter `() => FullMap | undefined` instead of a View. While the getter returns `undefined`, every handler returns at once: no command, no Notice and no `preventDefault` (Requirement 25.14). `touch-action: none` is still set at mount, because it belongs to the canvas and not to the View.
+
+**Stand-ins and tests.** The stand-in Engine in `helpers/stand-ins.ts` gains `getMapVersion()`, and it counts calls of `getMap()` and `getMapVersion()`. The existing mount tests that expect a View_Error for an engine with no map are Views tests of this spec, so they are changed in the commit that changes the behaviour; no engine-core test is edited.
+
+### North_Mark (Requirement 27)
+
+**Colour.** The key `northMark` keeps its place in the Style and its own colour, shared with no other key. Its Default_Style value changes from `#b3261e` to `#08203a` (deep navy). The numbers, computed with the WCAG relative luminance and the HSL hue of the same hex values the tests use:
+
+| Colour | Relative luminance | HSL hue | Contrast with `playerMarker` | Hue difference to `playerMarker` |
+|---|---|---|---|---|
+| `playerMarker` `#d1360f` | 0.1623 | 12.06 degrees | 1.000 | 0 |
+| old `northMark` `#b3261e` | 0.1106 | 3.22 degrees | 1.321 (fails 3 to 1) | 8.84 degrees (fails 60) |
+| new `northMark` `#08203a` | 0.0139 | 211.20 degrees | 3.322 (passes 3 to 1) | 160.86 degrees (passes 60) |
+
+The new colour also has a contrast of 16.43 to 1 against `#ffffff` and 13.90 to 1 against the ground colour `#f0ecdf`. It differs from `rim` (`#3a3a3a`, a grey) and from every other key. The margin over 3 to 1 is 0.32, so a rounding difference between two contrast functions cannot flip the test. The hue difference is the shorter way round the circle, `min(|a - b|, 360 - |a - b|)`. The test of Requirements 27.2 and 27.3 uses a contrast function and a hue function written in test code (not the ones in `style.ts`), and the drift test of Requirement 4.15 fails while the `northMark` row of the format document differs from `DEFAULT_STYLE` (Requirement 27.8), so the code and the document change in one commit.
+
+**Shape.** `northMarkFor(camera, radius)` returns
+
+```ts
+interface NorthMark {
+  directionDegrees: number;  // screen direction of world north (0, -1), unchanged
+  tickInner: Point;          // rim radius - 6.5 along that direction
+  tickOuter: Point;          // rim radius + 1.5, the outer edge of the default 3 px rim
+  letterCentre: Point;       // rim radius - 19
+  showLetter: boolean;       // rim radius is at least 42 px
+}
+```
+
+with `u = (sin r, -cos r)` the unit vector of north as in the current code and every point equal to the viewport centre plus `u` times its radius. The old fields `tip`, `baseLeft` and `baseRight` go, because no triangle is drawn (Requirement 27.5). The Minimap draws, after the rim and outside the clip: one stroked line from `tickInner` to `tickOuter` (8 px long, within the 6 to 10 px of Requirement 27.4) in `northMarkColor`, 3 px wide, butt caps; then, if `showLetter`, a filled disc of radius 10 px at `letterCentre` in `placeLabelBackgroundColor`, and the text `N` in `northMarkColor`, font `bold 18px sans-serif` (the cap height of this size is about 13 px, at least the 12 px of Requirement 27.4), centred on `letterCentre`, upright because it is drawn in screen space at a rotated position and not under the Camera rotation (Requirement 27.6). The disc keeps the letter readable on any map colour; the letter against it has the 16.43 to 1 contrast above.
+
+The letter sits at `rim radius - 19` so that its box (half diagonal about 9 px) stays about 3 px clear of the tick, and it needs a rim radius of at least 42 px (a Minimap side of about 87 px) so that its disc, whose inner edge is `radius - 29` from the centre, stays clear of the Player_Marker, which is at most 12 px from the centre. Below that radius `showLetter` is false, only the tick is drawn, and one Notice says that the minimap is too small to show the letter N. This is a stated exception to Requirement 27.4 for Minimaps between 40 and 86 px; the requirement text has no size condition, so it needs a "WHILE the rim radius is at least 42 px" clause or a larger minimum size for the Minimap (Requirement 9 criterion 11 sets 40 px). An unusable `northMark` colour falls back to the default with the Notice of Requirement 4.10 through the existing `resolveStyle` path (Requirement 27.10). `directionDegrees`, the direction of `tickOuter` from the centre and the direction of `letterCentre` from the centre are the same angle, which Property 9 checks.
+
+### Demo page changes (Requirements 25.17 and 28)
+
+**Mount once.** `createDemo` mounts the three Views in `start()`, once, before any map is loaded, and `main.ts` calls `demo.start()` and then `demo.loadChoice(...)`. `loadChoice` loads the chosen map into the Engine with `engine.loadMap`, feeds the start position and the dot, calls `fit()` on the Full_Map handle (which first syncs the new Map, see "Controls"), and refreshes the status. It calls no `destroy()` and no Mount_Function. `stop()` is the only place that destroys the Views. The test counts calls on stand-in Mount_Functions: exactly one per View after any number of `loadChoice` calls, zero `destroy` calls until `stop()`. A View_Error from `fit()` is shown in the errors line. The Playwright specs select the map through the map choice and wait for the first frame drawn on the new map; they no longer depend on a remount.
+
+**Status text.** `status-text.ts` replaces `guidanceText(sentence)` by
+
+```ts
+interface GuidanceStatusInput { hasRoute: boolean; hasNoWayResult: boolean; sentence: unknown }
+function guidanceStatusText(input: GuidanceStatusInput): string;
+```
+
+with exactly three outcomes: neither a Route nor a No_Way_Result gives the fixed line `No destination is set. Click a place on the full map.`; otherwise a `sentence` that is a text with at least one character is returned as the same string (no trim, no prefix, no suffix, no rewording); otherwise the line `The guidance is not available.`. A text of only spaces is a text with characters and is returned unchanged, so the verbatim property holds for every generated text. The page passes `engine.getRoute() !== undefined`, `engine.getLastNoWayResult() !== undefined` and `engine.getGuidanceSentence()`. The Engine already puts its plain words in the sentence (for a No_Way_Result: `There is no route. <reason>`), so the page builds no sentence. The line with the No_Way_Result message (`status-message`) stays, because Requirement 17.8 names it, so the reason text can show twice; this is kept on purpose and is easy to drop if the reviewer prefers one line. The initial text of `#status-guidance` in `index.html` is the fixed line, so the first paint equals what `guidanceStatusText` gives.
+
+**Tilt slider.** In the Controls section of `index.html`:
+
+```html
+<div class="control">
+  <label for="tilt-input">Tilt angle</label>
+  <input id="tilt-input" type="range" min="20" max="70" step="1" value="35" autocomplete="off" aria-describedby="tilt-value" />
+  <output id="tilt-value" for="tilt-input">35 degrees</output>
+</div>
+```
+
+The native range input gives the arrow keys, Home, End, Page Up and Page Down (Requirement 28.6). `demo.css` gives the input `width: 100%`, `min-height: 44px` and `box-sizing: border-box`, and the control `min-width: 0`, so the slider has a 44 px touch target and fits 375 px without a horizontal scroll bar (Requirements 28.6 and 28.10; the Gate checks the width at 375 px). `autocomplete="off"` stops a browser from restoring an old value on reload; the value is read at mount anyway. `createDemo` gets `initialTiltText: string` in its dependencies, parses it with `Number`, falls back to the default of 35 with a message if `validateTilt` refuses it, and passes the number as `tiltAngleDegrees` to `mountTiltedView` (Requirement 28.9). The Demo gets
+
+```ts
+setTiltText(text: string): { message: string | null; value: number }
+```
+
+which parses the text, calls `setTiltAngle(value)` on the Tilted_View handle (never a new mount, Requirement 28.7), and on a View_Error returns its plain-worded message and the previous value; on success it returns no message and the new value. `main.ts` writes `value` back to the slider and `${value} degrees` to the output on every `input` event, which restores the slider after a refused value (Requirement 28.8). `tilt-input` is read by `createDemo` only through that text and function, so the wiring is tested with a stand-in handle in Node (Requirement 28.11).
+
+### Dev tooling audit (Requirement 29)
+
+Done as its own tasks, one commit per package, before the other amendment work so that later commits run on the final tooling. The commands are run one per call, in `kit/engine` and then in `kit/demo`:
+
+1. `npm audit`: record the output as the baseline.
+2. `npm audit fix --dry-run`: the lines that add, change or remove a package are the non-breaking fixes (Requirement 29.1). If none, nothing more is needed for that package.
+3. `npm audit fix` (never `--force`): this changes `package-lock.json` and, where the allowed range must move, the version range of a `devDependency`. Then `npm test` (`vitest --run`) and `npm run build` (`tsc --noEmit`). Commit if both pass, with the advisories fixed and the test result in the body.
+4. `npm audit` again. For each advisory that remains, `npm audit fix --dry-run --force` shows the package and the major version that would fix it. The update is made deliberately, not with `--force`: edit the version range of that `devDependency` in `package.json` (for the engine, `vitest`; for the demo, `vite`, `vitest` and `@playwright/test`), run `npm install`, then `npm test` and `npm run build`. Green: keep it and commit it (Requirement 29.2). Not green: restore the two files with `git restore kit/<package>/package.json kit/<package>/package-lock.json`, and name the package, the advisory and the failing test in the checkpoint report (Requirement 29.3).
+5. After a `vite` major update in `kit/demo`, run the Playwright Gate and the Frame_Benchmark once, because they are not in the Default_Suite and `vite` serves the page they drive.
+6. Check that only `devDependencies` and lock files changed: `git diff --stat` shows `package.json` and `package-lock.json` only, and the existing static test still shows that `kit/engine/package.json` declares no `dependencies` (Requirements 29.4, 1.6).
+7. The Default_Suite of both packages passes with no test skipped, no time limit raised and no threshold loosened (Requirement 29.5).
+
+The checkpoint report gives the `npm audit` output before and after for each package.
+
+### Document changes of the amendment
+
+- `kit/engine/docs/api.md`: `Engine.getMapVersion()` with the rules of Requirements 25.1 to 25.3, the waiting mount of 25.11 and the rule that an application mounts a View once and loads maps into the Engine (25.19).
+- `kit/engine/docs/views-api.md`: the default Tilt_Angle of 35 degrees (the options table says 45 today), the Focal_Distance rule (`1.5 * H / tan(tilt)`, horizon 0.75 H above the top edge), the two measurable criteria 26.3 and 26.4 with the numbers above (Requirement 26.11); `projectTilted` and `unprojectTilted` with the optional focal and height arguments, `tiltedFootprint`, `tiltedVisibleRegion`, `eyeGroundPoint`, `focalDistanceFor`; `northMarkFor` and `NorthMark` with the new fields; the waiting mount, `noMapYet` and the controls of 25.13; every Mount_Function example that checked the engine for a map.
+- `kit/engine/docs/map-file-format.md`: the `northMark` row of the colour table, `#08203a` (Requirement 27.8), in the same commit as the code.
 
 ### Smoke test allowlist (Requirement 19 criteria 19 to 24)
 
@@ -727,11 +974,36 @@ interface MountHandle { destroy(): void }
 // no new type — satisfies Requirement 17.2's counts via hand-written content.
 ```
 
+Data of the amendment (Requirements 25 to 28):
+
+```ts
+// engine.ts (Requirement 25)
+class Engine { /* existing */ getMapVersion(): number; }   // 0 before the first successful loadMap, then +1 per success
+
+// views/mount.ts
+interface MountCoreState<V, P> { view: V | undefined; handledVersion: number; settings: P }
+// P is { min, max, zoom? } for the Minimap, { min?, max? } for the Full_Map,
+// { tilt?, factors } for the Tilted_View
+function noMapYet(control: string): ViewError;              // view-errors.ts; noMapToShow is deleted
+
+// views/tilted-projection.ts (Requirement 26)
+// The lens is derived from the Camera, the tilt and the focal rule on every call; it holds no state:
+//   f = 1.5 * viewportHeight / tan(tilt);  principal point (W / 2, 0.75 * H);  near clip depth 0.25 * f
+interface TiltedPiece { id: string; kind: RoadKind; x1: number; y1: number; x2: number; y2: number; widthPx: number }
+// a screen-space piece of a Road (id "roadId#k"); the item that road-batching.ts batches under the Tilted_View
+
+// views/minimap.ts (Requirement 27): NorthMark { directionDegrees, tickInner, tickOuter, letterCentre, showLetter }
+// views/style.ts: DEFAULT_STYLE.northMarkColor is "#08203a"
+
+// kit/demo/src/status-text.ts (Requirement 28)
+interface GuidanceStatusInput { hasRoute: boolean; hasNoWayResult: boolean; sentence: unknown }
+```
+
 ## Correctness Properties
 
 *A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-PBT is appropriate for nearly all of the Views' logic: cameras, visibility, label placement, hit testing, tilted projection, smoothing and input reduction are all pure functions over structured data (points, rectangles, event sequences) with large input spaces and clear universal invariants, in the same style as the engine core. Drawing itself is checked through the `RecordingCanvas`'s call log rather than pixels, which keeps even the layer-order and route-line properties expressible as PBT over the call log. The properties below map to the required list in Requirement 19.3 (Properties 1 to 16) and to the properties added by Requirements 4, 12, 21, 22, 23 and 24 (Properties 17 to 25), each traced back to the acceptance criterion it was adapted from; property reflection notes at the end record where closely related criteria were folded into one property, matching the engine-core design's own reflection practice.
+PBT is appropriate for nearly all of the Views' logic: cameras, visibility, label placement, hit testing, tilted projection, smoothing and input reduction are all pure functions over structured data (points, rectangles, event sequences) with large input spaces and clear universal invariants, in the same style as the engine core. Drawing itself is checked through the `RecordingCanvas`'s call log rather than pixels, which keeps even the layer-order and route-line properties expressible as PBT over the call log. The properties below map to the required list in Requirement 19.3 (Properties 1 to 16) and to the properties added by Requirements 4, 12, 21, 22, 23 and 24 (Properties 17 to 25) and by Requirements 12, 25, 26 and 28 (Properties 26 to 31; Properties 9, 13, 14, 18, 20, 23 and 24 are restated for the amendment, and keep their numbers), each traced back to the acceptance criterion it was adapted from; property reflection notes at the end record where closely related criteria were folded into one property, matching the engine-core design's own reflection practice.
 
 ### Property 1: Transform round trip (world to screen to world)
 
@@ -783,9 +1055,9 @@ For all generated Positions with coordinates of absolute value at most 1,000,000
 
 ### Property 9: North mark points to world north
 
-For all generated Cameras of the Minimap, the direction drawn for the North_Mark equals the screen direction of the world vector (0, -1), within 0.001 degrees.
+For all generated Cameras of the Minimap, the direction from the Viewport centre to the tick of the North_Mark, and the direction from the Viewport centre to the centre of its letter, each equal the screen direction of the world vector (0, -1), within 0.001 degrees.
 
-**Validates: Requirements 9.8**
+**Validates: Requirements 9.8, 27.7**
 
 ### Property 10: Zoom keeps the anchor point fixed in world space
 
@@ -807,15 +1079,15 @@ For all generated sets of places (with screen positions) and screen points, `hit
 
 ### Property 13: Raised blocks are drawn nearer after farther
 
-For all generated Maps, Cameras and Positions, the Raised_Blocks drawn on the Recording_Canvas by the Tilted_View appear in an order in which no Raised_Block is drawn before a Raised_Block that is farther from the viewer by more than 0.001 world units, with ties (depth difference at or below that tolerance) broken by ascending Prop identifier.
+For all generated Maps, Cameras, Positions and Tilt_Angles from 20 to 70 degrees, the Raised_Blocks drawn on the Recording_Canvas by the Tilted_View under the Perspective_Projection appear in an order in which no Raised_Block is drawn before a Raised_Block that is farther from the viewer by more than 0.001 world units, with ties (depth difference at or below that tolerance) broken by ascending Prop identifier.
 
-**Validates: Requirements 12.11**
+**Validates: Requirements 12.11, 12.21, 26.7**
 
 ### Property 14: Tilted projection round trip at ground level
 
-For all generated Cameras and Tilt_Angles from 20 to 70 degrees, `projectTilted` of a ground point at height 0, followed by `unprojectTilted`, returns the original ground point within 0.001 world units.
+For all generated Cameras with a Viewport of 200 to 1600 CSS pixels on each side, Tilt_Angles from 20 to 70 degrees and ground points whose projection lies inside the Viewport, `projectTilted` of the ground point at height 0, followed by `unprojectTilted`, returns the original ground point within 0.001 world units. For all screen points inside the Viewport, `unprojectTilted` followed by `projectTilted` returns the screen point within 0.001 CSS pixels.
 
-**Validates: Requirements 12.12**
+**Validates: Requirements 12.12, 12.21, 26.6**
 
 ### Property 15: Smoothing moves monotonically toward the target without overshoot
 
@@ -837,7 +1109,7 @@ For all generated sequences of calls to the Mount_Handle controls and to `destro
 
 ### Property 18: Path count does not depend on the number of roads
 
-For all generated Maps with N Usable_Roads of one kind and one width, all in the Visible_Set, with N from 1 to 5,000, the number of paths begun on the Recording_Canvas for the Roads of that kind (outline pass plus fill pass) is the same for every N, and the number of paths begun for N Blocked_Roads of one width is the same for every N.
+For all generated Maps with N Usable_Roads of one kind and one width, all in the Visible_Set, with N from 1 to 5,000, the number of paths begun on the Recording_Canvas for the Roads of that kind (outline pass plus fill pass) is the same for every N, and the number of paths begun for N Blocked_Roads of one width is the same for every N. On the Tilted_View the generated Roads lie on one line across the heading, so that one world width is one pixel width (Requirement 22.1 counts paths per line width in CSS pixels); Roads at different depths have different pixel widths, and then the count is bounded by the number of distinct pixel widths in 0.5 px steps and not by N.
 
 **Validates: Requirements 5.10, 5.11, 22.1, 22.2, 22.5**
 
@@ -849,9 +1121,9 @@ For all generated Maps (with and without pictures), Cameras, Positions, Routes a
 
 ### Property 20: Raised block top lies above its footprint by the block height
 
-For all generated Maps with Props that have a `blockHeight` between 0 and 1,000 world units, Tilt_Angles from 20 to 70 degrees and Cameras, the top face of each Raised_Block drawn on the Recording_Canvas lies above its footprint on the screen by `blockHeight * cos(Tilt_Angle)` times the height factor, within 0.01 CSS pixels divided by Zoom.
+For all generated Maps with Props that have a `blockHeight` between 0 and 1,000 world units, Tilt_Angles from 20 to 70 degrees and Cameras: (a) when the footprint centre of a Raised_Block is the player's ground point, the top face of the Raised_Block drawn on the Recording_Canvas lies above its footprint on the screen by `blockHeight * cos(Tilt_Angle)` times the height factor times Zoom CSS pixels, within 0.01 CSS pixels (Requirement 12.19 at the screen point of the player, as Requirement 12.20 states); (b) for every other footprint centre inside the Viewport, the lift equals that value multiplied by the perspective scale `f / z` of the footprint centre, computed by an independent closed form in test code, within 0.01 CSS pixels. Requirement 12.19 holds as written only at the player, because the scale of heights changes with depth everywhere else (Requirement 12.20).
 
-**Validates: Requirements 12.15, 12.17, 12.19**
+**Validates: Requirements 12.15, 12.17, 12.19, 12.20**
 
 ### Property 21: Save and load round trip keeps blockHeight
 
@@ -867,13 +1139,13 @@ For all generated Maps whose Props may carry `blockHeight`, mirroring the Map le
 
 ### Property 23: A Picture_Prop is an image or a placeholder, never nothing
 
-For all generated Maps with Picture_Props (kinds with the prefix `picture:` or `upload:`, including an empty reference) and for all Image_Lookups that hold any subset of the references (with valid entries), the number of `drawImage` calls made for Picture_Props on the Recording_Canvas equals the number of visible Picture_Props that have a non-empty reference with an entry in the lookup, and every other visible Picture_Prop is drawn as a placeholder rectangle with its Prop kind as label. A Picture_Prop entirely outside the Visible_Region makes no call. The property runs on the Full_Map, the Minimap and the Tilted_View.
+For all generated Maps with Picture_Props (kinds with the prefix `picture:` or `upload:`, including an empty reference) and for all Image_Lookups that hold any subset of the references (with valid entries), the number of `drawImage` calls made for Picture_Props on the Recording_Canvas (on the Tilted_View a run of 1 to 43 consecutive calls with the same handle, one per depth band, counts as one) equals the number of visible Picture_Props that have a non-empty reference with an entry in the lookup, and every other visible Picture_Prop is drawn as a placeholder rectangle with its Prop kind as label. A Picture_Prop entirely outside the Visible_Region makes no call. The property runs on the Full_Map, the Minimap and the Tilted_View.
 
 **Validates: Requirements 24.4, 24.5, 24.9, 24.16, 24.17**
 
 ### Property 24: The background picture is drawn at its scale and opacity, before every later layer
 
-For all generated Background_Pictures with `scale` above 0 and `opacity` from 0 to 1, image sizes above 0 and Cameras that show part of the picture, the `drawImage` call of the Background_Picture on the Recording_Canvas is recorded with the global alpha equal to `opacity`, a destination of width image width times `scale` and height image height times `scale` from the world point (0, 0) (read through the transform of the call), and before every call of a later layer; the global alpha after the call equals the alpha before it.
+For all generated Background_Pictures with `scale` above 0 and `opacity` from 0 to 1, image sizes above 0 and Cameras that show part of the picture, the `drawImage` call of the Background_Picture on the Recording_Canvas is recorded with the global alpha equal to `opacity`, a destination of width image width times `scale` and height image height times `scale` from the world point (0, 0) (read through the transform of the call), and before every call of a later layer; the global alpha after the call equals the alpha before it. On the Tilted_View the picture is drawn as 1 to 43 calls, one per depth band, each with this alpha and this destination in world units, each inside its own clip, all before every call of a later layer.
 
 **Validates: Requirements 24.6, 24.18**
 
@@ -883,7 +1155,48 @@ For all generated texts (built from `#`, hex digits of both cases, non-hex lette
 
 **Validates: Requirements 4.9, 4.10**
 
+### Property 26: The map version counts the successful loads
+
+For all generated sequences of `loadMap` calls, each with a valid map file text, an invalid map file text or a value that is not text, `getMapVersion()` after each call equals the number of calls so far that succeeded, never goes down, rises by exactly 1 at a call that succeeds and stays the same at a call that fails.
+
+**Validates: Requirements 25.1, 25.2, 25.3, 25.4**
+
+### Property 27: A mounted View reads the Map once per version change
+
+For all generated sequences of steps on a View that is mounted before the first step, with a stand-in Engine that counts calls, where each step is a successful `loadMap` of a generated Map, a failed `loadMap`, a Map that the View refuses (a generated Map with a coordinate that is not finite) or one animation frame: (a) the number of `getMap()` calls equals the number of frames at which `getMapVersion()` was above 0 and different from the version handled before; (b) after the frame that follows a successful load the View draws the Map of the Engine, and after two successive loads and one frame it draws the second Map; (c) while the version is 0 no call is made on the Canvas_Interface; (d) at a refused Map one Notice is reported, the previous Map stays on the screen and `getMap()` is not called again until the version changes.
+
+**Validates: Requirements 25.6, 25.7, 25.12, 25.15, 25.18**
+
+### Property 28: Perspective narrowing
+
+For all generated Cameras, Tilt_Angles from 20 to 70 degrees, lateral separations above 0 and pairs of lines across the heading whose points project inside the Viewport, where the second line lies farther from the viewer than the first, the screen distance between two ground points on the second line that are the lateral separation apart is smaller than the screen distance between two ground points on the first line that are the same separation apart.
+
+**Validates: Requirements 26.8, 12.20**
+
+### Property 29: The lens puts the top edge on the ground and keeps the Far_Edge scale
+
+For all Viewports with width and height each from 200 to 1600 CSS pixels and all Tilt_Angles from 20 to 70 degrees, with the Focal_Distance of the rule `1.5 * H / tan(tilt)`: (a) every point of the top row of the Viewport unprojects to a ground point with a depth above the near clip, and the horizon row lies above the top edge of the Viewport; (b) the screen width of a ground segment of fixed world length across the heading at the Far_Edge, measured by `projectTilted`, is at most 60% of the screen width of the same segment at the player's ground point (the closed form gives 50%).
+
+**Validates: Requirements 26.3, 26.5**
+
+### Property 30: The Tilted_View's visible region covers the Viewport
+
+For all generated Maps, Cameras, Tilt_Angles from 20 to 70 degrees and Block_Heights up to the largest of the Map: every ground point under a screen point inside the Viewport lies in the box returned by `tiltedVisibleRegion`, and every Prop whose footprint or top face projects at least partly inside the Viewport is in the Visible_Set that the Tilted_View computes, as decided by an independent screen-space test of the projected corners of every Prop in test code (the same discipline as Property 4).
+
+**Validates: Requirements 12.10, 12.18, 3.4**
+
+### Property 31: The status text returns the engine sentence unchanged
+
+For all generated non-empty texts (any characters, including leading and trailing spaces, line breaks and non-ASCII characters) given as the guidance sentence while a Route or a No_Way_Result is present, `guidanceStatusText` returns the same text, character for character.
+
+**Validates: Requirements 28.1, 28.4**
+
 **Property reflection notes:**
+- Requirements 25.1 to 25.3 and 25.5 are examples in `engine-map-version.test.ts` (0 before any load, the values after a valid text, an invalid text, a number, `null`, `undefined` and the empty text, no `structuredClone` call); Property 26 is the "equals the number of successes" of 25.4. Requirements 25.6, 25.7, 25.12, 25.15 and 25.18 are folded into Property 27, which is model-based (the stand-in Engine's counters against the generated steps). Requirements 25.8 to 25.11, 25.13, 25.14, 25.16, 25.17 and 25.19 are example tests, because each has a short fixed list of cases (a control per name, one stand-in Engine without the function, the Demo_Page mount counts).
+- Requirement 26.1, 26.2 and 26.9 to 26.12 are examples; 26.3 and 26.5 are Property 29 plus the Recording_Canvas example of 26.12; 26.4 is an example for the fixed scene named in the requirement on the two Viewports of 26.12 (the numbers are in "Perspective_Projection of the Tilted_View"); 26.6 is Property 14; 26.7 is Property 13; 26.8 is Property 28. Requirement 12.21 is Properties 13 and 14 over the tilt range, and 12.20 is Property 20 (a) and (b) with Property 28.
+- Requirement 27.2 and 27.3 are one example each, because the default colours are two fixed values; 27.7 is Property 9; 27.1, 27.4 to 27.6, 27.8 and 27.10 are examples on the Recording_Canvas, the drift test and `resolveStyle`.
+- Requirements 28.1 to 28.3 are examples and 28.4 is Property 31; 28.5 to 28.11 are examples with a stand-in Engine and a stand-in Tilted_View handle. Requirement 29 is a process check (the audit commands and the suite), not a test.
+- Property 18, 20, 23 and 24 keep their numbers and are restated for the Perspective_Projection (one-depth Roads, the lift at the player, bands). Their tests change in the commit that changes the drawing.
 - Requirements 4.16 (the named accept and reject examples) stay example tests in `style-colour-rule.test.ts`; Property 25 is the "if and only if" of 4.9, and the examples pin the named values and the Notice text. Requirement 4.15 (document against `DEFAULT_STYLE`) is an example-style test, not a property: it has one fixed input, the document.
 - Requirement 24.18 (background) and 24.17 (picture or placeholder) are Properties 24 and 23. Requirements 24.13 to 24.15 (bad `scale`/`opacity`, bad entry size, entry without image, throwing lookup) and 24.19 (named boundary values) are example tests, because each has a short fixed list of bad values that the generators of Properties 23 and 24 are not made to produce.
 - Requirement 19.24 (the allowlist check) is an example test with a stand-in file list; the scan itself runs over the real source files in `smoke.test.ts`.
@@ -909,11 +1222,15 @@ For all generated texts (built from `#`, hex digits of both cases, non-hex lette
 - **`blockHeight` errors stop the load.** The loader returns an `EngineError` naming the Prop identifier and `blockHeight` ("a finite number of 0 or more") and loads no Map (Requirement 23.5). Inside the Views, a Raised_Block whose computed height is non-finite or negative (for example from a bad height factor that slipped through) is drawn flat with a Notice naming the Prop (Requirement 12.14); a bad height factor passed to a setter is a `View_Error` (Requirement 12.13).
 - **The Canvas_Adapter fails fast on an unusable canvas.** `CanvasAdapter.mount` returns a `View_Error` and mounts nothing when `getContext("2d")` is `null` (Requirement 1.9), rather than deferring the failure to the first draw call.
 - **The input state machine drops, never throws, on a malformed event.** A non-finite `x`/`y`/`timestampMs` in any `InputEvent` is ignored, with a Notice appended to the returned state and no command issued for that event (Requirement 15.13); a pinch distance under 1 CSS pixel yields no zoom command for that step rather than a division error (Requirement 15.14).
-- **Engine-side additions reuse the existing error vocabulary.** `Engine.getMap()` and the newly exported `snapToRoad`/`isNoUsableRoad` introduce no new error path; `getMap()` can only return `undefined` (no map loaded) or a value, and `snapToRoad` already returns its typed `NoUsableRoadResult` rather than throwing, so no change to `errors.ts` is needed.
+- **Engine-side additions reuse the existing error vocabulary.** `Engine.getMap()` and the newly exported `snapToRoad`/`isNoUsableRoad` introduce no new error path; `getMap()` can only return `undefined` (no map loaded) or a value, and `snapToRoad` already returns its typed `NoUsableRoadResult` rather than throwing, so no change to `errors.ts` is needed. `getMapVersion()` returns a number and has no error path.
+- **No map yet is a state, not an error (Requirement 25).** A View mounted on an Engine with Map_Version 0 waits: it draws nothing and reports nothing. A control that needs a Map returns the View_Error `noMapYet(control)` and changes nothing. A Map that a View refuses on a later version is one Notice, the previous Map stays, and `getMap()` is not called again until the version changes. An Engine without `getMapVersion` is refused at mount with a View_Error that names the engine argument and the function, and nothing is registered.
+- **Perspective errors never produce a wrong picture (Requirement 26).** A Tilt_Angle outside 20 to 70 degrees, or a Focal_Distance that is not finite, makes the top edge miss the ground, or exceeds 1000 H, is a View_Error that names the value and its range for that Viewport, and the previous state is kept. A point on or above the horizon row, or with a depth under the near clip, returns a View_Error from `unprojectTilted` or `projectTilted`. Ground that is clipped by the near clip or the far cut lies outside the Viewport, so it is dropped without a Notice. A Raised_Block with a footprint corner under the near clip is not drawn and gets one Notice naming the Prop; a picture whose strips are all outside the Viewport makes no call.
+- **A Minimap too small for the letter says so (Requirement 27).** Under a rim radius of 42 px the tick is drawn without the letter and one Notice states that the minimap is too small to show the letter N.
+- **The status line never invents guidance (Requirement 28).** With a Route or a No_Way_Result and an empty or non-text guidance sentence, the page shows `The guidance is not available.` and writes nothing else for the guidance. A tilt value that `setTiltAngle` refuses is shown as the View_Error message and the slider goes back to the previous value.
 
 ## Testing Strategy
 
-**Dual approach**, matching the engine core: property-based tests (Vitest + fast-check, the same library already a devDependency, no new dependency added) cover the 25 properties above; example-based unit tests cover the fixed scenarios and error/notice cases the requirements name; a separate Playwright suite (outside the Default_Suite, per Requirement 18.1/20.5) covers the Frame_Benchmark and the Gate.
+**Dual approach**, matching the engine core: property-based tests (Vitest + fast-check, the same library already a devDependency, no new dependency added) cover the 31 properties above; example-based unit tests cover the fixed scenarios and error/notice cases the requirements name; a separate Playwright suite (outside the Default_Suite, per Requirement 18.1/20.5) covers the Frame_Benchmark and the Gate.
 
 **Property test configuration.**
 - Each property test runs at least 100 generated cases (`fc.assert(fc.property(...), { numRuns: 100 })` or higher where the input space is larger, e.g. Property 4's map/camera combinations).
@@ -945,13 +1262,26 @@ For all generated texts (built from `#`, hex digits of both cases, non-hex lette
 - Engine-side examples (in the engine-core test folder, new files or additions only): loader tests for `blockHeight` at 0, just below 0, a very large finite value, NaN, +Infinity, -Infinity and a string (Requirement 23.11); saver test that no key is written when absent; `getMap()` and `snapToRoad` export tests in `engine-api.test.ts`.
 - A static test (string/AST check over `views/` source, excluding `canvas-adapter.ts`, `input-binding.ts` and `mount.ts`) asserts no reference to `window`, `document`, `HTMLCanvasElement` or other browser-only globals, and that the engine package's `package.json` still declares no `dependencies` (Requirement 1.6/1.7).
 
+**Examples of the amendment (Requirements 25 to 29).**
+- `engine-map-version.test.ts` (new file in the engine-core test folder): `getMapVersion()` is 0 before a load; 1 after the first valid text; unchanged after an invalid text, the empty text, a number, `null` and `undefined`; 2 after a second valid text; `structuredClone` is not called by `getMapVersion` (a spy). Property 26 lives here.
+- `mount-map-version.test.ts` and `mount-waiting.test.ts`: a View mounted on an Engine at version 0 returns a handle, makes zero Canvas_Interface calls over several frames and draws at the first frame after `loadMap` (25.11, 25.12, 25.18); `getMap()` is called once per version change and never on a frame without a change; a failed load does not make the View read again; two successive loads show the second Map; a refused Map is one Notice and no second read (25.15); each of `select`, `selectPlace`, `fit`, `follow`, `pan` and `zoomAt` returns `noMapYet` with no Map and acts on the new Map when called right after `loadMap` (25.13); `setTiltAngle(60)` and `setZoom` before the first Map are kept and used by the View that is built, and a bad value is a View_Error and is not kept; the Full_Map ignores pointer, wheel, touch and key input with no Map, with no `preventDefault` call and no Notice (25.14); an Engine without `getMapVersion` is refused with a View_Error that names `engine` and `getMapVersion` and leaves zero listeners, observers and frame requests (25.16); the first Map fits the Full_Map and a later Map keeps its Camera until `fit()` (25.9); Zoom limits, Zoom, Tilt_Angle, height factors, `images` and the Smoothing duration survive a new Map (25.8). Property 27 lives in `mount-map-version.test.ts`.
+- `tilted-criteria-26.test.ts`: on the Recording_Canvas, for 400 x 300 and 375 x 500, a Road segment of fixed world width and length across the heading at the Far_Edge has a screen width of at most 60% of the same segment at the player (the numbers are 50%), and the scene of Requirement 26.4 gives side faces of at least 25% of the top face (the numbers are 1.62 and 1.54 times). The tests assert the limits, not the numbers.
+- `tilted-lens.test.ts`: `focalDistanceFor` for the Viewports and tilts of the worked tables; Property 29; `validateFocalDistance` for a non-finite value, a value at and just below the top-edge bound, and a value above `1000 * H`; `validateTilt` for 19.99, 20, 70 and 70.01.
+- `tilted-ground-clip.test.ts`: a segment that crosses the near clip is cut at it; a polygon that crosses the far cut is cut; a Road along the heading gives 2 or 3 pieces and a Road across it gives 1, each piece within a depth ratio of 1.1 and with a width equal to `w * zoom * f / z_mid` within the floor of 1 px; a box centred on the heading line draws its front face only, and an off-line box draws two side faces; a Raised_Block with a corner under the near clip gives one Notice and no draw.
+- `tilted-pictures-bands.test.ts`: at most 43 strips for the default Viewport, strips share whole-pixel rows, a picture outside the Visible_Region makes no call, and a picture inside makes at least one.
+- `north-mark.test.ts`: the contrast of `northMark` and `playerMarker` is at least 3 and the hue difference at least 60 degrees, with both functions written in the test (27.2, 27.3); the letter `N` is drawn with a font of at least 17 px in `northMarkColor`; the tick is 6 to 10 px long and crosses the rim; no closed path of the mark has three points (27.5); the letter and the tick move with the Camera rotation while the letter stays upright (27.6); a radius under 42 px draws the tick, no letter and one Notice; `#zzz` as `northMark` gives the default and the Notice of 4.10 (27.10).
+- `kit/demo/tests/status-text.test.ts`: the three examples of Requirements 28.1 to 28.3 (a Route with a sentence, a No_Way_Result with a sentence, neither, an empty sentence and a sentence that is not a text), and Property 31. `main-wiring.test.ts`, with a stand-in Engine and stand-in Mount_Functions: one mount call per View after any number of `loadChoice` calls and no `destroy` call (25.17); `fit()` of the Full_Map handle is called after each load; the slider text goes to `setTiltAngle` and never to a mount call (28.7); a View_Error from `setTiltAngle` shows its message and gives back the previous value (28.8); the first mount gets the slider value as `tiltAngleDegrees` (28.9). The slider range, step, label, the 44 px target and the 375 px fit (28.5, 28.6, 28.10) are checked on the real page by the Gate at 375 px, and the markup attributes by a static check of `index.html` in the Default_Suite.
+- Tests of this spec that name the old behaviour are changed in the commit that changes it, and no engine-core test is edited: the default tilt of 45, the triangle North_Mark, the affine ground transform of the Tilted_View, the `noMapToShow` View_Error, and the mount tests that load the map before mounting.
+
 **Benchmark and Gate (outside the Default_Suite).**
-- `kit/demo/bench/frame-bench.spec.ts` (Playwright): loads the Large_Generated_Map on the Demo_Page, moves the player along a fixed seeded path for at least 300 frames, measures each View's Frame_Time and inter-frame interval separately, including the Full_Map at both the whole-map-fit zoom and 4 px/world-unit, and reports the number of paths begun per frame for each View, counted by a counting wrapper around the Canvas_Interface (Requirement 22.13), and prints the median/95th-percentile/maximum in ms plus the browser, Node version, viewport, Device_Pixel_Ratio and machine description, with no pass/fail threshold on the numbers themselves (Requirement 18.2-18.7); it fails only on a run-time failure (too few frames measured, or a non-finite/negative measurement), per Requirement 18.8/18.9/18.10.
+- `kit/demo/bench/frame-bench.spec.ts` (Playwright): loads the Large_Generated_Map on the Demo_Page, moves the player along a fixed seeded path for at least 300 frames, measures each View's Frame_Time and inter-frame interval separately, including the Full_Map at both the whole-map-fit zoom and 4 px/world-unit, and reports the number of paths begun per frame for each View, counted by a counting wrapper around the Canvas_Interface (Requirement 22.13), and prints the median/95th-percentile/maximum in ms plus the browser, Node version, viewport, Device_Pixel_Ratio and machine description, with no pass/fail threshold on the numbers themselves (Requirement 18.2-18.7); it fails only on a run-time failure (too few frames measured, or a non-finite/negative measurement), per Requirement 18.8/18.9/18.10. Because the Views are no longer mounted again, it also reports once, for each View, the duration of the one frame in which the View picks up the Large_Generated_Map (the `getMap()` copy, `setMap` and the index build), separately from the percentiles, so the cost that moved from a remount to a map switch is measured and not assumed.
 - `kit/demo/bench/gate.spec.ts` (Playwright): drives the Demo_Page with mouse/keyboard (and, in a second pass, touch at a 375px viewport) to click a Place on the Full_Map on the Large_Generated_Map, confirms the Route_Line appears on all three Views, confirms the travelled part disappears as the player moves and no reroute happens while on the route, then forces the player off the route past the Reroute_Margin for longer than the Reroute_Delay and confirms a new route is drawn to the same destination — reporting, not gating on, the count of frames with an inter-frame interval over 50ms (Requirement 20.1-20.6). It fails with a plain-worded reason if the map does not load within 30 seconds or if the click yields a No_Way_Result (Requirement 20.9/20.10). Per Requirement 20.7, the Gate task itself is the last task of the spec and is additionally tried by hand on the Demo_Page by a person before the checkpoint is reported.
 
 **Commit discipline note (per the project's commit rules).** Each module above (`camera.ts`, `visible-set.ts`, `style.ts`, `layers.ts`, `road-batching.ts`, `frame-gate.ts`, `block-height.ts`, `label-placement.ts`, `hit-test.ts`, `tilted-projection.ts`, `smoothing.ts`, `input-state-machine.ts`, the Canvas_Interface/Recording_Canvas/Canvas_Adapter trio, `mount.ts`, each of the three View classes, the Engine-side additions (`getMap()`, the `snapToRoad` export, and the five `blockHeight` steps of gap 3), and the demo page's pieces) is sized to land in its own commit together with its own tests, so "a piece of code and its tests go in one commit" holds task by task; no module's production code and its property/example tests are split across commits, and the task list that follows this design will keep each task to one such module.
 
 **Task ordering constraints for the task list.** (1) All Engine-side tasks (`getMap()`, `snapToRoad` export, the five `blockHeight` steps) come first and each ends green on the unedited engine-core suite; no View file that reads `getMap()`, `snapToRoad` or `blockHeight` is built before its Engine-side task. (2) `road-batching.ts` and `frame-gate.ts` land before the View classes that call them. (3) `mount.ts` lands after the three View classes and before the demo page, which uses only the Mount_Functions. (4) `views-api.md` entries, including one usage example per Mount_Function, are written in the task of the code they document; the Image_Lookup, `ImageHandle`, the reference rule, the background placement and each picture Notice are documented in the pictures task (Requirement 24.20), and the `images` option with an example in which the application loads the image is documented with the Mount_Functions (21.23). (5) The Gate stays the last task. (6) `drawImage` lands first, as one commit across `canvas-interface.ts`, `recording-canvas.ts`, `draw-safe.ts` and `canvas-adapter.ts` if the adapter exists by then (otherwise the adapter's `drawImage` lands with the adapter), then `image-lookup.ts`, then the Picture_Prop change, then the background layer with its place in `drawMapLayers`, then `images` in the Mount_Functions and the frame gate signature. Each is its own commit with its tests. (7) The colour rule change in `style.ts` (widening to `#rrggbbaa`, removing `trim()`, the new Notice text) with its tests is one commit. The key lists and the format document tables, with the drift test, are a second commit, so the document and the test that guards it land together. (8) The smoke test edit is made in the commit that adds `mount.ts` (see "Smoke test allowlist") and is the only edit of an engine-core test in this spec.
+
+**Task ordering for the amendment (Requirements 25 to 29).** (9) The npm audit tasks of Requirement 29 come first, one commit per package, so the later commits run on the final tooling. (10) `Engine.getMapVersion()` (gap 4) is the next Engine-side task, with its tests, before any View file that calls it. (11) The `mount.ts` change (version check, waiting state, pending settings, `noMapYet`, `getMapVersion` in the Engine function lists, the input-binding getter, the stand-in Engine, and the removal of `noMapToShow` with its test case) is one commit with its tests and the `api.md` and `views-api.md` entries. (12) The North_Mark change (default colour, `northMarkFor`, the drawing, the format document row and the drift test, `north-mark.test.ts`) is one commit, because the drift test fails while the document and `DEFAULT_STYLE` differ. (13) The perspective work is split, each step with its tests and green: `tilted-projection.ts` (lens, projection, footprint, region, properties 14, 28, 29, 30 in the pure part) first; then `tilted-ground.ts` and `tilted-roads.ts` with the batching front end; then `tilted-pictures.ts`; then the Tilted_View integration (camera centred on the player, default tilt 35, faces, labels and markers with `project`, `tilted-criteria-26.test.ts`) together with the `views-api.md` entries. No step leaves the Tilted_View half converted: the integration commit is the one that switches the View over, and until then the old projection and its tests stay. (14) The Demo_Page changes come after (11) and (13): the status text with Property 31 first, then the tilt slider, the single mount and the `fit()` call with the wiring tests and the Playwright spec updates. (15) The Frame_Benchmark and the Gate stay last, and the Gate task stays the last task of the spec (Requirement 20.7).
 
 **Coverage summary against Requirement 19.3's required property list:**
 
@@ -980,3 +1310,9 @@ For all generated texts (built from `#`, hex digits of both cases, non-hex lette
 | picture or placeholder (Req 24.17) | Property 23 |
 | background picture (Req 24.18) | Property 24 |
 | hex colour rule (Req 4.9, 4.10) | Property 25 |
+| map version (Req 25.4) | Property 26 |
+| map read once per version change (Req 25.18) | Property 27 |
+| perspective narrowing (Req 26.8) | Property 28 |
+| top edge on the ground, Far_Edge scale (Req 26.3, 26.5) | Property 29 |
+| visible region under perspective (Req 12.10, 12.18) | Property 30 |
+| status text verbatim (Req 28.4) | Property 31 |
