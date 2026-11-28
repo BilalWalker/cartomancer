@@ -1,10 +1,12 @@
-// The Tilted_View: a map seen from above at a slant, centred on the player
-// with the heading up the screen and the player in the lower half. Ground
-// layers are drawn under a tilted transform; raised blocks (buildings and
-// similar props) are drawn afterwards in screen coordinates, farther before
-// nearer, each with a top face and darker side faces. It owns a camera that
-// follows the player through `advanceCamera` and draws only when its
-// FrameGate says a frame is due. No browser code.
+// The Tilted_View: a map seen from above at a slant under the
+// Perspective_Projection, centred on the player with the heading up the screen
+// and the player in the lower part of the viewport. Ground layers, roads and
+// pictures are drawn point by point (or in depth bands for pictures) under the
+// identity transform; raised blocks (buildings and similar props) are drawn
+// afterwards, farther before nearer, each with a top face and the darker side
+// faces that look towards the eye. It owns a camera that follows the player
+// through `advanceCamera` and draws only when its FrameGate says a frame is
+// due. No browser code.
 
 import type { EngineMap, Position, PropData, Route } from "../types.js";
 import type { Camera, Point } from "./camera.js";
@@ -16,15 +18,13 @@ import {
   buildImagesSignature,
   collectPictureReferences,
   createPictureResolver,
+  pictureRefOfKind,
   type ImageLookup,
 } from "./image-lookup.js";
-import { drawBackgroundPicture, drawBlockedAreas, drawFlatProps, drawGround } from "./layers-areas.js";
-import { drawPlaceLabels, drawPlaceMarkers } from "./layers-places.js";
-import { drawBlockedRoadMarks, drawRoadFills, drawRoadOutlines } from "./layers-roads.js";
+import { drawPlaceLabels } from "./layers-places.js";
 import {
-  drawDestinationMarker,
-  drawPlayerMarker,
-  drawRouteLine,
+  ROUTE_LINE_MAX_WIDTH_PX,
+  ROUTE_LINE_MIN_WIDTH_PX,
   validatePosition,
 } from "./layers-route.js";
 import { inspectMap } from "./map-inspect.js";
@@ -36,14 +36,37 @@ import {
   validateSmoothingDuration,
 } from "./smoothing.js";
 import { resolveStyle, type ResolvedStyle } from "./style.js";
-import { DEFAULT_TILT_DEGREES, projectTilted, sortByDepth, validateTilt } from "./tilted-projection.js";
-import { badSize, isViewError, notice, type Notice, type ViewError } from "./view-errors.js";
 import {
-  buildSpatialIndex,
-  computeVisibleSet,
-  visibleRegion,
-  type SpatialIndex,
-} from "./visible-set.js";
+  drawTiltedBlockedAreas,
+  drawTiltedDestinationMarker,
+  drawTiltedFlatProps,
+  drawTiltedGround,
+  drawTiltedPlaceMarkers,
+  drawTiltedPlayerMarker,
+  drawTiltedRouteLine,
+  footprintUnderNearClip,
+  nearClipPropNotice,
+  propFootprintCorners,
+  type TiltedGroundView,
+} from "./tilted-ground.js";
+import { drawTiltedBackgroundPicture, drawTiltedPictureProps } from "./tilted-pictures.js";
+import {
+  drawTiltedBlockedRoadMarks,
+  drawTiltedRoadFills,
+  drawTiltedRoadOutlines,
+} from "./tilted-roads.js";
+import {
+  DEFAULT_TILT_DEGREES,
+  depthOf,
+  eyeGroundPoint,
+  PLAYER_ROW_FRACTION,
+  projectTilted,
+  sortByDepth,
+  tiltedVisibleRegion,
+  validateTilt,
+} from "./tilted-projection.js";
+import { badSize, isViewError, notice, type Notice, type ViewError } from "./view-errors.js";
+import { buildSpatialIndex, computeVisibleSet, type SpatialIndex } from "./visible-set.js";
 
 /** Default viewport size of a Tilted_View, in CSS pixels. */
 export const DEFAULT_TILTED_WIDTH_PX = 400;
@@ -53,7 +76,7 @@ export const DEFAULT_TILTED_HEIGHT_PX = 300;
 export const DEFAULT_TILTED_ZOOM = 2;
 
 /** The player stands this far down from the top of the viewport, as a fraction of its height. */
-export const PLAYER_SCREEN_FRACTION = 0.75;
+export const PLAYER_SCREEN_FRACTION = PLAYER_ROW_FRACTION;
 
 export interface TiltedViewOptions {
   /** Viewport width in CSS pixels. Default 400. */
@@ -103,6 +126,7 @@ export class TiltedView {
   private zoom: number;
   private tiltDegrees = DEFAULT_TILT_DEGREES;
   private heightFactors: Record<string, number> = {};
+  private widestRoad: number;
   private smoothingDurationMs: number;
   private reducedMotion: boolean;
 
@@ -130,6 +154,7 @@ export class TiltedView {
   ) {
     this.map = map;
     this.index = buildSpatialIndex(map);
+    this.widestRoad = widestRoadOf(map);
     this.style = resolved.resolved;
     this.notices = notices;
     this.images = options.images;
@@ -217,6 +242,7 @@ export class TiltedView {
     const resolved = resolveStyle(map.style);
     this.map = map;
     this.index = buildSpatialIndex(map);
+    this.widestRoad = widestRoadOf(map);
     this.style = resolved.resolved;
     this.notices = [...inspected.notices, ...resolved.notices];
     this.mapVersion++;
@@ -301,17 +327,14 @@ export class TiltedView {
   }
 
   /**
-   * The camera that puts the player in the lower part of the viewport with the
-   * heading up: its centre lies ahead of the player, far enough that the
-   * tilted offset on the screen is the lower share of the viewport height.
+   * The camera that puts the player on the player row with the heading up. The
+   * Perspective_Projection puts the camera centre on that row, so the centre is
+   * the player.
    */
   private targetCamera(position: Position): Camera {
-    const sin = Math.sin((this.tiltDegrees * Math.PI) / 180);
-    const ahead = ((PLAYER_SCREEN_FRACTION - 0.5) * this.height) / (this.zoom * sin);
-    const heading = (position.headingDegrees * Math.PI) / 180;
     return {
-      centerX: position.x + Math.cos(heading) * ahead,
-      centerY: position.y + Math.sin(heading) * ahead,
+      centerX: position.x,
+      centerY: position.y,
       zoom: this.zoom,
       rotationDegrees: headingUpRotation(position.headingDegrees),
       viewportWidth: this.width,
@@ -332,36 +355,37 @@ export class TiltedView {
     }
   }
 
-  /** Sets the canvas transform that lays the ground under the tilt. */
-  private applyGroundTransform(canvas: CanvasInterface, camera: Camera): void {
-    const sin = Math.sin((this.tiltDegrees * Math.PI) / 180);
-    canvas.translate(camera.viewportWidth / 2, camera.viewportHeight / 2);
-    canvas.scale(1, sin);
-    canvas.rotate((camera.rotationDegrees * Math.PI) / 180);
-    canvas.scale(camera.zoom, camera.zoom);
-    canvas.translate(-camera.centerX, -camera.centerY);
+  /**
+   * The margin of the visible region in world units: the widest road, or the
+   * route line seen at the smallest scale of the viewport (0.5, at the top row).
+   */
+  private regionMargin(camera: Camera): number {
+    const fill = Math.min(
+      ROUTE_LINE_MAX_WIDTH_PX,
+      Math.max(ROUTE_LINE_MIN_WIDTH_PX, this.style.routeLineStyle.widthPx),
+    );
+    const routePx = fill + 2 * this.style.routeLineOutlineStyle.widthPx;
+    return Math.max(this.widestRoad, routePx / (0.5 * camera.zoom));
   }
 
   private paint(canvas: CanvasInterface, camera: Camera, state: TiltedViewState): Notice[] {
-    const sin = Math.sin((this.tiltDegrees * Math.PI) / 180);
-    const cos = Math.cos((this.tiltDegrees * Math.PI) / 180);
-    // The ground seen through the viewport is longer than the viewport, by 1 / sin.
-    const groundCamera: Camera = { ...camera, viewportHeight: camera.viewportHeight / sin };
     const lift = largestBlockHeight(this.map.props, this.heightFactors);
-    const region = visibleRegion(groundCamera, lift * Math.max(1, cos / sin));
+    const region = tiltedVisibleRegion(camera, this.tiltDegrees, lift, this.regionMargin(camera));
     if (isViewError(region)) return [notice(`${region.message} Nothing was drawn.`)];
     const visible = computeVisibleSet(this.index, region);
+    const view: TiltedGroundView = { camera, tiltAngleDegrees: this.tiltDegrees };
     const notices: Notice[] = [];
     const resolve = createPictureResolver(this.images);
 
     const areas = this.map.blockedAreas.filter((a) => visible.blockedAreaIds.has(a.id));
     const places = this.map.places.filter((p) => visible.placeIds.has(p.id));
     const flat: PropData[] = [];
+    const pictures: PropData[] = [];
     const raised: RaisedBlock[] = [];
     for (const prop of this.map.props) {
       if (!visible.propIds.has(prop.id)) continue;
       if (!RAISED_KINDS.includes(prop.kind) || !hasUsableFootprint(prop)) {
-        flat.push(prop);
+        (pictureRefOfKind(prop.kind) === undefined ? flat : pictures).push(prop);
         continue;
       }
       const h = blockHeightOf(prop, this.heightFactors);
@@ -373,25 +397,25 @@ export class TiltedView {
       raised.push({ id: prop.id, ground: { x: prop.x, y: prop.y }, prop, height: h });
     }
 
+    // Every ground layer is drawn point by point under the identity transform.
     canvas.save();
-    this.applyGroundTransform(canvas, camera);
-    notices.push(...drawGround(canvas, this.style, region));
-    notices.push(...drawBackgroundPicture(canvas, this.map.backgroundPicture, resolve, region));
-    notices.push(...drawBlockedAreas(canvas, this.style, areas, camera.zoom));
-    notices.push(...drawFlatProps(canvas, this.style, flat, camera.zoom, resolve));
-    notices.push(...drawRoadOutlines(canvas, this.map, visible.roadIds, camera, this.style));
-    notices.push(...drawRoadFills(canvas, this.map, visible.roadIds, camera, this.style));
-    notices.push(...drawBlockedRoadMarks(canvas, this.map, visible.roadIds, camera, this.style));
-    notices.push(...drawRouteLine(canvas, state.remainingRoute, camera, this.style));
-    notices.push(...drawDestinationMarker(canvas, state.remainingRoute, camera, this.style));
-    notices.push(...drawPlaceMarkers(canvas, this.style, places, camera));
+    notices.push(...drawTiltedGround(canvas, this.style, view));
+    notices.push(...drawTiltedBackgroundPicture(canvas, this.map.backgroundPicture, resolve, view));
+    notices.push(...drawTiltedBlockedAreas(canvas, this.style, areas, view));
+    notices.push(...drawTiltedFlatProps(canvas, this.style, flat, view));
+    notices.push(...drawTiltedPictureProps(canvas, this.style, pictures, view, resolve));
+    notices.push(...drawTiltedRoadOutlines(canvas, this.map, visible.roadIds, view, this.style));
+    notices.push(...drawTiltedRoadFills(canvas, this.map, visible.roadIds, view, this.style));
+    notices.push(...drawTiltedBlockedRoadMarks(canvas, this.map, visible.roadIds, view, this.style));
+    notices.push(...drawTiltedRouteLine(canvas, state.remainingRoute, this.style, view));
+    notices.push(...drawTiltedDestinationMarker(canvas, state.remainingRoute, this.style, view));
+    notices.push(...drawTiltedPlaceMarkers(canvas, this.style, places, view));
     canvas.restore();
 
-    notices.push(...this.drawRaisedBlocks(canvas, raised, camera));
+    notices.push(...this.drawRaisedBlocks(canvas, raised, view));
 
     canvas.save();
-    this.applyGroundTransform(canvas, camera);
-    notices.push(...drawPlayerMarker(canvas, state.position, camera, this.style));
+    notices.push(...drawTiltedPlayerMarker(canvas, state.position, this.style, view));
     canvas.restore();
 
     notices.push(
@@ -408,11 +432,19 @@ export class TiltedView {
     return notices;
   }
 
-  /** Draws the raised blocks in screen coordinates, farther before nearer. */
-  private drawRaisedBlocks(canvas: CanvasInterface, blocks: RaisedBlock[], camera: Camera): Notice[] {
+  /**
+   * Draws the raised blocks, farther before nearer. Each block shows the side
+   * faces whose outward normal looks towards the eye (back faces are culled),
+   * the farther face first, then the top face. A block with a footprint corner
+   * under the near clip is not drawn and one Notice names the prop.
+   */
+  private drawRaisedBlocks(canvas: CanvasInterface, blocks: RaisedBlock[], view: TiltedGroundView): Notice[] {
     if (blocks.length === 0) return [];
+    const { camera } = view;
     const ordered = sortByDepth(blocks, camera);
     if (isViewError(ordered)) return [notice(`${ordered.message} The raised blocks were not drawn.`)];
+    const eye = eyeGroundPoint(camera, this.tiltDegrees);
+    if (isViewError(eye)) return [notice(`${eye.message} The raised blocks were not drawn.`)];
     const notices: Notice[] = [];
     canvas.save();
     canvas.setStrokeColor(this.style.roadOutlineColor);
@@ -420,7 +452,11 @@ export class TiltedView {
     canvas.setLineDash([]);
     canvas.setLineJoin("round");
     for (const block of ordered) {
-      const corners = footprintCorners(block.prop);
+      if (footprintUnderNearClip(block.prop, view)) {
+        notices.push(nearClipPropNotice(block.id));
+        continue;
+      }
+      const corners = propFootprintCorners(block.prop);
       const base: Point[] = [];
       const top: Point[] = [];
       for (const corner of corners) {
@@ -436,7 +472,7 @@ export class TiltedView {
       }
       if (block.height > 0) {
         canvas.setFillColor(this.style.raisedBlockSideColor);
-        for (let i = 0; i < base.length; i++) {
+        for (const i of facesTowardsEye(corners, eye, camera)) {
           const j = (i + 1) % base.length;
           tracePolygon(canvas, [base[i]!, base[j]!, top[j]!, top[i]!]);
           canvas.fill();
@@ -453,6 +489,36 @@ export class TiltedView {
   }
 }
 
+/**
+ * The side faces of a footprint (face `i` runs from corner `i` to corner `i+1`)
+ * whose outward normal on the ground points towards the eye's ground point,
+ * the farther face first. The outward side follows from the sign of the area of
+ * the footprint, so the order of the corners does not matter.
+ */
+function facesTowardsEye(corners: readonly Point[], eye: Point, camera: Camera): number[] {
+  let area = 0;
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i]!;
+    const b = corners[(i + 1) % corners.length]!;
+    area += a.x * b.y - b.x * a.y;
+  }
+  const side = area >= 0 ? 1 : -1;
+  const faces: { index: number; depth: number }[] = [];
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i]!;
+    const b = corners[(i + 1) % corners.length]!;
+    const nx = side * (b.y - a.y);
+    const ny = -side * (b.x - a.x);
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (nx * (eye.x - mid.x) + ny * (eye.y - mid.y) > 0) {
+      const depth = depthOf(mid, camera);
+      faces.push({ index: i, depth: typeof depth === "number" ? depth : 0 });
+    }
+  }
+  faces.sort((a, b) => a.depth - b.depth);
+  return faces.map((f) => f.index);
+}
+
 function tracePolygon(canvas: CanvasInterface, points: readonly Point[]): void {
   canvas.beginPath();
   canvas.moveTo(points[0]!.x, points[0]!.y);
@@ -460,22 +526,13 @@ function tracePolygon(canvas: CanvasInterface, points: readonly Point[]): void {
   canvas.closePath();
 }
 
-/** The four ground corners of a prop's footprint, turned by its rotation about its centre. */
-function footprintCorners(prop: PropData): Point[] {
-  const r = (prop.rotationDegrees * Math.PI) / 180;
-  const cos = Math.cos(r);
-  const sin = Math.sin(r);
-  const hw = prop.width / 2;
-  const hh = prop.height / 2;
-  return [
-    [-hw, -hh],
-    [hw, -hh],
-    [hw, hh],
-    [-hw, hh],
-  ].map(([lx, ly]) => ({
-    x: prop.x + lx! * cos - ly! * sin,
-    y: prop.y + lx! * sin + ly! * cos,
-  }));
+/** The widest usable road width of the map, in world units (0 when there is none). */
+function widestRoadOf(map: EngineMap): number {
+  let widest = 0;
+  for (const road of map.roads) {
+    if (Number.isFinite(road.width) && road.width > widest) widest = road.width;
+  }
+  return widest;
 }
 
 function hasUsableFootprint(prop: PropData): boolean {

@@ -122,7 +122,7 @@ export interface FullMapMountOptions extends BaseMountOptions {
 
 /** Options of `mountTiltedView`. */
 export interface TiltedViewMountOptions extends BaseMountOptions {
-  /** Tilt angle in degrees, 20 to 70. Default 45. */
+  /** Tilt angle in degrees, 20 to 70. Default 35. */
   tiltAngleDegrees?: number;
   /** Height factor of each prop kind, 0 to 100. A kind not listed keeps the factor 1. */
   heightFactors?: Record<string, number>;

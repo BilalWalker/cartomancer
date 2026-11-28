@@ -14,7 +14,7 @@ import {
   drawTiltedRouteLine,
   type TiltedGroundView,
 } from "../../src/views/tilted-ground.js";
-import { focalDistanceFor, projectPerspective } from "../../src/views/tilted-projection.js";
+import { focalDistanceFor, projectTilted } from "../../src/views/tilted-projection.js";
 import { isViewError, type ViewError } from "../../src/views/view-errors.js";
 
 function ok<T extends object>(value: T | ViewError): T {
@@ -81,7 +81,7 @@ describe("tilted ground clipping", () => {
     const points = pathPoints(rec);
     expect(points).toHaveLength(4);
     expect(allNumbers(rec).every(Number.isFinite)).toBe(true);
-    const projectedTop = ok(projectPerspective(polygon[3]!, 0, TILT, camera, f));
+    const projectedTop = ok(projectTilted(polygon[3]!, 0, TILT, camera, f));
     expect(points.map((p) => p.y)).toContainEqual(expect.closeTo(projectedTop.y, 6));
     // The cut edge is the near clip: far below the bottom of the Viewport.
     expect(Math.max(...points.map((p) => p.y))).toBeGreaterThan(300);
@@ -127,7 +127,7 @@ describe("tilted ground clipping", () => {
     expect(rec.findCalls("stroke")).toHaveLength(2);
     const points = pathPoints(rec);
     expect(points).toHaveLength(4);
-    const first = ok(projectPerspective(start, 0, TILT, camera, f));
+    const first = ok(projectTilted(start, 0, TILT, camera, f));
     expect(points[0]!.y).toBeCloseTo(first.y, 6);
     expect(points[1]!.y).toBeGreaterThan(300);
     expect(allNumbers(rec).every(Number.isFinite)).toBe(true);
@@ -149,7 +149,7 @@ describe("tilted ground clipping", () => {
     const rec = new RecordingCanvas();
     const polygon = [worldAt(20, 120), worldAt(20, 280), worldAt(150, 260), worldAt(160, 140)];
     expect(drawTiltedBlockedAreas(rec, DEFAULT_STYLE, [area("pond", polygon)], view)).toEqual([]);
-    const expected = polygon.map((p) => ok(projectPerspective(p, 0, TILT, camera, f)));
+    const expected = polygon.map((p) => ok(projectTilted(p, 0, TILT, camera, f)));
     const points = pathPoints(rec);
     expect(points).toHaveLength(4);
     points.forEach((p, i) => {

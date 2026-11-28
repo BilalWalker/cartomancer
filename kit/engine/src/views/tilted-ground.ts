@@ -7,8 +7,7 @@
 // outside the Viewport and gives no Notice. A prop with a footprint corner
 // under the near clip is not drawn and gets one Notice naming the prop.
 //
-// The projection is `projectPerspective`; the later task that switches the
-// Tilted_View over renames it to `projectTilted`.
+// The projection is `projectTilted`.
 
 import type { BlockedAreaData, Position, PropData, PlaceData, Route } from "../types.js";
 import { validateCamera, worldToScreen, type Camera, type Point } from "./camera.js";
@@ -27,7 +26,7 @@ import type { LineStyle, ResolvedStyle } from "./style.js";
 import {
   focalDistanceFor,
   NEAR_CLIP_FRACTION,
-  projectPerspective,
+  projectTilted,
   tiltedFootprint,
   validateFocalDistance,
   validateTilt,
@@ -153,7 +152,7 @@ function clipSegment(
 
 /** Projects a clipped world point; undefined when the result is not a finite point. */
 function project(frame: Frame, p: Point): Point | undefined {
-  const s = projectPerspective(p, 0, frame.view.tiltAngleDegrees, frame.view.camera, frame.f);
+  const s = projectTilted(p, 0, frame.view.tiltAngleDegrees, frame.view.camera, frame.f);
   if (isViewError(s) || !Number.isFinite(s.x) || !Number.isFinite(s.y)) return undefined;
   return s;
 }

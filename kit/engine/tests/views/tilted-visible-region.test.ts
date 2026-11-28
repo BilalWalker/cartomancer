@@ -1,7 +1,7 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import type { EngineMap } from "../../src/types.js";
-import { tiltedVisibleRegion, unprojectPerspective } from "../../src/views/tilted-projection.js";
+import { tiltedVisibleRegion, unprojectTilted } from "../../src/views/tilted-projection.js";
 import { buildSpatialIndex, computeVisibleSet } from "../../src/views/visible-set.js";
 import { isViewError } from "../../src/views/view-errors.js";
 import {
@@ -46,7 +46,7 @@ describe("Property 30: visible region", () => {
       fc.property(perspectiveCameraArb, tiltArb, unit, unit, (camera, tilt, u, v) => {
         const region = tiltedVisibleRegion(camera, tilt, 0, 0);
         if (isViewError(region)) throw new Error(region.message);
-        const ground = unprojectPerspective(
+        const ground = unprojectTilted(
           { x: u * camera.viewportWidth, y: v * camera.viewportHeight },
           tilt,
           camera,

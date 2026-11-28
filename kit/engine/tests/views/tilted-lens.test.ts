@@ -4,8 +4,8 @@ import { createCamera, screenToWorld, worldToScreen, type Camera, type Point } f
 import {
   focalDistanceFor,
   NEAR_CLIP_FRACTION,
-  projectPerspective,
-  unprojectPerspective,
+  projectTilted,
+  unprojectTilted,
 } from "../../src/views/tilted-projection.js";
 import { isViewError, type ViewError } from "../../src/views/view-errors.js";
 import { perspectiveCameraArb, tiltArb } from "./helpers/perspective-screen-check.js";
@@ -35,7 +35,7 @@ function acrossWidth(camera: Camera, tilt: number, centre: Point, length: number
   const norm = Math.hypot(right.x - origin.x, right.y - origin.y);
   const dir = { x: (right.x - origin.x) / norm, y: (right.y - origin.y) / norm };
   const a = num(
-    projectPerspective(
+    projectTilted(
       { x: centre.x - (dir.x * length) / 2, y: centre.y - (dir.y * length) / 2 },
       0,
       tilt,
@@ -43,7 +43,7 @@ function acrossWidth(camera: Camera, tilt: number, centre: Point, length: number
     ),
   );
   const b = num(
-    projectPerspective(
+    projectTilted(
       { x: centre.x + (dir.x * length) / 2, y: centre.y + (dir.y * length) / 2 },
       0,
       tilt,
@@ -61,7 +61,7 @@ describe("Property 29: the lens", () => {
         tiltArb,
         fc.double({ min: 0, max: 1, noNaN: true }),
         (camera, tilt, u) => {
-          const ground = num(unprojectPerspective({ x: u * camera.viewportWidth, y: 0 }, tilt, camera));
+          const ground = num(unprojectTilted({ x: u * camera.viewportWidth, y: 0 }, tilt, camera));
           const f = num(focalDistanceFor(tilt, camera.viewportHeight));
           expect(depthPx(camera, tilt, ground)).toBeGreaterThan(NEAR_CLIP_FRACTION * f);
           const horizonRow =
@@ -81,7 +81,7 @@ describe("Property 29: the lens", () => {
         fc.double({ min: 0.5, max: 50, noNaN: true }),
         (camera, tilt, length) => {
           const farGround = num(
-            unprojectPerspective({ x: camera.viewportWidth / 2, y: 0 }, tilt, camera),
+            unprojectTilted({ x: camera.viewportWidth / 2, y: 0 }, tilt, camera),
           );
           const player: Point = { x: camera.centerX, y: camera.centerY };
           const atFar = acrossWidth(camera, tilt, farGround, length);
@@ -103,7 +103,7 @@ describe("Property 29: the lens", () => {
       const camera = num(
         createCamera({ viewportWidth: w, viewportHeight: h, zoom: 2 }),
       );
-      const far = num(unprojectPerspective({ x: w / 2, y: 0 }, 35, camera));
+      const far = num(unprojectTilted({ x: w / 2, y: 0 }, 35, camera));
       expect(acrossWidth(camera, 35, far, 10) / acrossWidth(camera, 35, { x: 0, y: 0 }, 10)).toBeCloseTo(0.5, 9);
     }
   });

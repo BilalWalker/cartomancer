@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createCamera, type Camera, type Point } from "../../src/views/camera.js";
 import {
-  depthOfPerspective,
+  depthOf,
   eyeGroundPoint,
   focalDistanceFor,
   NEAR_CLIP_FRACTION,
-  projectPerspective,
+  projectTilted,
   sortByDepth,
   tiltedFootprint,
   tiltedVisibleRegion,
-  unprojectPerspective,
+  unprojectTilted,
   validateFocalDistance,
 } from "../../src/views/tilted-projection.js";
 import { isViewError, type ViewError } from "../../src/views/view-errors.js";
@@ -52,14 +52,14 @@ describe("focalDistanceFor", () => {
 describe("tilt boundaries", () => {
   it("accepts 20 and 70 and rejects values outside or not finite", () => {
     for (const tilt of [20, 70]) {
-      expect(isViewError(projectPerspective({ x: 0, y: 0 }, 0, tilt, cam400))).toBe(false);
-      expect(isViewError(unprojectPerspective({ x: 200, y: 200 }, tilt, cam400))).toBe(false);
+      expect(isViewError(projectTilted({ x: 0, y: 0 }, 0, tilt, cam400))).toBe(false);
+      expect(isViewError(unprojectTilted({ x: 200, y: 200 }, tilt, cam400))).toBe(false);
       expect(isViewError(focalDistanceFor(tilt, 300))).toBe(false);
     }
     for (const tilt of [19.999, 70.001, NaN, Infinity, -Infinity]) {
       const results = [
-        projectPerspective({ x: 0, y: 0 }, 0, tilt, cam400),
-        unprojectPerspective({ x: 200, y: 200 }, tilt, cam400),
+        projectTilted({ x: 0, y: 0 }, 0, tilt, cam400),
+        unprojectTilted({ x: 200, y: 200 }, tilt, cam400),
         focalDistanceFor(tilt, 300),
         tiltedFootprint(cam400, tilt),
         tiltedVisibleRegion(cam400, tilt, 0, 0),
@@ -70,7 +70,7 @@ describe("tilt boundaries", () => {
         expect((result as ViewError).message).toContain("tilt angle");
       }
     }
-    expect((projectPerspective({ x: 0, y: 0 }, 0, 19.999, cam400) as ViewError).message).toContain(
+    expect((projectTilted({ x: 0, y: 0 }, 0, 19.999, cam400) as ViewError).message).toContain(
       "from 20 to 70",
     );
   });
@@ -104,16 +104,16 @@ describe("validateFocalDistance", () => {
   });
 
   it("is applied by the projection functions", () => {
-    expect(isViewError(projectPerspective({ x: 0, y: 0 }, 0, 35, cam400, 0))).toBe(true);
-    expect(isViewError(unprojectPerspective({ x: 200, y: 200 }, 35, cam400, NaN))).toBe(true);
-    expect(isViewError(projectPerspective({ x: 0, y: 0 }, 0, 35, cam400, 1000 * H + 1))).toBe(true);
-    expect(isViewError(projectPerspective({ x: 0, y: 0 }, 0, 35, cam400, 1000 * H))).toBe(false);
+    expect(isViewError(projectTilted({ x: 0, y: 0 }, 0, 35, cam400, 0))).toBe(true);
+    expect(isViewError(unprojectTilted({ x: 200, y: 200 }, 35, cam400, NaN))).toBe(true);
+    expect(isViewError(projectTilted({ x: 0, y: 0 }, 0, 35, cam400, 1000 * H + 1))).toBe(true);
+    expect(isViewError(projectTilted({ x: 0, y: 0 }, 0, 35, cam400, 1000 * H))).toBe(false);
   });
 });
 
-describe("projectPerspective at the player", () => {
+describe("projectTilted at the player", () => {
   it("puts the player at the player row, the horizontal centre", () => {
-    const p = ok(projectPerspective({ x: 0, y: 0 }, 0, 35, cam400)) as Point;
+    const p = ok(projectTilted({ x: 0, y: 0 }, 0, 35, cam400)) as Point;
     expect(p.x).toBeCloseTo(200, 9);
     expect(p.y).toBeCloseTo(225, 9);
   });
@@ -121,7 +121,7 @@ describe("projectPerspective at the player", () => {
   it("lifts a height by exactly height * zoom * cos(tilt) at the player", () => {
     const camera = cameraOf(400, 300, 2);
     for (const height of [0, 12, 1000]) {
-      const p = ok(projectPerspective({ x: 0, y: 0 }, height, 35, camera)) as Point;
+      const p = ok(projectTilted({ x: 0, y: 0 }, height, 35, camera)) as Point;
       expect(p.y).toBeCloseTo(225 - height * 2 * Math.cos((35 * Math.PI) / 180), 9);
       expect(p.x).toBeCloseTo(200, 9);
     }
@@ -129,13 +129,13 @@ describe("projectPerspective at the player", () => {
 
   it("moves a point one step ahead by sin(tilt) of the step at the player", () => {
     const step = 1e-4;
-    const p = ok(projectPerspective({ x: 0, y: -step }, 0, 35, cam400)) as Point;
+    const p = ok(projectTilted({ x: 0, y: -step }, 0, 35, cam400)) as Point;
     expect(225 - p.y).toBeCloseTo(step * Math.sin((35 * Math.PI) / 180), 8);
   });
 
   it("scales lateral distances by 0.5 at the top row, 1 at the player row", () => {
-    const top = ok(unprojectPerspective({ x: 0, y: 0 }, 35, cam400)) as Point;
-    const topRight = ok(unprojectPerspective({ x: 400, y: 0 }, 35, cam400)) as Point;
+    const top = ok(unprojectTilted({ x: 0, y: 0 }, 35, cam400)) as Point;
+    const topRight = ok(unprojectTilted({ x: 400, y: 0 }, 35, cam400)) as Point;
     // World width of the top row is 2 W, screen width 400: scale 0.5.
     expect(topRight.x - top.x).toBeCloseTo(800, 6);
   });
@@ -143,29 +143,29 @@ describe("projectPerspective at the player", () => {
 
 describe("errors of the projection", () => {
   it("returns an error for a height or point that is not finite", () => {
-    expect(isViewError(projectPerspective({ x: 0, y: 0 }, NaN, 35, cam400))).toBe(true);
-    expect(isViewError(projectPerspective({ x: Infinity, y: 0 }, 0, 35, cam400))).toBe(true);
-    expect(isViewError(unprojectPerspective({ x: NaN, y: 0 }, 35, cam400))).toBe(true);
-    expect(isViewError(unprojectPerspective({ x: 0, y: 0 }, 35, cam400, undefined, NaN))).toBe(true);
+    expect(isViewError(projectTilted({ x: 0, y: 0 }, NaN, 35, cam400))).toBe(true);
+    expect(isViewError(projectTilted({ x: Infinity, y: 0 }, 0, 35, cam400))).toBe(true);
+    expect(isViewError(unprojectTilted({ x: NaN, y: 0 }, 35, cam400))).toBe(true);
+    expect(isViewError(unprojectTilted({ x: 0, y: 0 }, 35, cam400, undefined, NaN))).toBe(true);
   });
 
   it("returns an error for a point on or above the horizon row", () => {
     // The horizon lies 0.75 H = 225 pixels above the top edge.
     for (const y of [-226, -1000]) {
-      const result = unprojectPerspective({ x: 200, y }, 35, cam400);
+      const result = unprojectTilted({ x: 200, y }, 35, cam400);
       expect(isViewError(result)).toBe(true);
       expect((result as ViewError).message).toContain("horizon");
     }
-    expect(isViewError(unprojectPerspective({ x: 200, y: -224 }, 35, cam400))).toBe(false);
+    expect(isViewError(unprojectTilted({ x: 200, y: -224 }, 35, cam400))).toBe(false);
   });
 
   it("returns an error for ground nearer than the near clip, naming the value", () => {
     const f = focalDistanceFor(35, 300) as number;
     const g = (-(1 - NEAR_CLIP_FRACTION) * f) / Math.cos((35 * Math.PI) / 180);
-    const behind = projectPerspective({ x: 0, y: -g * 1.01 }, 0, 35, cam400);
+    const behind = projectTilted({ x: 0, y: -g * 1.01 }, 0, 35, cam400);
     expect(isViewError(behind)).toBe(true);
     expect((behind as ViewError).message).toContain("point depth");
-    const justInside = projectPerspective({ x: 0, y: -g * 0.99 }, 0, 35, cam400);
+    const justInside = projectTilted({ x: 0, y: -g * 0.99 }, 0, 35, cam400);
     expect(isViewError(justInside)).toBe(false);
   });
 
@@ -178,11 +178,11 @@ describe("depth order", () => {
   it("gives a larger key to the nearer point, which is lower on the screen", () => {
     const farther = { x: 0, y: -50 };
     const nearer = { x: 0, y: 20 };
-    expect(depthOfPerspective(nearer, cam400) as number).toBeGreaterThan(
-      depthOfPerspective(farther, cam400) as number,
+    expect(depthOf(nearer, cam400) as number).toBeGreaterThan(
+      depthOf(farther, cam400) as number,
     );
-    const yFar = (ok(projectPerspective(farther, 0, 35, cam400)) as Point).y;
-    const yNear = (ok(projectPerspective(nearer, 0, 35, cam400)) as Point).y;
+    const yFar = (ok(projectTilted(farther, 0, 35, cam400)) as Point).y;
+    const yNear = (ok(projectTilted(nearer, 0, 35, cam400)) as Point).y;
     expect(yNear).toBeGreaterThan(yFar);
   });
 

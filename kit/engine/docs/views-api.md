@@ -134,9 +134,10 @@ fullMap.destroy(); // stops the loop and removes the input listeners too
 
 ### `mountTiltedView`
 
-Puts a Tilted_View on a canvas: the map seen from above at a slant, centred on the player with
-the heading up the screen, in which buildings and houses are raised blocks, with the route
-line, the player, the markers and the place names.
+Puts a Tilted_View on a canvas: the map seen from above at a slant in perspective (default 35
+degrees), centred on the player with the heading up the screen, in which buildings and houses
+are raised blocks that show the side faces looking towards the viewer, with the route line, the
+player, the markers and the place names.
 
 - Inputs: `mountTiltedView(canvas, engine, options?)`.
   - `canvas`: as for `mountMinimap`.
@@ -186,7 +187,7 @@ Every option is optional.
 | `minZoom` | `mountFullMap` | number from 0.001 to 1000 | the zoom that fits the whole map |
 | `maxZoom` | `mountFullMap` | number from 0.001 to 1000, above `minZoom` | 8 |
 | `onSelect` | `mountFullMap` | a function called with each selection instead of setting the engine destination | none |
-| `tiltAngleDegrees` | `mountTiltedView` | finite number from 20 to 70 (degrees) | 45 |
+| `tiltAngleDegrees` | `mountTiltedView` | finite number from 20 to 70 (degrees) | 35 |
 | `heightFactors` | `mountTiltedView` | an object from prop kind to a finite number from 0 to 100 | factor 1 for every kind |
 
 `smoothingDurationMs` has no effect on the full map, which does not smooth its camera.
@@ -632,7 +633,7 @@ const next = zoomCamera(camera, { x: 150, y: 100 }, 1.25);
 
 #### `MIN_TILT_DEGREES`, `MAX_TILT_DEGREES`, `DEFAULT_TILT_DEGREES`, `validateTilt`
 
-The tilt angle limits (20 and 70 degrees), the default (45) and the check.
+The tilt angle limits (20 and 70 degrees), the default (35) and the check.
 
 - Inputs: a tilt angle in degrees.
 - Outputs: `undefined` when usable, else a `ViewError`.
@@ -644,21 +645,30 @@ const problem = validateTilt(80); // a ViewError naming "tilt angle" and 20 to 7
 
 #### `projectTilted`, `unprojectTilted`
 
-`projectTilted` maps a ground point and a height to the screen of the tilted view.
-`unprojectTilted` maps a screen point back to the ground (height 0).
+`projectTilted` maps a ground point and a height to the screen of the tilted view, which
+draws in perspective: ground farther up the screen is smaller and narrower. A height lifts a
+point by `height * zoom * cos(tilt)` times the scale of its ground point, so the lift is exact
+at the player and smaller farther away. `unprojectTilted` maps a screen point back to the
+ground, or to the plane at a height.
 
-- Inputs: `projectTilted(ground, heightWorldUnits, tiltAngleDegrees, camera)`;
-  `unprojectTilted(screen, tiltAngleDegrees, camera)`. Heights are finite world units.
+- Inputs: `projectTilted(ground, heightWorldUnits, tiltAngleDegrees, camera, focalDistancePx?)`;
+  `unprojectTilted(screen, tiltAngleDegrees, camera, focalDistancePx?, heightWorldUnits = 0)`.
+  Heights are finite world units. The focal distance is in CSS pixels and defaults to
+  `1.5 * viewportHeight / tan(tilt)`.
 - Outputs: a `Point`, or a `ViewError`.
-- Errors: an unusable tilt, camera, point or height.
+- Errors: an unusable tilt, camera, point, height or focal distance; ground nearer than the
+  near clip (a quarter of the focal distance, behind the viewer's feet); for `unprojectTilted`
+  a screen point on or above the horizon row.
 
 ```ts
-const top = projectTilted({ x: 4, y: 2 }, 12, 45, camera);
+const top = projectTilted({ x: 4, y: 2 }, 12, 35, camera);
 ```
 
 #### `depthOf`, `sortByDepth`
 
-`depthOf` gives the distance of a ground point below the viewport centre, in world units.
+`depthOf` gives the distance of a ground point below the viewport centre, in world units. A
+larger value is nearer the viewer, and the depth along the viewing axis falls as it grows, so
+this is the perspective order.
 `sortByDepth` orders items farther first and nearer last, so nearer blocks cover farther ones.
 Items less than 0.001 world units apart in depth are ordered by identifier. The input array is
 not changed.

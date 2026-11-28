@@ -1,7 +1,7 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { screenToWorld, type Camera, type Point } from "../../src/views/camera.js";
-import { focalDistanceFor, projectPerspective } from "../../src/views/tilted-projection.js";
+import { focalDistanceFor, projectTilted } from "../../src/views/tilted-projection.js";
 import { isViewError } from "../../src/views/view-errors.js";
 import { perspectiveCameraArb, tiltArb } from "./helpers/perspective-screen-check.js";
 
@@ -20,8 +20,8 @@ function groundAt(camera: Camera, lateralPixels: number, forwardPixels: number):
 }
 
 function screenDistance(camera: Camera, tilt: number, a: Point, b: Point): number {
-  const pa = projectPerspective(a, 0, tilt, camera);
-  const pb = projectPerspective(b, 0, tilt, camera);
+  const pa = projectTilted(a, 0, tilt, camera);
+  const pb = projectTilted(b, 0, tilt, camera);
   if (isViewError(pa)) throw new Error(pa.message);
   if (isViewError(pb)) throw new Error(pb.message);
   return Math.hypot(pa.x - pb.x, pa.y - pb.y);

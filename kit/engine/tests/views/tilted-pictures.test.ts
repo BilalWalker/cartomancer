@@ -35,9 +35,11 @@ describe("Tilted view pictures", () => {
     };
     const { canvas, notices } = drawTown(map, images);
     expect(notices).toEqual([]);
+    // Under perspective a picture is drawn in 1 to 43 depth bands, one call per band.
     const drawn = canvas.findCalls("drawImage");
-    expect(drawn).toHaveLength(1);
-    expect(drawn[0]!.args).toEqual([STATUE, -5, -3, 10, 6]);
+    expect(drawn.length).toBeGreaterThanOrEqual(1);
+    expect(drawn.length).toBeLessThanOrEqual(43);
+    for (const call of drawn) expect(call.args).toEqual([STATUE, -5, -3, 10, 6]);
     expect(topFaces(canvas)).toHaveLength(0);
     expect(sideFaces(canvas)).toHaveLength(0);
   });
@@ -64,22 +66,31 @@ describe("Tilted view pictures", () => {
     const calls = canvas.getCalls();
     const at = calls.findIndex((c) => c.op === "drawImage");
     expect(at).toBeGreaterThan(-1);
-    expect(calls[at]!.args).toEqual([PLAN, 0, 0, 100, 50]);
-    expect(calls[at]!.state.globalAlpha).toBe(0.4);
+    // One call per depth band, each with the destination in world units and the picture's opacity.
+    const bands = calls.filter((c) => c.op === "drawImage");
+    expect(bands.length).toBeGreaterThanOrEqual(1);
+    expect(bands.length).toBeLessThanOrEqual(43);
+    for (const band of bands) {
+      expect(band.args).toEqual([PLAN, 0, 0, 100, 50]);
+      expect(band.state.globalAlpha).toBe(0.4);
+    }
+    const lastAt = calls.map((c) => c.op).lastIndexOf("drawImage");
 
     const groundFill = calls.findIndex((c) => c.op === "fill");
-    const nextFill = calls.findIndex((c, i) => i > at && c.op === "fill");
+    const nextFill = calls.findIndex((c, i) => i > lastAt && c.op === "fill");
     expect(groundFill).toBeGreaterThan(-1);
     expect(groundFill).toBeLessThan(at);
-    expect(nextFill).toBeGreaterThan(at);
+    expect(nextFill).toBeGreaterThan(lastAt);
 
-    // The tilted ground transform is in force: a vertical squash by sin(tilt) before the image.
+    // Each band is drawn inside its own clip, under the band's local scale of the perspective
+    // (no single squash by sin(tilt) is in force any more).
+    for (const [i, c] of calls.entries()) {
+      if (c.op !== "drawImage") continue;
+      expect(calls.slice(0, i).some((p) => p.op === "clip")).toBe(true);
+    }
     const sin = Math.sin((DEFAULT_TILT_DEGREES * Math.PI) / 180);
-    const squash = calls.findIndex((c) => c.op === "scale" && c.args[0] === 1 && c.args[1] === sin);
-    expect(squash).toBeGreaterThan(-1);
-    expect(squash).toBeLessThan(at);
-    // No depth-sorted block is involved: the image is drawn before any restore of the ground group
-    // and no raised face exists.
+    expect(calls.some((c) => c.op === "scale" && c.args[0] === 1 && c.args[1] === sin)).toBe(false);
+    // No depth-sorted block is involved and no raised face exists.
     expect(topFaces(canvas)).toHaveLength(0);
   });
 
@@ -93,6 +104,6 @@ describe("Tilted view pictures", () => {
     const result = view.draw(canvas, { position }, 0);
     if (isViewError(result)) throw new Error(result.message);
     expect(result.drew).toBe(true);
-    expect(canvas.findCalls("drawImage")).toHaveLength(1);
+    expect(canvas.findCalls("drawImage").length).toBeGreaterThanOrEqual(1);
   });
 });

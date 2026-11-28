@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { PropData } from "../../src/types.js";
 import { RecordingCanvas } from "../../src/views/recording-canvas.js";
-import { projectTilted } from "../../src/views/tilted-projection.js";
+import { DEFAULT_TILT_DEGREES, projectTilted } from "../../src/views/tilted-projection.js";
 import { TiltedView } from "../../src/views/tilted-view.js";
 import { isViewError } from "../../src/views/view-errors.js";
+import { modelLift } from "./helpers/perspective-screen-check.js";
 import { smallTown } from "./helpers/small-town.js";
 import { topFaces } from "./helpers/tilted-faces.js";
 
@@ -38,8 +39,25 @@ function drawnLift(view: TiltedView, tilt: number): number {
 }
 
 describe("Tilted view settings", () => {
-  it("starts at a tilt of 45 degrees", () => {
-    expect(makeView().getTiltAngle()).toBe(45);
+  it("starts at a tilt of 35 degrees", () => {
+    expect(makeView().getTiltAngle()).toBe(35);
+    expect(DEFAULT_TILT_DEGREES).toBe(35);
+  });
+
+  it("draws a frame at the tilt boundaries 20 and 70 and keeps the player on the player row", () => {
+    for (const degrees of [20, 70]) {
+      const view = makeView();
+      expect(view.setTiltAngle(degrees)).toBeUndefined();
+      const canvas = new RecordingCanvas();
+      const result = view.draw(canvas, { position }, 0);
+      if (isViewError(result)) throw new Error(result.message);
+      expect(result.drew).toBe(true);
+      expect(topFaces(canvas)).toHaveLength(1);
+      const camera = view.getCamera()!;
+      const player = projectTilted({ x: 0, y: 0 }, 0, degrees, camera);
+      if (isViewError(player)) throw new Error(player.message);
+      expect(player.y).toBeCloseTo(0.75 * camera.viewportHeight, 6);
+    }
   });
 
   it("accepts the tilt boundaries 20 and 70 and a value between", () => {
@@ -80,16 +98,16 @@ describe("Tilted view settings", () => {
     const view = makeView();
     expect(view.setHeightFactor("building", 2)).toBeUndefined();
     expect(isViewError(view.setHeightFactor("building", 101))).toBe(true);
-    const lift = drawnLift(view, 45);
-    const plain = drawnLift(makeView(), 45);
+    const lift = drawnLift(view, 35);
+    const plain = drawnLift(makeView(), 35);
     expect(lift).toBeCloseTo(plain * 2, 6);
   });
 
   it("changes the drawn top lift when the height factor changes", () => {
-    const plain = drawnLift(makeView(), 45);
+    const plain = drawnLift(makeView(), 35);
     const view = makeView();
     expect(view.setHeightFactor("building", 3)).toBeUndefined();
-    const tall = drawnLift(view, 45);
+    const tall = drawnLift(view, 35);
     expect(plain).toBeGreaterThan(0);
     expect(tall).toBeCloseTo(plain * 3, 6);
   });
@@ -97,7 +115,7 @@ describe("Tilted view settings", () => {
   it("draws the block flat when the factor is 0", () => {
     const view = makeView();
     expect(view.setHeightFactor("building", 0)).toBeUndefined();
-    expect(drawnLift(view, 45)).toBeCloseTo(0, 6);
+    expect(drawnLift(view, 35)).toBeCloseTo(0, 6);
   });
 
   it("makes a new frame due after a setting changes", () => {
@@ -113,7 +131,9 @@ describe("Tilted view settings", () => {
     const view = makeView();
     expect(view.setTiltAngle(60)).toBeUndefined();
     const lift = drawnLift(view, 60);
-    const expected = 12 * 2 * Math.cos((60 * Math.PI) / 180);
+    // Independent pinhole model: 12 units * zoom 2 * cos(60) times f / z of the corner (25, -5).
+    const expected = modelLift(view.getCamera()!, 60, { x: prop.x - 5, y: prop.y - 5 }, 12);
     expect(lift).toBeCloseTo(expected, 6);
+    expect(lift).toBeLessThan(12 * 2 * Math.cos((60 * Math.PI) / 180));
   });
 });

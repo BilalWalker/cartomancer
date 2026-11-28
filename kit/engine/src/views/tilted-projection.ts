@@ -1,9 +1,11 @@
-// Tilted projection for the Tilted_View. Pure math, no canvas.
+// Perspective_Projection of the Tilted_View (Requirements 12.20, 26). Pure
+// math, no canvas.
 //
-// The ordinary camera transform puts the player's heading up the screen.
-// The tilt then shortens the distance along the viewing direction (the
-// vertical screen offset from the viewport centre) by sin(tilt), and a
-// height lifts the point up the screen by height * zoom * cos(tilt).
+// The ordinary camera transform puts the player's heading up the screen. In
+// CSS pixels, with X the lateral offset from the viewport centre and g the
+// forward offset (up the screen) of a ground point, h = height * zoom, t the
+// tilt, f the Focal_Distance and A = 0.75 H the player's row:
+//   z = f + g cos t,  x = W/2 + f X / z,  y = A - f (g sin t + h cos t) / z
 
 import {
   screenToWorld,
@@ -23,7 +25,7 @@ import type { Bounds } from "./visible-set.js";
 
 export const MIN_TILT_DEGREES = 20;
 export const MAX_TILT_DEGREES = 70;
-export const DEFAULT_TILT_DEGREES = 45;
+export const DEFAULT_TILT_DEGREES = 35;
 
 /** Returns a ViewError when the tilt is not a finite number from 20 to 70, else undefined. */
 export function validateTilt(tiltAngleDegrees: number): ViewError | undefined {
@@ -44,39 +46,15 @@ function tiltParts(tiltAngleDegrees: number): { sin: number; cos: number } {
   return { sin: Math.sin(radians), cos: Math.cos(radians) };
 }
 
-/**
- * Maps a world point at a height (world units, 0 or more) to a screen point
- * in CSS pixels. An unusable camera, tilt, point or height returns a ViewError.
- */
-export function projectTilted(
-  ground: Point,
-  heightWorldUnits: number,
-  tiltAngleDegrees: number,
-  camera: Camera,
-): Point | ViewError {
-  const tiltError = validateTilt(tiltAngleDegrees);
-  if (tiltError) return tiltError;
-  if (typeof heightWorldUnits !== "number" || !Number.isFinite(heightWorldUnits)) {
-    return badNumber("height");
-  }
-  const flat = worldToScreen(camera, ground);
-  if (isViewError(flat)) return flat;
-  const { sin, cos } = tiltParts(tiltAngleDegrees);
-  const centreY = camera.viewportHeight / 2;
-  return {
-    x: flat.x,
-    y: centreY + (flat.y - centreY) * sin - heightWorldUnits * camera.zoom * cos,
-  };
-}
-
 /** Depth differences below this many world units count as a tie. */
 export const DEPTH_TIE_TOLERANCE = 0.001;
 
 /**
- * Depth of a ground point for the Depth_Order, in world units: the forward
- * offset from the viewport centre after rotation and before the tilt. A larger
- * value is nearer the viewer (lower on the screen). An unusable camera or point
- * returns a ViewError.
+ * Depth_Order sort key of a ground point, in world units: the rotated offset
+ * below the viewport centre. A larger value is nearer the viewer (lower on the
+ * screen). Depth along the optical axis, `z = f + g cos t`, is a strictly
+ * decreasing function of this key, so sorting by it is the perspective order.
+ * An unusable camera or point returns a ViewError.
  */
 export function depthOf(ground: Point, camera: Camera): number | ViewError {
   const flat = worldToScreen(camera, ground);
@@ -115,43 +93,6 @@ export function sortByDepth<T extends { id: string; ground: Point }>(
   }
   return result;
 }
-
-/** Maps a screen point back to the ground (height 0) world point. */
-export function unprojectTilted(
-  screen: Point,
-  tiltAngleDegrees: number,
-  camera: Camera,
-): Point | ViewError {
-  const tiltError = validateTilt(tiltAngleDegrees);
-  if (tiltError) return tiltError;
-  const cameraError = validateCamera(camera);
-  if (cameraError) return cameraError;
-  if (
-    typeof screen !== "object" ||
-    screen === null ||
-    !Number.isFinite(screen.x) ||
-    !Number.isFinite(screen.y)
-  ) {
-    return badPoint("screen point");
-  }
-  const { sin } = tiltParts(tiltAngleDegrees);
-  const centreY = camera.viewportHeight / 2;
-  return screenToWorld(camera, {
-    x: screen.x,
-    y: centreY + (screen.y - centreY) / sin,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Perspective_Projection (Requirements 12.20, 26). Added next to the affine
-// pair above; the Tilted_View switches to it in a later task, which removes the
-// affine functions and renames the "Perspective" functions to the design names.
-//
-// In CSS pixels, with X the lateral offset from the viewport centre and g the
-// forward offset (up the screen) of a ground point, h = height * zoom, t the
-// tilt, f the Focal_Distance and A = 0.75 H the player's row:
-//   z = f + g cos t,  x = W/2 + f X / z,  y = A - f (g sin t + h cos t) / z
-// ---------------------------------------------------------------------------
 
 /** The player's screen row as a share of the viewport height. */
 export const PLAYER_ROW_FRACTION = 0.75;
@@ -264,7 +205,7 @@ function nearClipError(): ViewError {
  * lifts the point by `height * zoom * cos(tilt)` times the scale of its ground
  * point. A bad input, or ground nearer than the near clip, returns a ViewError.
  */
-export function projectPerspective(
+export function projectTilted(
   ground: Point,
   heightWorldUnits: number,
   tiltAngleDegrees: number,
@@ -290,11 +231,11 @@ export function projectPerspective(
 }
 
 /**
- * Inverse of `projectPerspective` at a height (default 0). A screen point on or
+ * Inverse of `projectTilted` at a height (default 0). A screen point on or
  * above the horizon row, or whose ground is nearer than the near clip, returns
  * a ViewError.
  */
-export function unprojectPerspective(
+export function unprojectTilted(
   screen: Point,
   tiltAngleDegrees: number,
   camera: Camera,
@@ -331,15 +272,6 @@ export function unprojectPerspective(
 }
 
 /**
- * Depth_Order sort key of a ground point: the rotated forward offset in world
- * units, larger is nearer the viewer. Depth along the optical axis is a strictly
- * decreasing function of this key, so the order is the perspective order.
- */
-export function depthOfPerspective(ground: Point, camera: Camera): number | ViewError {
-  return depthOf(ground, camera);
-}
-
-/**
  * The four world corners of the viewport on the ground (or at a height), in the
  * order top left, top right, bottom right, bottom left.
  */
@@ -357,7 +289,7 @@ export function tiltedFootprint(
   ];
   const result: Point[] = [];
   for (const corner of corners) {
-    const world = unprojectPerspective(
+    const world = unprojectTilted(
       corner,
       tiltAngleDegrees,
       camera,
@@ -407,7 +339,7 @@ export function tiltedVisibleRegion(
     { x: 0, y: camera.viewportHeight },
     { x: camera.viewportWidth, y: camera.viewportHeight },
   ]) {
-    const raised = unprojectPerspective(corner, tiltAngleDegrees, camera, lens.f, lift);
+    const raised = unprojectTilted(corner, tiltAngleDegrees, camera, lens.f, lift);
     if (isViewError(raised)) return raised;
     points.push(raised);
   }

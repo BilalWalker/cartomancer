@@ -20,8 +20,8 @@ import {
 } from "../../src/views/tilted-pictures.js";
 import {
   focalDistanceFor,
-  projectPerspective,
-  unprojectPerspective,
+  projectTilted,
+  unprojectTilted,
 } from "../../src/views/tilted-projection.js";
 import { isViewError, type ViewError } from "../../src/views/view-errors.js";
 
@@ -143,9 +143,9 @@ describe("tilted background picture in bands", () => {
     rec.findCalls("drawImage").forEach((image, k) => {
       const mid = (bands[k]!.top + bands[k]!.bottom) / 2;
       for (const column of [60, 200, 330]) {
-        const world = ok(unprojectPerspective({ x: column, y: mid }, TILT, cam, f));
+        const world = ok(unprojectTilted({ x: column, y: mid }, TILT, cam, f));
         const placed = apply(image.state.transform, world);
-        const exact = ok(projectPerspective(world, 0, TILT, cam, f));
+        const exact = ok(projectTilted(world, 0, TILT, cam, f));
         expect(placed.x).toBeCloseTo(exact.x, 6);
         expect(placed.y).toBeCloseTo(exact.y, 6);
       }
@@ -203,7 +203,7 @@ describe("tilted picture props in bands", () => {
     expect(images.length).toBeLessThanOrEqual(MAX_BANDS);
     for (const image of images) expect(image.args).toEqual([STATUE, -20, -12, 40, 24]);
     // The prop centre maps to its exact projection within the band.
-    const centre = ok(projectPerspective(at, 0, TILT, camera, f));
+    const centre = ok(projectTilted(at, 0, TILT, camera, f));
     const bands = depthBands(300, TILT, f);
     const band = bands.findIndex((b) => centre.y >= b.top && centre.y <= b.bottom);
     expect(band).toBeGreaterThanOrEqual(0);

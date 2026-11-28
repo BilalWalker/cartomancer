@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createCamera, type Camera } from "../../src/views/camera.js";
 import { depthOf, sortByDepth } from "../../src/views/tilted-projection.js";
 import { isViewError, type ViewError } from "../../src/views/view-errors.js";
+import { modelProject } from "./helpers/perspective-screen-check.js";
 
 function ok<T extends object>(value: T | ViewError): T {
   if (isViewError(value)) throw new Error(value.message);
@@ -36,6 +37,19 @@ describe("depthOf", () => {
 
   it("returns a ViewError for a non-finite point", () => {
     expect(isViewError(depthOf({ x: Number.NaN, y: 0 }, camera))).toBe(true);
+  });
+});
+
+describe("depthOf under the Perspective_Projection", () => {
+  it("orders ground points like the depth along the optical axis of the pinhole model", () => {
+    // Depth_Order is perspective-correct: a larger key is nearer, so a smaller z.
+    const points = [-90, -40, -7, 0, 12, 33].map((y) => ({ x: 5, y }));
+    const keys = points.map((p) => depthOf(p, camera) as number);
+    const zs = points.map((p) => modelProject(camera, 35, p, 0).z);
+    for (let i = 1; i < points.length; i++) {
+      expect(keys[i]!).toBeGreaterThan(keys[i - 1]!);
+      expect(zs[i]!).toBeLessThan(zs[i - 1]!);
+    }
   });
 });
 

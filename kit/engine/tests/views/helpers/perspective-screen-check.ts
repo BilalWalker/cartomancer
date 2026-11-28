@@ -49,6 +49,23 @@ export function modelProject(
   };
 }
 
+/**
+ * The screen lift in pixels of a roof of the given height above its ground
+ * point: `height * zoom * cos(tilt)` times the perspective scale `f / z` of the
+ * ground point, with `f` and `z` from the pinhole model above. At the player
+ * the scale is 1.
+ */
+export function modelLift(
+  camera: Camera,
+  tiltDegrees: number,
+  ground: Point,
+  heightWorldUnits: number,
+): number {
+  const f = modelFocal(tiltDegrees, camera.viewportHeight);
+  const base = modelProject(camera, tiltDegrees, ground, 0);
+  return (heightWorldUnits * camera.zoom * Math.cos((tiltDegrees * Math.PI) / 180) * f) / base.z;
+}
+
 /** The base polygon corners of a rotated rectangle prop in world units. */
 export function propCorners(prop: {
   x: number;

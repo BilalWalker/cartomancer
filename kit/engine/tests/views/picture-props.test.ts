@@ -192,6 +192,31 @@ describe("picture props in drawMapLayers", () => {
   });
 });
 
+/**
+ * The number of pictures drawn in depth bands: a maximal run of `drawImage`
+ * calls that follow the same prop placement (the last `translate` before the
+ * call) counts as one picture, and must hold 1 to 43 calls.
+ */
+function pictureRuns(rec: RecordingCanvas): number {
+  let placement = "";
+  let previous: string | undefined;
+  let runs = 0;
+  let length = 0;
+  for (const call of rec.getCalls()) {
+    if (call.op === "translate") placement = JSON.stringify(call.args);
+    if (call.op !== "drawImage") continue;
+    if (placement !== previous) {
+      if (previous !== undefined) expect(length).toBeLessThanOrEqual(43);
+      runs++;
+      length = 0;
+      previous = placement;
+    }
+    length++;
+  }
+  if (previous !== undefined) expect(length).toBeLessThanOrEqual(43);
+  return runs;
+}
+
 describe("picture props on every view", () => {
   it("is an image or a placeholder on the Full_Map, the Minimap and the Tilted_View", () => {
     // Feature: map-views, Property 23 (extended): A Picture_Prop is an image or a placeholder on every view
@@ -235,13 +260,16 @@ describe("picture props on every view", () => {
             tilted.draw(canvases[2]!, { position }, 0),
           ];
           for (const result of results) expect(isViewError(result)).toBe(false);
-          for (const rec of canvases) {
-            const drawn = rec.findCalls("drawImage").length + rec.findCalls("drawText").length;
+          canvases.forEach((rec, index) => {
+            // On the Tilted_View a picture is drawn in 1 to 43 depth bands, one call per band,
+            // so a run of calls with one handle and one prop placement counts as one picture.
+            const images = index === 2 ? pictureRuns(rec) : rec.findCalls("drawImage").length;
+            const drawn = images + rec.findCalls("drawText").length;
             expect(drawn).toBe(props.length);
             for (const call of rec.findCalls("drawText")) {
               expect(props.map((p) => p.kind)).toContain(call.args[0]);
             }
-          }
+          });
         },
       ),
       { numRuns: 100 },

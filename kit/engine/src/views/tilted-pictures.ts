@@ -30,7 +30,7 @@ import {
   propFootprintCorners,
   type TiltedGroundView,
 } from "./tilted-ground.js";
-import { projectPerspective } from "./tilted-projection.js";
+import { projectTilted } from "./tilted-projection.js";
 import { isViewError, notice, type Notice, type ViewError } from "./view-errors.js";
 
 /** The depth ratio of one band, and so the most bands a picture is cut into. */
@@ -285,7 +285,7 @@ export function drawTiltedPictureProps(
     notices.push(...drawTiltedFlatProps(canvas, style, [prop], view));
     const outline = projectGroundPolygon(propFootprintCorners(prop), view);
     if (isViewError(outline) || outline.screen === undefined) continue;
-    const centre = projectPerspective(
+    const centre = projectTilted(
       { x: prop.x, y: prop.y },
       0,
       view.tiltAngleDegrees,
