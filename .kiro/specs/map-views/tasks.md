@@ -6,7 +6,9 @@ This plan builds Block B of `docs/brief.md` in TypeScript: the Views (Minimap, F
 
 1. Groups 1 to 12 hold the Engine-side gaps and all pure logic: the commit rule update, `Engine.getMap`, the `snapToRoad` export, the five `blockHeight` steps, views foundation, camera, spatial index and visibility, style, layer pieces (including road batching), label placement and layer order, hit test, smoothing, tilted projection and block height, frame gate, input state machine, and a task that commits the task status files.
 2. Groups 13 to 16 hold, in this order: `drawImage` and the image lookup, picture props, the background picture layer, the frame gate image signature, the hex colour rule and the style key tables with their drift test (all in group 13, before any View uses them), then the three Views, the canvas adapter, input binding, accessibility, the mount functions (`mount.ts`, which also carries the smoke test allowlist edit), the public exports and the Views API doc.
-3. Groups 17 to 21 hold the demo page (which uses only the Mount_Functions), a checkpoint, the Playwright frame benchmark, a second checkpoint, and last the Gate.
+3. Groups 17 and 18 hold the demo page (which uses only the Mount_Functions) and a checkpoint.
+4. Groups 19 to 24 hold the amendments (Requirements 25 to 29 and Requirement 12 criteria 20 and 21): the map version and the waiting mount (group 19), the tilted perspective (group 20), the readable north mark and the small-minimap notice (group 21), the demo status text, one-time mount and tilt slider (group 22), the dev tooling audit (group 23) and a checkpoint that commits the task status files (group 24).
+5. Groups 25 to 27 hold, last, the Playwright frame benchmark, the end-of-block checkpoint and the Gate.
 
 The Screen_Convention of the engine core applies everywhere: x grows right, y grows down, a heading is in degrees clockwise from the positive x axis. World north is the negative y direction.
 
@@ -416,28 +418,136 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
   - Report plainly: the command that starts the demo page (`npm run dev` in `kit/demo`) and its address (`http://localhost:5173/`, as written in `kit/demo/README.md` and fixed in `vite.config.ts`), real `git status` output, the commit list, test results with time, the measured route times, and anything not done or not verified. No frame times exist yet at this point. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
   - _Requirements: 19.2, 19.5, 19.6, 19.7_
 
-- [ ] 19. Frame benchmark
-  - [ ] 19.1 Playwright frame benchmark
-    - Create `kit/demo/playwright.config.ts` (starts the Vite server, a Chromium project, a separate command from the default suite) and `kit/demo/bench/frame-bench.spec.ts`: load the Large_Generated_Map, move the player along a fixed seeded path for at least 300 frames, measure each View's draw time with `performance.now()` and the interval between animation frames, measure the Full_Map at the fit zoom and at 4 px per world unit, count the paths begun per frame for each View with a counting wrapper around the Canvas_Interface, and print the median, 95th percentile and maximum in ms with 2 decimals, plus browser name and version, Node version, viewport, Device_Pixel_Ratio and machine description. No pass or fail threshold on the numbers. It fails with a plain reason only when fewer than 300 frames were measured (stating both numbers), a time is not finite or is negative (naming the View and the measurement), or the page or browser cannot run.
+- [ ] 19. Map version and maps that arrive later
+  - [ ] 19.1 Engine.getMapVersion
+    - In `kit/engine/src/engine.ts`, add a private counter `mapVersion`, 0 at the start, raised by exactly 1 in the success branch of `loadMap` that replaces the Map, and `getMapVersion(): number` that returns it without copying the Map. A failed `loadMap`, including a call with a value that is not text, leaves it unchanged. Add an entry with a usage example to `kit/engine/docs/api.md` that states the rule (0 before any load, plus 1 per successful load, unchanged on failure, cheap enough to read on every frame).
+    - Create `tests/engine-map-version.test.ts` with the property and examples: 0 before any load, the value after a valid text, an invalid text, a number, `null`, `undefined` and the empty text, and that no `structuredClone` is called by `getMapVersion`. Extend `tests/engine-api.test.ts` so the export list and the doc entry still match. Run the whole engine-core suite unedited.
+    - **Property 26: The map version counts the successful loads**
+    - **Validates: Requirements 25.1, 25.2, 25.3, 25.4**
+    - Commit subject: `Engine: add getMapVersion to count successful map loads`
+    - _Requirements: 25.1, 25.2, 25.3, 25.4, 25.5, 25.19, 25.20_
+  - [ ] 19.2 Frame_Loop map version check, waiting mount and refusal
+    - In `src/views/mount.ts`, change the Frame_Loop so that each frame it reads `getMapVersion()` and calls `getMap()` and the View's `setMap` only when the version is above 0 and differs from the version handled before. A mount on an Engine at version 0 succeeds (the earlier "engine has no map" View_Error is removed from `view-errors.ts` and its callers) and, while the version is 0, the frame makes no call on the Canvas_Interface and reports nothing; the first load builds the View and draws it no later than the next frame. A `setMap` that returns a `ViewError` gives one Notice, keeps the previous Map on the screen, and `getMap()` is not called again until the version changes. An Engine without `getMapVersion` is refused at mount with a `ViewError` that names the engine argument and `getMapVersion`, and nothing is registered. A new Map keeps the Zoom limits, Zoom, Tilt_Angle, height factors, `images` option and Smoothing duration (25.8), a first Full_Map Map is fitted and a later one keeps the Camera (25.9), and the spatial index of the previous Map is dropped and built once for the new one (25.10).
+    - Extend `tests/views/helpers/stand-ins.ts` so the stand-in Engine has `getMapVersion` and counts `getMap()` and `getMapVersion()` calls; update the stand-in Engines of `kit/demo/tests` in this commit if the demo suite needs it. Create `tests/views/mount-map-version.test.ts` with the property and examples: a View mounted before any map draws nothing and then draws after `loadMap`, `getMap()` once per version change and never on a frame without a change, a failed load does not make the View read again, two loads show the second Map, settings kept across maps, a refused Map, an Engine without `getMapVersion`. Update `tests/views/mount-errors.test.ts` and `tests/views/mount-functions.test.ts` only where they relied on the removed "no map" error (new examples added, other assertions unchanged).
+    - **Property 27: A mounted View reads the Map once per version change**
+    - **Validates: Requirements 25.6, 25.7, 25.12, 25.15, 25.18**
+    - Commit subject: `Views: read the map by version and mount before the first map`
+    - _Requirements: 25.6, 25.7, 25.8, 25.9, 25.10, 25.11, 25.12, 25.15, 25.16, 25.18_
+  - [ ] 19.3 Controls and input while no map, pending settings, API doc
+    - Add the `noMapYet(control)` factory to `view-errors.ts`. While a View has no Map, `select`, `selectPlace`, `fit`, `follow`, `pan` and `zoomAt` return that `ViewError` and change nothing, and `setZoomLimits`, `setZoom`, `setTiltAngle` and `setHeightFactor` check their value as before and keep it for the View built when the first map arrives. The input binding of a Full_Map ignores pointer, wheel, touch and key input without an error while there is no Map.
+    - Update `kit/engine/docs/views-api.md`: `getMapVersion()` and its rule, the waiting mount, the controls without a map, the rule that an application mounts a View once and loads maps into the Engine, and the Engine without `getMapVersion` error. Extend the doc-against-export test in `tests/views/exports.test.ts` for the new names.
+    - Create `tests/views/mount-no-map-controls.test.ts` with one example per control name, one for pending settings applied when the first map arrives, and one for ignored input.
+    - Commit subject: `Views: controls and input wait for the first map`
+    - _Requirements: 25.13, 25.14, 25.19_
+
+- [ ] 20. Tilted view with a clearly visible perspective
+  - [ ] 20.1 Perspective projection math
+    - Rewrite `src/views/tilted-projection.ts` as the Perspective_Projection: `focalDistanceFor(tilt, viewportHeight)` (`1.5 * H / tan(tilt)`), `validateFocalDistance`, `projectTilted(ground, height, tilt, camera, focalDistancePx?)`, `unprojectTilted(screen, tilt, camera, focalDistancePx?, height = 0)`, `depthOf`, `sortByDepth`, `tiltedFootprint` (the four world corners of the Viewport), `tiltedVisibleRegion(camera, tilt, maxLift, margin, focalDistancePx?)`, `eyeGroundPoint` and the near clip constant (`NEAR_CLIP_FRACTION` 0.25). A height lifts a point by `height * zoom * cos(tilt)` times the perspective scale of its ground point, so at the player the lift is exact. A tilt outside 20 to 70, a Focal_Distance that is not finite or misses the top edge or exceeds 1000 H, a point on or above the horizon row, or a depth under the near clip returns a `ViewError` that names the value and its range. The Tilted_View keeps using the old affine pair until task 20.5, so this task changes no drawing: the old `projectTilted`, `unprojectTilted`, `depthOf` and `sortByDepth` stay unchanged in the file, and the new pair is added as `projectPerspective` and `unprojectPerspective` (with `depthOfPerspective`); task 20.5 removes the old functions and renames the new ones to the design names. Every commit stays green.
+    - Create `tests/views/tilted-perspective.test.ts` and `tests/views/tilted-perspective-round-trip.test.ts` (Property 14 restated for Viewports of 200 to 1600 px, tilt 20 to 70, ground points whose projection lies inside the Viewport, and both directions of the round trip; the old `tests/views/tilted-round-trip.test.ts` stays until task 20.5), plus `tests/views/tilted-narrowing.test.ts` (Property 28), `tests/views/tilted-lens.test.ts` (Property 29) and `tests/views/tilted-visible-region.test.ts` (Property 30, with an independent screen-space test of projected corners in `tests/views/helpers/`). Examples: depth order and tie rule, `tiltedFootprint` corners, errors with boundaries (tilt 20, 70, just below, just above, NaN, infinities; Focal_Distance at 0, 1000 H, just above).
+    - **Property 14 (restated): Tilted projection round trip at ground level under perspective**
+    - **Property 28: Perspective narrowing**
+    - **Property 29: The lens puts the top edge on the ground and keeps the Far_Edge scale**
+    - **Property 30: The Tilted_View's visible region covers the Viewport**
+    - **Validates: Requirements 12.10, 12.12, 12.18, 12.20, 26.3, 26.5, 26.6, 26.8, 26.9, 3.4**
+    - Commit subject: `Views: add perspective projection for the tilted view`
+    - _Requirements: 12.10, 12.12, 12.18, 12.20, 26.1, 26.3, 26.5, 26.6, 26.8, 26.9_
+  - [ ] 20.2 Tilted ground layers under perspective
+    - Create `src/views/tilted-ground.ts`: the ground fill, blocked areas, flat props, route line and markers drawn point by point in screen space under the identity transform with `projectTilted`; polygons and segments are clipped at the near clip and at the far depth (the Far_Edge) before projection; ground clipped away lies outside the Viewport and gives no Notice. A Raised_Block or flat prop with a footprint corner under the near clip is not drawn and gets one Notice naming the Prop. Nothing calls it yet outside its own tests.
+    - Create `tests/views/tilted-ground-clip.test.ts` on the `RecordingCanvas`: a polygon crossing the near clip, a segment ending behind the eye, a prop under the near clip with its Notice, a fully visible polygon projected point for point, and no non-finite number reaching the canvas.
+    - Commit subject: `Views: draw tilted ground layers point by point`
+    - _Requirements: 12.1, 26.1, 26.5, 6.7_
+  - [ ] 20.3 Tilted roads under perspective
+    - Create `src/views/tilted-roads.ts`: split each visible Road into depth pieces, give each piece a pixel width from the perspective scale at its depth (rounded to 0.25 px, 1 px floor), clip at the near clip, and hand the pieces to `road-batching.ts`, so paths stay batched by kind and pixel width; Roads at different depths use at most the number of distinct pixel widths in 0.5 px steps. Blocked_Roads follow the same rule. `road-batching.ts` keeps its logic and its tests unedited.
+    - Create `tests/views/tilted-roads.test.ts` with the property on the `RecordingCanvas` and examples: a Road across the near clip, a Road running away from the viewer gets narrower, the 1 px floor, a bad width Notice as in Requirement 5.
+    - **Property 18 (restated): Path count does not depend on the number of roads, under perspective**
+    - **Validates: Requirements 5.10, 5.11, 22.1, 22.2, 22.5**
+    - Commit subject: `Views: draw tilted roads in depth pieces with batching`
+    - _Requirements: 5.5, 5.6, 5.10, 5.11, 22.1, 22.2, 22.5, 26.1_
+  - [ ] 20.4 Tilted pictures in depth bands
+    - Create `src/views/tilted-pictures.ts`: draw the Background_Picture and Picture_Props in 1 to 43 depth bands, each band one `drawImage` call inside its own clip, with the alpha of the Background_Picture on every band and the destination in world units; a picture whose bands are all outside the Viewport makes no call; a missing image gives the placeholder through the ground drawing of task 20.2 and the Notice of Requirement 24. Nothing calls it yet outside its own tests.
+    - Create `tests/views/tilted-pictures-bands.test.ts` with the band count and rows, and examples for the clip, the alpha and the missing image. Property tests on the `RecordingCanvas` for the restated properties below.
+    - **Property 23 (restated): A Picture_Prop is an image or a placeholder, a run of 1 to 43 calls with one handle counts as one**
+    - **Property 24 (restated): The background picture keeps its scale and opacity in every band, before every later layer**
+    - **Validates: Requirements 24.4, 24.5, 24.6, 24.9, 24.10, 24.16, 24.17, 24.18**
+    - Commit subject: `Views: draw tilted pictures in depth bands`
+    - _Requirements: 24.4, 24.5, 24.6, 24.10, 24.17, 24.18, 26.1_
+  - [ ] 20.5 Tilted view uses the perspective, default 35 degrees
+    - In `src/views/tilted-view.ts`, switch the Tilted_View to the Perspective_Projection: ground, roads and pictures through `tilted-ground.ts`, `tilted-roads.ts` and `tilted-pictures.ts`, Raised_Blocks with top and darker side faces projected point by point (back faces culled, a block with a corner under the near clip not drawn and one Notice naming the Prop), depth order from `sortByDepth`, the visible region from `tiltedVisibleRegion`, the default Tilt_Angle 35 (range 20 to 70 kept, `mountTiltedView` `tiltAngleDegrees` default 35). Remove the old affine projection, rename `projectPerspective`, `unprojectPerspective` and `depthOfPerspective` to `projectTilted`, `unprojectTilted` and `depthOf`, and replace the tests of the old affine projection (`tilted-round-trip.test.ts`, `tilted-depth.test.ts`) by their perspective versions in the same commit.
+    - Update `tests/views/tilted-depth-order.test.ts` (Property 13 restated for perspective and tilt 20 to 70), `tests/views/tilted-block-height.test.ts` (Property 20 restated: lift at the player equals `blockHeight * cos(tilt) * factor * zoom` within 0.01 px, and elsewhere that value times the perspective scale `f / z` from an independent closed form in the test), `tests/views/tilted-settings.test.ts` (default 35, the 20 and 70 boundaries) and the fixture examples. Update the `views-api.md` default (35) and the Property 23 and 24 runs on the Tilted_View in `tests/views/picture-props.test.ts` and `tests/views/background-picture.test.ts` where they read the old drawing.
+    - **Property 13 (restated): Raised blocks are drawn nearer after farther under perspective**
+    - **Property 20 (restated): Raised block top lies above its footprint by the block height, scaled by depth**
+    - **Validates: Requirements 12.11, 12.15, 12.17, 12.19, 12.20, 12.21, 26.2, 26.7, 26.10**
+    - Commit subject: `Views: draw the tilted view under perspective at 35 degrees`
+    - _Requirements: 12.1, 12.10, 12.11, 12.15, 12.17, 12.19, 12.20, 12.21, 26.1, 26.2, 26.7, 26.10_
+  - [ ] 20.6 Measurable perspective criteria and doc
+    - Create `tests/views/tilted-criteria-26.test.ts` on the `RecordingCanvas`: criterion 26.3 (a Road segment at the Far_Edge has a screen width of at most 60% of the same segment at the player) and criterion 26.4 (a `building` of 12 units, square footprint of 12 units, centre 20 units ahead of the player, has side-face screen area of at least 25% of its top face), each for the default Viewport of 400 by 300 and for 375 by 500 CSS pixels at the default tilt. Update `kit/engine/docs/views-api.md` with the default of 35 degrees, the Focal_Distance rule `1.5 * H / tan(tilt)` and criteria 26.3 and 26.4. If a criterion fails, report the measured numbers and do not loosen the check.
+    - Commit subject: `Views tests: measure the tilted perspective criteria`
+    - _Requirements: 26.3, 26.4, 26.11, 26.12_
+
+- [ ] 21. North mark and small minimap
+  - [ ] 21.1 Readable north mark and colour
+    - In `src/views/style.ts`, set the Default_Style colour of `northMark` to `#08203a` (own value, shared with neither `playerMarker` nor `rim`; contrast at least 3 to 1 and hue distance at least 60 degrees against `playerMarker`). In `src/views/minimap.ts`, draw the North_Mark as the upright letter `N` in the `northMark` colour, at least 12 CSS pixels high, with a tick of 6 to 10 CSS pixels crossing the rim at the screen direction of world north; no triangle and no arrow; letter and tick move along the rim with the rotation, the letter stays upright. An unusable map `northMark` colour uses the default and reports the Notice of Requirement 4 criterion 10. Update the colour table of `kit/engine/docs/map-file-format.md` (the drift test in `tests/views/style-doc-drift.test.ts` stays green and is not edited).
+    - Create `tests/views/north-mark.test.ts` with a contrast function and a hue function written in the test (27.2, 27.3), the letter, tick and absent triangle on the `RecordingCanvas` (27.4 to 27.6), and the bad colour (27.10). Update `tests/views/minimap-north-mark.test.ts` (Property 9 restated: the tick and the letter centre both lie on the screen direction of world north within 0.001 degrees).
+    - **Property 9 (restated): North mark points to world north**
+    - **Validates: Requirements 9.8, 27.7**
+    - Commit subject: `Views: draw the north mark as N with a tick, new default colour`
+    - _Requirements: 9.8, 27.1, 27.2, 27.3, 27.4, 27.5, 27.6, 27.7, 27.8, 27.9, 27.10_
+  - [ ] 21.2 Small minimap notice for the letter
+    - Under a rim radius of 42 CSS pixels, draw the tick without the letter and report one Notice that states that the minimap is too small to show the letter N. Add examples to `tests/views/north-mark.test.ts` at radius 42, just below, just above, and the existing under 40 by 40 notice unchanged. Add the rule to `views-api.md`.
+    - Commit subject: `Views: say when the minimap is too small for the letter N`
+    - _Requirements: 27.4, 9.11_
+
+- [ ] 22. Demo status text, one-time mount and tilt slider
+  - [ ] 22.1 Guidance text verbatim
+    - In `kit/demo/src/status-text.ts`, add `guidanceStatusText` and use it in the status area: with a Route or a No_Way_Result show `getGuidanceSentence()` exactly as the Engine returns it (no prefix, no change, no sentence built by the demo); with neither show `No destination is set. Click a place on the full map.`; with a Route or No_Way_Result and an empty or non-text sentence show `The guidance is not available.` and nothing else for the guidance. Remove the demo's own guidance wording. Update `tests/status-text.test.ts` for the changed wording only where it relied on it.
+    - Create `kit/demo/tests/status-text-verbatim.test.ts` with the property and the three examples.
+    - **Property 31: The status text returns the engine sentence unchanged**
+    - **Validates: Requirements 28.1, 28.4**
+    - Commit subject: `Demo: show the engine guidance sentence unchanged`
+    - _Requirements: 28.1, 28.2, 28.3, 28.4, 28.11_
+  - [ ] 22.2 Mount once, load maps into the engine only
+    - In `kit/demo/src/main.ts`, mount the three Views once at page start (also while no map is loaded) and make the map choice call only `engine.loadMap`; no `destroy()` and no second mount on a switch between the Town_Map and the Large_Generated_Map. On a failed load show the errors and keep the previous map. Update `tests/main-wiring.test.ts` with a stand-in Engine: mount counts stay at 1 per View across two switches, `destroy` is never called, a failed load keeps the previous map.
+    - Commit subject: `Demo: mount the views once and load maps into the engine only`
+    - _Requirements: 25.17, 25.18, 17.12_
+  - [ ] 22.3 Tilt slider
+    - Add the tilt slider to `kit/demo/index.html`, `src/demo.css` and `src/main.ts`: label `Tilt angle`, range 20 to 70, step 1, default 35, the current value in degrees as text, keyboard operation (arrows, Home, End, Page Up, Page Down), a touch target at least 44 CSS pixels high, no horizontal scroll at 375 px. The value is passed as `tiltAngleDegrees` at mount and a change calls `setTiltAngle` of the handle without mounting again; a `ViewError` is shown as its message and the slider goes back to the previous value. Extend `tests/smoke.test.ts` (label, range, step, default, 44 px rule) and `tests/main-wiring.test.ts` with a stand-in handle (change calls `setTiltAngle` once, no second mount, refused value restores the slider, mount receives the slider value).
+    - Commit subject: `Demo: add a tilt angle slider`
+    - _Requirements: 28.5, 28.6, 28.7, 28.8, 28.9, 28.10, 28.11_
+
+- [ ] 23. Dev tooling audit
+  - [ ] 23.1 Audit and update dev dependencies
+    - Run `npm audit` in `kit/engine` and in `kit/demo`, each as its own call, and `npm audit fix --dry-run` in each. Apply the safe fixes with `npm audit fix` (never `--force`) in each package, and a breaking major update only where the package suite stays green with it. Change only `devDependencies` and the lock files; the `dependencies` field of the Engine package stays empty. Run `npm run build` and `npm test` in `kit/engine` and in `kit/demo`, each as its own call, with no test skipped, no time limit raised and no threshold loosened. Run `npm audit` again in each.
+    - Make one commit for the dependency files. Report plainly every package left at its version, with the advisory and the reason (for example a breaking update that made a suite fail). If nothing changed, make no commit and report the audit output.
+    - Commit subject: `Tooling: update dev dependencies to clear audit findings`
+    - _Requirements: 29.1, 29.2, 29.3, 29.4, 29.5_
+
+- [ ] 24. Checkpoint - Amendments recorded
+  - Run `npm run build` and `npm test` in `kit/engine` and in `kit/demo`, each as its own call, with run times. Run `git status` and `git log --oneline` as separate calls.
+  - Update the task status in `.kiro/specs/map-views/tasks.md` and `.kiro/specs/map-views/tasks.meta.json` (if it exists) and commit those files together as one commit with the subject `Specs: record map-views task status`. If they did not change, make no commit.
+  - _Requirements: 19.2, 19.5, 29.5_
+
+- [ ] 25. Frame benchmark
+  - [ ] 25.1 Playwright frame benchmark
+    - Create `kit/demo/playwright.config.ts` (starts the Vite server, a Chromium project, a separate command from the default suite) and `kit/demo/bench/frame-bench.spec.ts`: load the Large_Generated_Map, move the player along a fixed seeded path for at least 300 frames, measure each View's draw time with `performance.now()` and the interval between animation frames, measure the Full_Map at the fit zoom and at 4 px per world unit, count the paths begun per frame for each View with a counting wrapper around the Canvas_Interface, and print the median, 95th percentile and maximum in ms with 2 decimals for each View (Minimap, Full_Map, Tilted_View) on both the Town_Map and the Large_Generated_Map (the player path and the 300 frame minimum apply to each map; the Full_Map is measured at both zoom levels on each), plus browser name and version, Node version, viewport, Device_Pixel_Ratio and machine description. No pass or fail threshold on the numbers. It fails with a plain reason only when fewer than 300 frames were measured (stating both numbers), a time is not finite or is negative (naming the View and the measurement), or the page or browser cannot run.
     - Add a Node-level test `kit/demo/tests/bench-stats.test.ts` for the statistics helper (median, 95th percentile, maximum, the failure reasons) in `kit/demo/bench/bench-stats.ts`.
     - Run `npm run bench` once (generous timeout) and put the printed numbers in the commit body. The benchmark stays out of `npm test`.
     - Commit subject: `Demo: add Playwright frame benchmark`
     - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.8, 18.9, 18.10, 22.13_
 
-- [ ] 20. Checkpoint - End of block
+- [ ] 26. Checkpoint - End of block
   - Run `npm run build` and `npm test` in `kit/engine` and in `kit/demo`, each as its own call, with run times. Run `npm run bench` in `kit/engine` and `npm run bench` in `kit/demo` once more. Run `git status` and `git log --oneline` as separate calls.
   - Update the task status in `tasks.md` and `tasks.meta.json` (if it exists) and commit those two files together with the subject `Specs: record map-views task status`.
-  - Report plainly: the start command and address of the demo page (`npm run dev` in `kit/demo`, `http://localhost:5173/`), real `git status` output, the commit list, test results with time, measured route times, measured frame times (median, 95th percentile, maximum for each View, with the machine description) and paths begun per frame, and anything not done or not verified. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
+  - Report plainly: the start command and address of the demo page (`npm run dev` in `kit/demo`, `http://localhost:5173/`), real `git status` output, the commit list, test results with time, measured route times, measured frame times (median, 95th percentile, maximum for each View on both the Town_Map and the Large_Generated_Map, with the machine description), the result of the dev tooling audit of task 23.1 with any package left at its version and paths begun per frame, and anything not done or not verified. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
   - _Requirements: 18.7, 19.2, 19.3, 19.4, 19.5, 19.6, 19.7, 19.12, 19.17_
 
-- [ ] 21. Gate (last task)
+- [ ] 27. Gate (last task)
   - If the Gate fails, the project stops here: report the failing step plainly and start no further block.
-  - [ ] 21.1 Playwright gate check
+  - [ ] 27.1 Playwright gate check
     - Create `kit/demo/bench/gate.spec.ts` and a `gate` script. On the Large_Generated_Map, driven by mouse and keyboard: click a place on the Full_Map and check that the route line is drawn on the three Views; move the player along the route and check that the travelled part disappears and no new route is requested; leave the route by more than the reroute margin for longer than the reroute delay and check that a new route is drawn from the player to the same destination. Report, without a threshold, the number of frames with an interval above 50 ms for each View during these steps. Repeat the same steps at a 375 px wide viewport with touch input, and check there is no horizontal scrolling and each canvas is 300 to 375 px wide. Fail with a plain reason if the map does not load within 30 seconds (stating the time waited) or if the click returns a No_Way_Result (reporting its message).
     - Add a Node test for any pure helper the gate uses (for example the frame-interval counter).
     - Commit subject: `Demo: add Playwright gate check on the large map`
     - _Requirements: 16.1, 16.2, 16.6, 20.1, 20.2, 20.3, 20.4, 20.5, 20.6, 20.9, 20.10_
-  - [ ] 21.2 Run the gate and report
+  - [ ] 27.2 Run the gate and report
     - Run `npm run gate` in `kit/demo`. Ask the user to try the same three steps by hand on the Demo_Page and to say what they saw. Update the task status in `tasks.md` and `tasks.meta.json` (if it exists) and commit those two files together with the subject `Specs: record map-views gate result`.
     - Report plainly: real `git status` output, the commit list, the gate result for each step, the frames over 50 ms for each View, and the frame benchmark numbers. If any step failed, say that the Gate failed, name the step, and state that the project stops there. Do not report credit figures. Do not push.
     - _Requirements: 20.7, 20.8_
@@ -445,16 +555,17 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
 ## Notes
 
 - Property tests are required tasks and carry no `*` marker. They are written inside the task of the code they test, so code and tests always land in one commit.
+- Amendment tasks (groups 19 to 24): Properties 26 and 27 are in tasks 19.1 and 19.2, Properties 14 (restated), 28, 29 and 30 in task 20.1, Property 18 (restated) in task 20.3, Properties 23 and 24 (restated) in task 20.4, Properties 13 and 20 (restated) in task 20.5, Property 9 (restated) in task 21.1 and Property 31 in task 22.1. Requirement 29 is a process task (23.1), not a test. Groups 25 to 27 are the former groups 19 to 21, renumbered; they stay last in the order benchmark, end-of-block checkpoint, Gate.
 - Property numbers 1 to 25 match the design. Requirement 19.3 names 14 properties; design Properties 1 and 2 together cover the transform round trip. Properties 17 to 25 come from Requirements 21, 22, 12, 23, 24 and 4: 17 in task 15.4, 18 in task 7.3, 19 in task 12.1 (extended with image lookups in task 13.5), 20 in task 13.13, 21 in task 2.6, 22 in task 2.7, 23 in task 13.3 (extended to all three views in task 13.15), 24 in task 13.4, 25 in task 13.6.
 - Property 5 (layer order) is extended in task 13.4 to twelve layers, by updating the Views test in the same commit as `LAYER_ORDER`.
-- Task numbers after 12 changed: group 13 now starts with the picture and style tasks 13.1 to 13.7, and the three Views are tasks 13.8 to 13.15. Groups 14 to 21 keep their numbers.
+- Task numbers after 12 changed: group 13 now starts with the picture and style tasks 13.1 to 13.7, and the three Views are tasks 13.8 to 13.15. Groups 14 to 18 keep their numbers; the amendments are groups 19 to 24 and the benchmark, end-of-block checkpoint and Gate are groups 25 to 27.
 - Smoke test allowlist (Requirement 19.19 to 19.24): the edit lands in task 15.1, the commit that adds `mount.ts`, the last of the three allowlisted files. Tasks 14.1 to 14.3 must not name `window`, `document` or `HTMLCanvasElement` in any file, so the old scan stays green until then.
 - Property 19 is first proved on the gate over `drawMapLayers` (task 12.1); each View task (13.8, 13.10, 13.13) adds an example that its own `draw` makes zero calls when nothing changed.
 - Requirement 8.9 (destination label kept) and the other criteria without a listed property are covered by example tests in their tasks.
 - Requirement 12 criteria 15 to 18 (defaults, fallback, factor, margin) are examples in task 11.3; criterion 19 is Property 20 in task 13.13.
-- Requirement 4.15 (format document against `DEFAULT_STYLE`) is an example-style drift test in task 13.7, not a property. The demo page start command and address are fixed in task 17.1, written in `kit/demo/README.md` in task 17.7 and reported in tasks 18 and 20.
+- Requirement 4.15 (format document against `DEFAULT_STYLE`) is an example-style drift test in task 13.7, not a property. The demo page start command and address are fixed in task 17.1, written in `kit/demo/README.md` in task 17.7 and reported in tasks 18 and 26.
 - The pure logic stays in groups 1 to 12; groups 13 to 16 hold the three Views, adapter, binding and mount; the demo page (group 17) uses only the Mount_Functions.
-- The Gate task is the last task. The end-of-block checkpoint (task 20) comes before it and reports build, tests and frame times; task 21.2 reports the Gate result.
+- The Gate task is the last task. The end-of-block checkpoint (task 26) comes before it and reports build, tests and frame times; task 27.2 reports the Gate result.
 - Task 1.1 is already committed as `e0bdb87` and is marked done.
 - Waves below hold one task each because every task is its own commit on the same branch and later tasks edit files that earlier tasks created.
 
@@ -529,8 +640,23 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     { "id": 63, "tasks": ["17.6"] },
     { "id": 64, "tasks": ["17.7"] },
     { "id": 65, "tasks": ["19.1"] },
-    { "id": 66, "tasks": ["21.1"] },
-    { "id": 67, "tasks": ["21.2"] }
+    { "id": 66, "tasks": ["19.2"] },
+    { "id": 67, "tasks": ["19.3"] },
+    { "id": 68, "tasks": ["20.1"] },
+    { "id": 69, "tasks": ["20.2"] },
+    { "id": 70, "tasks": ["20.3"] },
+    { "id": 71, "tasks": ["20.4"] },
+    { "id": 72, "tasks": ["20.5"] },
+    { "id": 73, "tasks": ["20.6"] },
+    { "id": 74, "tasks": ["21.1"] },
+    { "id": 75, "tasks": ["21.2"] },
+    { "id": 76, "tasks": ["22.1"] },
+    { "id": 77, "tasks": ["22.2"] },
+    { "id": 78, "tasks": ["22.3"] },
+    { "id": 79, "tasks": ["23.1"] },
+    { "id": 80, "tasks": ["25.1"] },
+    { "id": 81, "tasks": ["27.1"] },
+    { "id": 82, "tasks": ["27.2"] }
   ]
 }
 ```
