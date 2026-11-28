@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 import * as root from "../../src/index.js";
 import * as views from "../../src/views/index.js";
 
+const docs = import.meta.glob("../../docs/views-api.md", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 const sources = import.meta.glob(["../../src/views/index.ts", "../../src/index.ts"], {
   query: "?raw",
   import: "default",
@@ -82,6 +88,51 @@ describe("views public exports", () => {
     for (const name of ["Engine", "mirrorMap", "mirrorHeading", "snapToRoad", "isNoUsableRoad"]) {
       expect(typeof (root as Record<string, unknown>)[name], name).toBe("function");
     }
+  });
+
+  describe("views-api.md", () => {
+    const doc = docs["../../docs/views-api.md"] as string;
+    // An entry is a heading of level 3 or 4 whose backticked names are the items it documents.
+    const entries: { names: string[]; body: string }[] = [];
+    let current: { names: string[]; body: string } | undefined;
+    for (const line of doc.split(/\r?\n/)) {
+      const heading = /^(#{2,4}) (.*)$/.exec(line);
+      if (heading) {
+        const names =
+          (heading[1] as string).length >= 3
+            ? [...(heading[2] as string).matchAll(/`([A-Za-z_][A-Za-z0-9_]*)`/g)].map((m) => m[1] as string)
+            : [];
+        current = names.length > 0 ? { names, body: "" } : undefined;
+        if (current) entries.push(current);
+      } else if (current) {
+        current.body += `${line}\n`;
+      }
+    }
+
+    it("has one entry for every exported value and type, and no others", () => {
+      const documented = entries.flatMap((entry) => entry.names);
+      expect(new Set(documented).size, "a name is documented twice").toBe(documented.length);
+      expect([...documented].sort()).toEqual([...EXPECTED_VALUES, ...EXPECTED_TYPES].sort());
+    });
+
+    it("gives every entry inputs, outputs, errors and a usage example", () => {
+      for (const entry of entries) {
+        const label = entry.names.join(", ");
+        expect(entry.body, `${label}: Inputs`).toMatch(/Inputs?:/);
+        expect(entry.body, `${label}: Outputs`).toMatch(/Outputs?:/);
+        expect(entry.body, `${label}: Errors`).toMatch(/Errors?:/);
+        expect(entry.body, `${label}: example`).toMatch(/```ts\n[\s\S]+?```/);
+      }
+    });
+
+    it("has a usage example for each of the three mount functions", () => {
+      for (const name of ["mountMinimap", "mountFullMap", "mountTiltedView"]) {
+        const entry = entries.find((e) => e.names.includes(name));
+        expect(entry, name).toBeDefined();
+        expect(entry?.body, name).toContain(`${name}(canvas, engine`);
+        expect(entry?.body, name).toMatch(/```ts\n[\s\S]+?destroy\(\)[\s\S]*?```/);
+      }
+    });
   });
 
   it("keeps the engine's own Notice type distinct from the view notice", () => {

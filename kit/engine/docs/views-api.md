@@ -258,3 +258,728 @@ given uses the real global, so an application normally passes none. Tests pass s
 | `createResizeObserver(callback)` | `ResizeObserver` (without it, size changes are not observed; use `resize()`) |
 | `matchReducedMotion()` | `matchMedia("(prefers-reduced-motion: reduce)")` (without it, motion is not reduced) |
 | `devicePixelRatio()` | `devicePixelRatio` (without it, 1) |
+
+## Reference: every other exported function, constant and type
+
+Each entry below is a heading that names what it documents in backticks. A heading that names
+several items documents them together. Each entry gives a description, `Inputs`, `Outputs`,
+`Errors` (the View_Errors, or "none") and one usage example. A test keeps this list equal to
+the export list of `src/views/index.ts`. Units are CSS pixels for screen values, world units
+for map values and degrees for angles, as in the first paragraph of this file. A function that
+draws never throws for a bad value: it returns a `Notice` (`{ message }`) and skips the item.
+
+### The three views
+
+#### `Minimap`, `FullMap`, `TiltedView`
+
+The View classes that the Mount_Functions wrap. They draw to a `CanvasInterface`, read no
+browser global and own no loop, so they run in Node with a recording canvas. Use them when you
+need your own loop. `setMap(map)`, `setImages(lookup)`, `resize(width, height)`, `getCamera()`,
+`getNotices()` and `draw(canvas, state, timestampMs)` exist on all three; the minimap adds
+`setZoom`, `setZoomLimits`, `getZoom`, `getZoomLimits` and `setReducedMotion`; the full map adds
+`pan`, `zoomAt`, `fit`, `follow`, `select`, `selectPlace`, `focusNextPlace`,
+`focusPreviousPlace`, `activateFocusedPlace`, `isFollowing` and `applyCommand`; the tilted view
+adds `setTiltAngle`, `setHeightFactor`, `getTiltAngle` and `setReducedMotion`.
+
+- Inputs: `new Minimap(map, options?)`, `new FullMap(map, options?)`, `new TiltedView(map,
+  options?)`, with a loaded `EngineMap` and the matching options type. `draw` takes the
+  canvas, the state and a finite timestamp in ms.
+- Outputs: `draw` returns `{ drew, notices }`; `drew` is false when nothing was due.
+- Errors: a map or option outside its range, a camera operation with a number that is not
+  finite, or a timestamp that is not a finite number returns a `ViewError` and changes nothing.
+
+```ts
+const view = new Minimap(engine.getMap()!, { width: 200, height: 200 });
+const result = view.draw(canvasAdapter, { position }, performance.now());
+if ("message" in result) console.warn(result.message);
+```
+
+#### `DEFAULT_MINIMAP_SIZE_PX`, `DEFAULT_MINIMAP_ZOOM`, `DEFAULT_MINIMAP_ZOOM_MIN`, `DEFAULT_MINIMAP_ZOOM_MAX`
+
+The minimap defaults: side 200 px, zoom 1, lowest zoom 0.5 and highest zoom 4 (pixels per
+world unit).
+
+- Inputs: none (constants).
+- Outputs: numbers.
+- Errors: none.
+
+```ts
+const options = { width: DEFAULT_MINIMAP_SIZE_PX, zoom: DEFAULT_MINIMAP_ZOOM_MAX };
+```
+
+#### `DEFAULT_FULL_MAP_WIDTH_PX`, `DEFAULT_FULL_MAP_HEIGHT_PX`, `DEFAULT_FULL_MAP_ZOOM_MAX`, `FIT_MARGIN_FRACTION`, `FOCUS_RING_RADIUS_PX`, `MIN_EXTENT_UNITS`, `PAN_KEEP_FRACTION`, `SELECT_MAX_ROAD_DISTANCE_PX`, `SELECT_MAX_ROAD_DISTANCE_UNITS`
+
+The full map constants: default size 400 by 300 px, highest zoom 8, the margin `fit` leaves
+(0.05 of the viewport on each side), the focus ring radius 11 px, the smallest extent used for
+fitting (1 world unit), the part of the map that panning keeps in view (0.2), and the farthest
+a selected spot may be from a road (200 px and 100 world units; a farther spot is refused).
+
+- Inputs: none (constants).
+- Outputs: numbers.
+- Errors: none.
+
+```ts
+const farthestSelectableUnits = SELECT_MAX_ROAD_DISTANCE_UNITS; // 100
+```
+
+#### `DEFAULT_TILTED_WIDTH_PX`, `DEFAULT_TILTED_HEIGHT_PX`, `DEFAULT_TILTED_ZOOM`, `PLAYER_SCREEN_FRACTION`
+
+The tilted view defaults: size 400 by 300 px, zoom 2, and the player drawn 0.75 of the way
+down the viewport.
+
+- Inputs: none (constants).
+- Outputs: numbers.
+- Errors: none.
+
+```ts
+const options = { width: DEFAULT_TILTED_WIDTH_PX, zoom: DEFAULT_TILTED_ZOOM };
+```
+
+#### `headingUpRotation`
+
+The camera rotation, in degrees, that puts a heading at the top of the screen.
+
+- Inputs: `headingDegrees`, a finite number of degrees.
+- Outputs: a number of degrees (`-90 - headingDegrees`).
+- Errors: none.
+
+```ts
+const rotationDegrees = headingUpRotation(90); // -180
+```
+
+#### `northMarkFor`
+
+The corner points of the north mark on the rim of the minimap for a given camera.
+
+- Inputs: `camera` (a valid `Camera`), `radius` in px (finite, above 0).
+- Outputs: a `NorthMark`, or a `ViewError`.
+- Errors: an unusable camera field, or a radius that is not finite and above 0.
+
+```ts
+const mark = northMarkFor(camera, 100);
+if (!isViewError(mark)) console.log(mark.tip.x, mark.tip.y);
+```
+
+### Draw functions
+
+#### `drawMapLayers`, `LAYER_ORDER`
+
+`drawMapLayers` draws every layer once in the fixed order `LAYER_ORDER`: `ground`, `backgroundPicture`, `blockedAreas`, `flatProps`, `roadOutlines`,
+`roadFills`, `blockedRoadMarks`, `routeLine`, `destinationMarker`, `placeMarkers`,
+`placeLabels`, `playerMarker`. It is what the minimap and the full map call each frame.
+
+- Inputs: `canvas` (a `CanvasInterface`) and a `DrawMapLayersInput`: `map`, `style` (a
+  `ResolvedStyle`), `camera` (a valid `Camera`), `visible` (the items to draw), `position`,
+  and optionally `remainingRoute`, `destinationPlaceId`, `images`.
+- Outputs: an array of `Notice`.
+- Errors: none are thrown; an unusable camera gives one `Notice` and nothing is drawn.
+
+```ts
+const notices = drawMapLayers(canvasAdapter, { map, style, camera, visible, position });
+```
+
+#### `drawGround`, `drawBackgroundPicture`, `drawBlockedAreas`, `drawFlatProps`
+
+Draw the ground colour over a world region, the optional background picture (scale above 0,
+opacity 0 to 1), the blocked areas as filled polygons by kind, and the props flat as plain
+shapes (a picture prop uses the lookup, and is a labelled placeholder when the picture is
+missing).
+
+- Inputs: `canvas`, then `style`, plus a `WorldRegion` with finite bounds (ground, picture),
+  the area list and a zoom above 0 (areas), or the prop list, a zoom above 0 and an optional
+  picture resolver (props). `drawBackgroundPicture(canvas, background, resolve, region)` takes
+  the map background or `undefined`.
+- Outputs: an array of `Notice`.
+- Errors: none are thrown; a bound or zoom that is not usable gives a `Notice`.
+
+```ts
+const notices = drawGround(canvasAdapter, style, { minX: 0, minY: 0, maxX: 500, maxY: 400 });
+```
+
+#### `drawRoadOutlines`, `drawRoadFills`, `drawOneWayArrows`, `drawBlockedRoadMarks`, `ARROW_MIN_SPACING_PX`
+
+Draw the dark outline, then the coloured fill of the usable roads (one path per kind and
+width), the arrow heads on one-way roads (at least `ARROW_MIN_SPACING_PX` = 40 px apart on the
+screen) and the marks on the roads left out because they cross a blocked area.
+
+- Inputs: `canvas`, `map`, `roadIds` (an iterable of road identifiers), `camera` (zoom above
+  0), `style`.
+- Outputs: an array of `Notice`.
+- Errors: none are thrown; a road with a coordinate that is not finite is skipped with a
+  `Notice`, and a zoom that is not above 0 gives one `Notice`.
+
+```ts
+const ids = map.roads.map((road) => road.id);
+drawRoadOutlines(canvasAdapter, map, ids, camera, style);
+drawRoadFills(canvasAdapter, map, ids, camera, style);
+```
+
+#### `drawPlaceMarkers`, `drawPlaceLabels`, `LABEL_FONT_DEFAULT_PX`, `LABEL_FONT_MIN_PX`, `LABEL_FONT_MAX_PX`
+
+Draw one round marker per place, and the place names. The label font stays between 11 and 16 px
+at every zoom (default 12). Overlapping labels are dropped by priority; the destination keeps
+its label.
+
+- Inputs: `canvas`, `style`, `places`, `camera` (zoom above 0); `drawPlaceLabels` also takes
+  an optional `destinationPlaceId`, `fontPx` (11 to 16) and a `project` function for the
+  tilted view.
+- Outputs: an array of `Notice`.
+- Errors: none are thrown; a place with a position that is not finite is skipped with a
+  `Notice`.
+
+```ts
+drawPlaceMarkers(canvasAdapter, style, map.places, camera);
+drawPlaceLabels(canvasAdapter, style, map.places, camera, "bank", LABEL_FONT_DEFAULT_PX);
+```
+
+#### `drawRouteLine`, `drawDestinationMarker`, `drawPlayerMarker`
+
+Draw the part of the route still to go (width kept between 4 and 12 px, with an outline), the
+marker at its end, and the player as an arrow that points along the heading (size 10 to 24 px,
+default 16).
+
+- Inputs: `canvas`, the remaining `Route` (or `undefined`; nothing is drawn), `camera`
+  (zoom above 0), `style`; `drawPlayerMarker(canvas, position, camera, style, sizePx?)` takes
+  a `Position` instead of a route.
+- Outputs: an array of `Notice`.
+- Errors: none are thrown; a route point or position that is not usable gives a `Notice`.
+
+```ts
+drawRouteLine(canvasAdapter, engine.getRemainingRoute(), camera, style);
+drawPlayerMarker(canvasAdapter, position, camera, style);
+```
+
+#### `validatePosition`, `validateRoute`, `MAX_POSITION_COORDINATE`, `PLAYER_MARKER_DEFAULT_PX`, `PLAYER_MARKER_MIN_PX`, `PLAYER_MARKER_MAX_PX`, `ROUTE_LINE_MIN_WIDTH_PX`, `ROUTE_LINE_MAX_WIDTH_PX`
+
+`validatePosition` checks that x and y are finite with an absolute value of at most
+`MAX_POSITION_COORDINATE` (1,000,000 world units) and that the heading is finite.
+`validateRoute` checks that every route point is finite. The other constants are the player
+marker sizes (10, 16 default and 24 px) and the route line widths (4 and 12 px).
+
+- Inputs: a `Position`, or a `Route`.
+- Outputs: `undefined` when usable; a `ViewError` (position) or a `Notice` (route) when not.
+- Errors: the message names the input and, for a position, its range.
+
+```ts
+const problem = validatePosition({ x: 10, y: 20, headingDegrees: 0 }); // undefined
+```
+
+### Pictures and style
+
+#### `asImageHandle`
+
+Marks a picture you loaded (an `Image`, `ImageBitmap` or canvas) as an `ImageHandle`, so it
+can go into an `ImageEntry`. It changes and reads nothing.
+
+- Inputs: any loaded picture.
+- Outputs: the same value, typed as `ImageHandle`.
+- Errors: none.
+
+```ts
+const handle = asImageHandle(await createImageBitmap(blob));
+```
+
+#### `ImageLookup`, `ImageEntry`, `ImageHandle`
+
+`ImageHandle` is the opaque picture the canvas can draw. An `ImageEntry` is `{ image, width,
+height }` with width and height in pixels above 0. An `ImageLookup` maps a picture reference
+(the text after `picture:` or `upload:` in a prop kind, or the `ref` of the background) to an
+`ImageEntry`: either an object keyed by reference, or a function `(ref) => ImageEntry |
+undefined`. The Views never load pictures. A missing picture draws a placeholder and reports a
+`Notice`.
+
+- Inputs: the `images` option of a mount function, or `setImages` of a View.
+- Outputs: none; the lookup is read when a picture is drawn.
+- Errors: an `images` value that is not an object or a function, or an object entry with a
+  width or height that is not above 0, is a `ViewError` at mount.
+
+```ts
+const hall = new Image();
+hall.src = "hall.png";
+await hall.decode();
+const images: ImageLookup = {
+  hall: { image: asImageHandle(hall), width: hall.naturalWidth, height: hall.naturalHeight },
+};
+const minimap = mountMinimap(canvas, engine, { images });
+```
+
+#### `DEFAULT_STYLE`, `STYLE_COLOR_KEYS`, `STYLE_LINE_KEYS`
+
+`DEFAULT_STYLE` is the built-in look. `STYLE_COLOR_KEYS` are the 21 colour keys and
+`STYLE_LINE_KEYS` the 11 line style keys that a map file may set; they are listed with their
+defaults in `map-file-format.md`.
+
+- Inputs: none (constants).
+- Outputs: a `ResolvedStyle`, and two arrays of key names.
+- Errors: none.
+
+```ts
+const keys = STYLE_COLOR_KEYS.filter((key) => key.startsWith("road."));
+```
+
+#### `isUsableColor`, `resolveStyle`
+
+The colour rule: a style colour is usable when it is a text of `#` followed by exactly 3, 6 or 8
+hex digits (upper or lower case); `red`, `rgb(0,0,0)`, `#abcd`, a number or an empty text are
+not. `resolveStyle` turns a map's `style` into a complete `ResolvedStyle`. A colour that is
+not usable, a missing key and a line width outside its range take the default, and a `Notice`
+names the key and the default used. Unknown keys are ignored.
+
+- Inputs: any value (`isUsableColor`); a map `StyleData` or `undefined` (`resolveStyle`).
+- Outputs: a boolean; `{ resolved, notices }`.
+- Errors: none.
+
+```ts
+isUsableColor("#AABBCC"); // true
+const { resolved, notices } = resolveStyle({ colors: { ground: "green" } }); // notice, default
+```
+
+#### `contrastRatio`
+
+The WCAG contrast ratio of two hex colours, from 1 to 21.
+
+- Inputs: two usable colour texts.
+- Outputs: a number from 1 to 21.
+- Errors: none; give it usable colours (check with `isUsableColor`).
+
+```ts
+const ok = contrastRatio("#000000", "#ffffff") >= 4.5; // true
+```
+
+#### `LineStyle`, `ResolvedStyle`
+
+`LineStyle` is `{ widthPx, dash? }` (width in px, dash segments in px). `ResolvedStyle` holds
+every colour and line style the Views draw with, for example `groundColor`, `routeLineColor`
+and `roadColors`. No drawing function fixes a colour of its own.
+
+- Inputs: none (types).
+- Outputs: the type of `DEFAULT_STYLE` and of `resolveStyle(...).resolved`.
+- Errors: none.
+
+```ts
+const line: LineStyle = { widthPx: 3, dash: [6, 4] };
+```
+
+### Camera, projection and smoothing
+
+#### `createCamera`, `validateCamera`, `MIN_ZOOM`, `MAX_ZOOM`, `MIN_VIEWPORT_SIZE`, `MAX_VIEWPORT_SIZE`
+
+A `Camera` is `{ centerX, centerY, zoom, rotationDegrees, viewportWidth, viewportHeight }`.
+`createCamera` fills the fields you leave out with defaults and checks the result;
+`validateCamera` checks a camera. Zoom is 0.001 to 1000 pixels per world unit, a viewport side
+is 1 to 16384 px, and the centre and rotation are any finite numbers.
+
+- Inputs: `Partial<Camera>` (`createCamera`), a `Camera` (`validateCamera`).
+- Outputs: a `Camera` or a `ViewError`; `undefined` or a `ViewError`.
+- Errors: a field that is not finite, or a zoom or size outside its range; the message names
+  the field and the range.
+
+```ts
+const camera = createCamera({ zoom: 2, viewportWidth: 300, viewportHeight: 200 });
+```
+
+#### `worldToScreen`, `screenToWorld`
+
+Map a point between world units and screen pixels through a camera, including its rotation.
+
+- Inputs: a valid `Camera` and a `Point` with finite x and y.
+- Outputs: a `Point`, or a `ViewError`.
+- Errors: an unusable camera or a point that is not finite.
+
+```ts
+const onScreen = worldToScreen(camera, { x: 10, y: 5 });
+```
+
+#### `panCamera`, `zoomCamera`
+
+`panCamera` moves the camera by a screen distance. `zoomCamera` multiplies the zoom by a
+factor and keeps the world point under the anchor fixed. Both return a new camera and leave
+the old one unchanged.
+
+- Inputs: `panCamera(camera, { dx, dy })` with finite px; `zoomCamera(camera, anchor, factor)`
+  with an anchor in px and a finite factor above 0. A zoom past 0.001 or 1000 is clamped.
+- Outputs: a `Camera`, or a `ViewError`.
+- Errors: an unusable camera, delta, anchor or factor.
+
+```ts
+const next = zoomCamera(camera, { x: 150, y: 100 }, 1.25);
+```
+
+#### `MIN_TILT_DEGREES`, `MAX_TILT_DEGREES`, `DEFAULT_TILT_DEGREES`, `validateTilt`
+
+The tilt angle limits (20 and 70 degrees), the default (45) and the check.
+
+- Inputs: a tilt angle in degrees.
+- Outputs: `undefined` when usable, else a `ViewError`.
+- Errors: a value that is not finite or is outside 20 to 70.
+
+```ts
+const problem = validateTilt(80); // a ViewError naming "tilt angle" and 20 to 70
+```
+
+#### `projectTilted`, `unprojectTilted`
+
+`projectTilted` maps a ground point and a height to the screen of the tilted view.
+`unprojectTilted` maps a screen point back to the ground (height 0).
+
+- Inputs: `projectTilted(ground, heightWorldUnits, tiltAngleDegrees, camera)`;
+  `unprojectTilted(screen, tiltAngleDegrees, camera)`. Heights are finite world units.
+- Outputs: a `Point`, or a `ViewError`.
+- Errors: an unusable tilt, camera, point or height.
+
+```ts
+const top = projectTilted({ x: 4, y: 2 }, 12, 45, camera);
+```
+
+#### `depthOf`, `sortByDepth`
+
+`depthOf` gives the distance of a ground point below the viewport centre, in world units.
+`sortByDepth` orders items farther first and nearer last, so nearer blocks cover farther ones.
+Items less than 0.001 world units apart in depth are ordered by identifier. The input array is
+not changed.
+
+- Inputs: `depthOf(ground, camera)`; `sortByDepth(items, camera)` with items `{ id, ground }`.
+- Outputs: a number, or a new array; a `ViewError` for either.
+- Errors: an unusable camera or point.
+
+```ts
+const ordered = sortByDepth([{ id: "a", ground: { x: 0, y: 5 } }, { id: "b", ground: { x: 0, y: -5 } }], camera);
+```
+
+#### `blockHeightValue`, `blockHeightOf`, `RAISED_KINDS`, `DEFAULT_BLOCK_HEIGHTS`
+
+`RAISED_KINDS` are the prop kinds drawn as raised blocks (`building`, `house`, `tower`,
+`wall-block`). `blockHeightValue` gives a prop's own `blockHeight` or the default of its kind
+(0 for a kind that is not raised). `blockHeightOf` multiplies that by the height factor of the
+kind (default 1).
+
+- Inputs: a prop; for `blockHeightOf` also a `heightFactors` object from kind to a number from
+  0 to 100.
+- Outputs: a height in world units; `blockHeightOf` returns a `Notice` when the result is not
+  finite or is below 0, and the prop is then drawn flat.
+- Errors: none.
+
+```ts
+const height = blockHeightOf(prop, { building: 1.5 });
+```
+
+#### `advanceSmoothed`, `advanceSmoothedHeading`, `advanceCamera`
+
+One frame of smoothing. `advanceSmoothed` moves a number towards its target, reaching 95% of a
+change in the smoothing duration. `advanceSmoothedHeading` does the same for a heading in
+degrees by the shorter turn. `advanceCamera` moves a whole camera, and jumps at once when
+reduced motion is on.
+
+- Inputs: `current`, `target`, `dtMs` (0 to 1000 ms) and `durationMs` (1 to 5000, default
+  300); `advanceCamera(current, target, dtMs, durationMs, reducedMotion)`.
+- Outputs: a number; a number; `{ camera, settling }` or a `ViewError`.
+- Errors: `advanceCamera` rejects a duration outside 1 to 5000 ms and an unusable camera. The
+  two number functions return `current` when an input is not finite.
+
+```ts
+const next = advanceSmoothed(0, 100, 16, 300); // between 0 and 100
+```
+
+#### `DEFAULT_SMOOTHING_MS`, `MIN_SMOOTHING_MS`, `MAX_SMOOTHING_MS`, `validateSmoothingDuration`
+
+The default smoothing duration (300 ms), its limits (1 and 5000 ms) and the check.
+
+- Inputs: a duration in ms.
+- Outputs: `undefined` when usable, else a `ViewError`.
+- Errors: a value that is not finite or is outside 1 to 5000.
+
+```ts
+const problem = validateSmoothingDuration(0); // a ViewError
+```
+
+#### `FrameClock`
+
+Turns the timestamps you pass into frame intervals. It reads no clock. The first timestamp
+gives an interval of 0; an interval longer than 1000 ms is cut to 1000; a timestamp that goes
+backwards gives 0 and a `Notice`.
+
+- Inputs: `tick(timestampMs)`, a finite number of ms.
+- Outputs: `{ dtMs, notice? }`, or a `ViewError`.
+- Errors: a timestamp that is not a finite number.
+
+```ts
+const clock = new FrameClock();
+const tick = clock.tick(performance.now());
+```
+
+### Hit test, labels, frame gate and input
+
+#### `hitTestPlace`, `HIT_RADIUS_PX`, `HitPlace`
+
+Finds the place marker nearest to a screen point within a radius (default `HIT_RADIUS_PX`, 20
+px). A `HitPlace` is `{ id, screenX, screenY }` in px.
+
+- Inputs: `places` (an array of `HitPlace`), `point` `{ x, y }`, optional `radiusPx` (0 or
+  more).
+- Outputs: the nearest `HitPlace`, or `undefined` when none is in range.
+- Errors: none; a point that is not finite or a negative radius gives `undefined`.
+
+```ts
+const hit = hitTestPlace(projected, { x: 120, y: 80 });
+```
+
+#### `placeLabels`, `LABEL_GAP_PX`, `LabelCandidate`, `LabelPlacement`, `PlacedLabel`, `Rect`
+
+Chooses which labels fit without overlapping, with at least `LABEL_GAP_PX` (4 px) between
+them, nudging a label when it helps. Lower `priority` numbers are placed first. A `Rect` is
+`{ x, y, width, height }` in px.
+
+- Inputs: `candidates` (`{ placeId, priority, screenX, screenY, width, height }`) and the
+  `viewport` `{ width, height }` in px (above 0).
+- Outputs: `{ labels, notices }`; a label that cannot be placed is left out.
+- Errors: none are thrown; an unusable viewport or candidate gives a `Notice`.
+
+```ts
+const { labels } = placeLabels(candidates, { width: 300, height: 200 });
+```
+
+#### `FrameGate`, `drawIfDue`, `FrameInputs`
+
+Decides whether a frame must be drawn. A draw is due when a version number, the pictures
+signature or the settling flag changed, and never when the canvas is not visible.
+`drawIfDue` calls your draw function only when it is due.
+
+- Inputs: `FrameInputs` (`mapVersion`, `routeVersion`, `positionVersion`, `cameraVersion`,
+  `viewportVersion`, `styleVersion`, `imagesSignature`, `settling`, `canvasVisible`), and for
+  `drawIfDue` a gate and a draw function.
+- Outputs: a boolean (true when it drew).
+- Errors: none.
+
+```ts
+const gate = new FrameGate();
+const drew = drawIfDue(gate, inputs, () => view.draw(canvasAdapter, state, now));
+```
+
+#### `bindInput`, `BindableCanvas`, `BindableEvent`, `InputBindingOptions`
+
+Binds pointer, wheel, touch and key events of a canvas to a `FullMap` (drag, wheel and pinch,
+click or tap to select, and the keys described in the canvas description). It sets
+`touch-action: none` on the canvas.
+
+- Inputs: `bindInput(canvas, fullMap, options?)`. `canvas` offers `addEventListener`,
+  `removeEventListener`, `getBoundingClientRect` and `style`. `options` may have `onChange` and
+  `onSelectResult` callbacks.
+- Outputs: a function that removes every listener and restores `touch-action`.
+- Errors: none are thrown; a command that fails reaches `onChange` as a `ViewError`.
+
+```ts
+const unbind = bindInput(canvas, fullMap, { onSelectResult: (r) => console.log(r) });
+unbind();
+```
+
+### Canvas
+
+#### `CanvasAdapter`, `CanvasLike`, `Context2DLike`, `ResizeResult`
+
+`CanvasAdapter` implements `CanvasInterface` over a real 2D context, the only place the Views
+touch it. `resize` sets the backing size for the pixel ratio. A `CanvasLike` is a canvas with
+`width`, `height` and `getContext("2d")`; `Context2DLike` is the part of the context used.
+
+- Inputs: `new CanvasAdapter(canvas)`; `resize(cssWidth, cssHeight, pixelRatio)` with sizes of
+  1 to 16384 px and a pixel ratio above 0.
+- Outputs: `{ pixelRatio, pixelWidth, pixelHeight, notices }`, or a `ViewError`.
+- Errors: a canvas without 2D drawing, or a size outside its range.
+
+```ts
+const adapter = new CanvasAdapter(canvas);
+const sized = adapter.resize(300, 200, window.devicePixelRatio);
+```
+
+#### `CanvasInterface`, `LineCap`, `LineJoin`, `TextAlign`, `TextSize`
+
+The drawing calls the Views use (`save`, `restore`, `translate`, `rotate`, `scale`, paths,
+`fill`, `stroke`, `clip`, colour, line, alpha, `drawText`, `measureText`, `drawImage`). A test
+can pass a recording canvas that stores the calls. `LineCap` and `LineJoin` are the values of
+the 2D context, `TextAlign` is `left`, `center` or `right`, and `TextSize` is `{ width,
+height }` in px.
+
+- Inputs: none (types).
+- Outputs: none.
+- Errors: none.
+
+```ts
+function drawDot(canvas: CanvasInterface, x: number, y: number): void {
+  canvas.beginPath();
+  canvas.arc(x, y, 4, 0, Math.PI * 2);
+  canvas.fill();
+}
+```
+
+### Accessibility
+
+#### `describeCanvas`, `VIEW_DESCRIPTIONS`, `FOCUS_INDICATOR`, `ViewKind`, `ViewDescription`, `AccessibleElement`
+
+`describeCanvas` gives a canvas an accessible name and a description of its keys. For the full
+map it also makes the canvas focusable. `VIEW_DESCRIPTIONS` holds the name and description of
+each `ViewKind` (`minimap`, `fullMap`, `tiltedView`). `FOCUS_INDICATOR` holds the focus ring
+colour (`#1a56db`), the page background it is checked against (`#ffffff`), and its width and
+offset (3 px and 2 px). While the canvas has keyboard focus it shows that outline.
+
+- Inputs: `describeCanvas(canvas, kind)`, with an element that offers `setAttribute`,
+  `removeAttribute`, `addEventListener`, `removeEventListener` and a `style`.
+- Outputs: a function that removes everything the call added.
+- Errors: none.
+
+```ts
+const undo = describeCanvas(canvas, "fullMap");
+undo();
+```
+
+#### `createLiveRegion`, `LiveRegion`, `LiveRegionElement`
+
+Makes an element a polite `aria-live` region and returns a writer for the guidance sentence
+(the same sentence twice in a row is not repeated) and for place focus announcements.
+
+- Inputs: an element that offers `setAttribute`, `removeAttribute` and a `textContent`.
+- Outputs: a `LiveRegion` with `setGuidance(sentence)`, `announce(text)` (always shown, also
+  when repeated) and `dispose()` (removes the attributes and empties the region).
+- Errors: none.
+
+```ts
+const region = createLiveRegion(document.querySelector("#guidance")!);
+region.setGuidance("Turn left in 40 metres.");
+```
+
+### Errors and notices
+
+#### `isViewError`, `ViewError`, `ViewNotice`
+
+A `ViewError` is `{ message }`: an input was refused, the call changed nothing, and the message
+is plain words that name the input and its range. A `ViewNotice` is `{ message }` too: a
+condition the View reports and goes on from (a missing picture, a dropped label). It is
+exported as `ViewNotice` so it does not clash with the engine's `Notice`. `isViewError` tells
+a `ViewError` from a result.
+
+- Inputs: any value.
+- Outputs: a boolean.
+- Errors: none.
+
+```ts
+const result = zoomCamera(camera, { x: 0, y: 0 }, 2);
+if (isViewError(result)) console.warn(result.message);
+```
+
+### Mounting types
+
+#### `MountHandle`, `MinimapHandle`, `FullMapHandle`, `TiltedViewHandle`
+
+What the Mount_Functions return. Every handle has `destroy()`. The controls of each handle are
+listed under "The Mount_Handle".
+
+- Inputs: none (types).
+- Outputs: the handle types of `mountMinimap`, `mountFullMap` and `mountTiltedView`.
+- Errors: a control returns a `ViewError`, or nothing when it worked; after `destroy()` it
+  returns a `ViewError` that says the view has been destroyed.
+
+```ts
+const handle: MinimapHandle | ViewError = mountMinimap(canvas, engine);
+```
+
+#### `BaseMountOptions`, `MinimapMountOptions`, `FullMapMountOptions`, `TiltedViewMountOptions`
+
+The option objects of the Mount_Functions. Every field is optional; the ranges and defaults are
+in the table under "Options".
+
+- Inputs: none (types).
+- Outputs: none.
+- Errors: an option outside its range is a `ViewError` at mount that names the option.
+
+```ts
+const options: MinimapMountOptions = { zoom: 2, smoothingDurationMs: 200 };
+```
+
+#### `MountServices`
+
+The five browser services (`requestFrame`, `cancelFrame`, `createResizeObserver`,
+`matchReducedMotion`, `devicePixelRatio`) a mounted View may use. See "Services".
+
+- Inputs: none (type); pass an object with some or all of them as the `services` option.
+- Outputs: none.
+- Errors: a `services` entry that is not a function is a `ViewError` at mount.
+
+```ts
+const services: Partial<MountServices> = { devicePixelRatio: () => 2 };
+const minimap = mountMinimap(canvas, engine, { services });
+```
+
+#### `MountableCanvas`, `FullMapCanvas`, `MinimapEngine`, `FullMapEngine`, `DestinationTarget`
+
+The parts of a canvas and of an Engine that the Mount_Functions use. A `MountableCanvas` is a
+`CanvasLike` with `setAttribute`, `removeAttribute`, `clientWidth` and `clientHeight`;
+a `FullMapCanvas` also takes input (`BindableCanvas`). A `MinimapEngine` offers `getMap`,
+`getPosition`, `getRemainingRoute` and `getGuidanceSentence`; a `FullMapEngine` adds
+`setDestination` (a `DestinationTarget`). The real `Engine` and a canvas element satisfy
+these types.
+
+- Inputs: none (types).
+- Outputs: none.
+- Errors: a value that lacks a member is a `ViewError` at mount.
+
+```ts
+const engineForMap: FullMapEngine = new Engine();
+```
+
+### Types of the three views
+
+#### `MinimapOptions`, `MinimapState`, `MinimapDraw`, `NorthMark`
+
+Options of `new Minimap` (`width`, `height` in px 1 to 16384; `zoom`; `smoothingDurationMs`;
+`reducedMotion`; `images`), the state for a frame (`position`, optional `remainingRoute` and
+`destinationPlaceId`), the result of `draw` (`{ drew, notices }`), and the north mark (`tip`,
+`baseLeft`, `baseRight` points and `directionDegrees`).
+
+- Inputs: none (types).
+- Outputs: none.
+- Errors: a value outside its range is a `ViewError` from the constructor or `draw`.
+
+```ts
+const state: MinimapState = { position, remainingRoute: engine.getRemainingRoute() };
+```
+
+#### `FullMapOptions`, `FullMapState`, `FullMapDraw`, `FullMapChange`, `FullMapSelection`, `FullMapSelectResult`, `FocusAnnouncement`
+
+Options of `new FullMap` (`engine`, `onSelect`, `width`, `height`, `images`), the frame state, the
+result of `draw`, the result of a camera operation (`{ notices, announcement? }`), what a
+selection hit (`{ kind: "place", placeId }` or `{ kind: "point", point }`), the result of a
+selection (`selection`, `handled`, and `route` or `noWayMessage`), and the result of a focus
+command (`text` to announce and, for Enter, `result`).
+
+- Inputs: none (types).
+- Outputs: none.
+- Errors: a value outside its range is a `ViewError` from the method that took it.
+
+```ts
+const onSelect = (selection: FullMapSelection): void => console.log(selection.kind);
+```
+
+#### `TiltedViewOptions`, `TiltedViewState`, `TiltedViewDraw`
+
+Options of `new TiltedView` (`width`, `height`, `zoom`, `smoothingDurationMs`, `reducedMotion`,
+`images`), the frame state and the result of `draw`.
+
+- Inputs: none (types).
+- Outputs: none.
+- Errors: a value outside its range is a `ViewError` from the constructor or `draw`.
+
+```ts
+const view = new TiltedView(map, { zoom: 2 } satisfies TiltedViewOptions);
+```
+
+#### `Camera`, `Point`, `LayerName`, `DrawMapLayersInput`, `WorldRegion`
+
+Types used above: `Point` is `{ x, y }`; `Camera` is described under `createCamera`;
+`LayerName` is one name of `LAYER_ORDER`; `DrawMapLayersInput` is the input of `drawMapLayers`;
+`WorldRegion` is `{ minX, minY, maxX, maxY }` in world units.
+
+- Inputs: none (types).
+- Outputs: none.
+- Errors: none.
+
+```ts
+const region: WorldRegion = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+```
