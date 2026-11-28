@@ -3,9 +3,11 @@
 // view when panning, can fit the whole map or follow the player, and draws
 // only when its FrameGate says a frame is due. No browser code.
 
-import type { EngineMap, Position, Route } from "../types.js";
+import type { Destination, EngineError, EngineMap, NoWayResult, Position, Route } from "../types.js";
+import { isNoUsableRoad, snapToRoad } from "../snapping.js";
 import type { Camera, Point } from "./camera.js";
-import { panCamera, validateCamera, zoomCamera } from "./camera.js";
+import { panCamera, screenToWorld, validateCamera, worldToScreen, zoomCamera } from "./camera.js";
+import { HIT_RADIUS_PX, hitTestPlace, type HitPlace } from "./hit-test.js";
 import type { CanvasInterface } from "./canvas-interface.js";
 import { drawMapLayers } from "./draw-map-layers.js";
 import { drawIfDue, FrameGate } from "./frame-gate.js";
@@ -55,7 +57,37 @@ export const MIN_EXTENT_UNITS = 1;
 const ZOOM_RANGE_MIN = 0.001;
 const ZOOM_RANGE_MAX = 1000;
 
+/** The part of the Engine a selection talks to. The view computes no route itself. */
+export interface DestinationTarget {
+  setDestination(destination: Destination): Route | NoWayResult | EngineError;
+}
+
+/** What a selection hit: a place marker, or a spot on the map. */
+export type FullMapSelection =
+  | { kind: "place"; placeId: string }
+  | { kind: "point"; point: { x: number; y: number } };
+
+/** The result of a selection that was accepted. */
+export interface FullMapSelectResult {
+  selection: FullMapSelection;
+  /** True when the caller's handler took the selection and no destination was set. */
+  handled: boolean;
+  /** The route the Engine found, when it found one. */
+  route?: Route;
+  /** The plain-worded message of a No_Way_Result, to show to the caller. */
+  noWayMessage?: string;
+}
+
+/** The farthest a selected spot may be from a road: 100 world units. */
+export const SELECT_MAX_ROAD_DISTANCE_UNITS = 100;
+/** The farthest a selected spot may be from a road: 200 CSS pixels. */
+export const SELECT_MAX_ROAD_DISTANCE_PX = 200;
+
 export interface FullMapOptions {
+  /** The Engine that receives the destination of a selection. */
+  engine?: DestinationTarget;
+  /** When given, called with the selection instead of setting the destination. */
+  onSelect?: (selection: FullMapSelection) => void;
   /** Viewport width in CSS pixels. Default 400. */
   width?: number;
   /** Viewport height in CSS pixels. Default 300. */
@@ -132,6 +164,8 @@ export class FullMap {
   private style: ResolvedStyle;
   private notices: Notice[];
   private images: ImageLookup | undefined;
+  private engine: DestinationTarget | undefined;
+  private onSelect: ((selection: FullMapSelection) => void) | undefined;
   private camera: Camera;
   private zoomMin = ZOOM_RANGE_MIN;
   private zoomMax = DEFAULT_FULL_MAP_ZOOM_MAX;
@@ -187,7 +221,84 @@ export class FullMap {
     if (!("notices" in inspected)) return inspected;
     const resolved = resolveStyle(map.style);
     const notices = [...inspected.notices, ...resolved.notices];
-    return new FullMap(map, resolved, notices, width, height, options.images);
+    const view = new FullMap(map, resolved, notices, width, height, options.images);
+    view.engine = options.engine;
+    view.onSelect = options.onSelect;
+    return view;
+  }
+
+  /**
+   * Handles a selection (click or tap) at a screen point in CSS pixels. A
+   * place marker within 20 px is chosen first; otherwise the point is
+   * converted to a world point. The destination goes to the Engine, or to the
+   * caller's handler when there is one. The view finds no route itself.
+   */
+  select(screenPoint: Point): FullMapSelectResult | ViewError {
+    const { viewportWidth: w, viewportHeight: h } = this.camera;
+    if (
+      !isFiniteNumber(screenPoint?.x) ||
+      !isFiniteNumber(screenPoint?.y) ||
+      screenPoint.x < 0 ||
+      screenPoint.y < 0 ||
+      screenPoint.x > w ||
+      screenPoint.y > h
+    ) {
+      return {
+        message: "The selection is outside the map view, so no destination was set.",
+        field: "selection",
+      };
+    }
+
+    const markers: HitPlace[] = [];
+    for (const place of this.map.places) {
+      const screen = worldToScreen(this.camera, { x: place.x, y: place.y });
+      if (isViewError(screen)) continue;
+      markers.push({ id: place.id, screenX: screen.x, screenY: screen.y });
+    }
+    const hit = hitTestPlace(markers, screenPoint, HIT_RADIUS_PX);
+    if (hit !== undefined) {
+      return this.deliver({ kind: "place", placeId: hit.id }, { placeId: hit.id });
+    }
+
+    if (this.map.usableRoadIds.size === 0) {
+      return { message: "The map has no usable road, so no destination was set.", field: "map" };
+    }
+    const world = screenToWorld(this.camera, screenPoint);
+    if (isViewError(world)) return world;
+    const snapped = snapToRoad(this.map, world);
+    if (isNoUsableRoad(snapped)) {
+      return { message: "The map has no usable road, so no destination was set.", field: "map" };
+    }
+    const limit = Math.min(SELECT_MAX_ROAD_DISTANCE_UNITS, SELECT_MAX_ROAD_DISTANCE_PX / this.camera.zoom);
+    if (Math.hypot(snapped.x - world.x, snapped.y - world.y) > limit) {
+      return {
+        message: "The selected spot is too far from any road, so no destination was set.",
+        field: "selection",
+      };
+    }
+    return this.deliver({ kind: "point", point: { x: world.x, y: world.y } }, { point: { x: world.x, y: world.y } });
+  }
+
+  /** Selects a place by identifier, as a hit on its marker would. */
+  selectPlace(placeId: string): FullMapSelectResult | ViewError {
+    return this.deliver({ kind: "place", placeId }, { placeId });
+  }
+
+  private deliver(selection: FullMapSelection, destination: Destination): FullMapSelectResult | ViewError {
+    if (this.onSelect !== undefined) {
+      this.onSelect(selection);
+      return { selection, handled: true };
+    }
+    if (this.engine === undefined) {
+      return {
+        message: "The view has no engine and no selection handler, so no destination was set.",
+        field: "engine",
+      };
+    }
+    const found = this.engine.setDestination(destination);
+    if ("parts" in found) return { selection, handled: false, route: found };
+    if ("reason" in found) return { selection, handled: false, noWayMessage: found.message };
+    return { message: found.message, field: found.field ?? "selection" };
   }
 
   /** The notices found when the map was taken (empty map, no usable road, style keys). */
