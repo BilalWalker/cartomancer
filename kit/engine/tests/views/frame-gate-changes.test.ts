@@ -8,6 +8,7 @@ const base: FrameInputs = {
   cameraVersion: 1,
   viewportVersion: 1,
   styleVersion: 1,
+  imagesSignature: "",
   settling: false,
   canvasVisible: true,
 };
@@ -66,6 +67,19 @@ describe("FrameGate changes", () => {
     const jumped = { ...base, cameraVersion: 2, settling: false };
     expect(c.frame(jumped)).toBe(true);
     expect(c.frame(jumped)).toBe(false);
+  });
+
+  it("draws once when the images signature changes, never for an empty one", () => {
+    const c = counter();
+    c.frame(base);
+    const withPic = { ...base, imagesSignature: "a=missing" };
+    expect(c.frame(withPic)).toBe(true);
+    expect(c.frame(withPic)).toBe(false);
+    const arrived = { ...base, imagesSignature: "a=h1,10,20" };
+    expect(c.frame(arrived)).toBe(true);
+    expect(c.frame(arrived)).toBe(false);
+    expect(c.frame({ ...base, imagesSignature: "" })).toBe(false);
+    expect(c.frame(arrived)).toBe(false);
   });
 
   it("makes no draw while the canvas is hidden and draws at the first visible frame", () => {

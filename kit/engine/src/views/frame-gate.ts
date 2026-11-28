@@ -11,6 +11,8 @@ export interface FrameInputs {
   cameraVersion: number;
   viewportVersion: number;
   styleVersion: number;
+  /** From `buildImagesSignature`. A change makes a draw due; empty never does. */
+  imagesSignature: string;
   /** True while the camera is still moving toward its target. */
   settling: boolean;
   /** False when the canvas is hidden or has a CSS size of 0. */
@@ -32,20 +34,29 @@ function versionsOf(inputs: FrameInputs): Versions {
 
 export class FrameGate {
   private remembered: Versions | undefined;
+  private rememberedSignature = "";
   private wasSettling = false;
 
   shouldDraw(inputs: FrameInputs): boolean {
     if (!inputs.canvasVisible) {
       // Forget what was drawn, so the first frame with a valid size draws.
       this.remembered = undefined;
+      this.rememberedSignature = "";
       return false;
     }
     const versions = versionsOf(inputs);
+    const signature = inputs.imagesSignature;
+    const signatureChanged = signature !== "" && signature !== this.rememberedSignature;
     const changed =
-      this.remembered === undefined || versions.some((v, i) => v !== this.remembered![i]);
+      this.remembered === undefined ||
+      signatureChanged ||
+      versions.some((v, i) => v !== this.remembered![i]);
     const due = changed || inputs.settling || this.wasSettling;
     this.wasSettling = inputs.settling;
-    if (due) this.remembered = versions;
+    if (due) {
+      this.remembered = versions;
+      if (signature !== "") this.rememberedSignature = signature;
+    }
     return due;
   }
 }

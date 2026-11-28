@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   asImageHandle,
+  buildImagesSignature,
+  collectPictureReferences,
   pictureRefOfKind,
   resolvePicture,
   type ImageEntry,
@@ -127,5 +129,55 @@ describe("resolvePicture", () => {
       const entry = { image: handle, width: Number.MAX_VALUE, height: 1 };
       expect("entry" in resolvePicture({ pic: entry }, "pic")).toBe(true);
     });
+  });
+});
+
+describe("collectPictureReferences", () => {
+  it("collects each picture reference and the background once", () => {
+    const refs = collectPictureReferences({
+      props: [{ kind: "picture:a" }, { kind: "tree" }, { kind: "upload:b" }, { kind: "picture:a" }],
+      backgroundPicture: { ref: "plan" },
+    });
+    expect(refs.sort()).toEqual(["a", "b", "plan"]);
+  });
+  it("is empty for a map with no pictures", () => {
+    expect(collectPictureReferences({ props: [{ kind: "tree" }] })).toEqual([]);
+  });
+});
+
+describe("buildImagesSignature", () => {
+  it("is empty and makes no lookup without references", () => {
+    let calls = 0;
+    const lookup = () => {
+      calls++;
+      return good;
+    };
+    expect(buildImagesSignature([], lookup)).toBe("");
+    expect(calls).toBe(0);
+  });
+  it("is the same for the same entries and looks each reference up once", () => {
+    let calls = 0;
+    const lookup = () => {
+      calls++;
+      return good;
+    };
+    const first = buildImagesSignature(["a", "a"], lookup);
+    expect(calls).toBe(1);
+    expect(buildImagesSignature(["a"], lookup)).toBe(first);
+  });
+  it("changes when an entry arrives, changes size or changes handle", () => {
+    const missing = buildImagesSignature(["a"], {});
+    const arrived = buildImagesSignature(["a"], { a: good });
+    const resized = buildImagesSignature(["a"], { a: { ...good, width: 11 } });
+    const other = buildImagesSignature(["a"], {
+      a: { ...good, image: asImageHandle({}) },
+    });
+    expect(new Set([missing, arrived, resized, other]).size).toBe(4);
+  });
+  it("counts a throwing lookup as missing", () => {
+    const throwing = () => {
+      throw new Error("x");
+    };
+    expect(buildImagesSignature(["a"], throwing)).toBe(buildImagesSignature(["a"], {}));
   });
 });

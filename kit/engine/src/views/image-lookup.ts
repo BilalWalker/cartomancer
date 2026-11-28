@@ -34,6 +34,57 @@ export function pictureRefOfKind(kind: string): string | undefined {
   return undefined;
 }
 
+/** Every Picture_Prop reference and the background `ref` of a map, each once, in order. */
+export function collectPictureReferences(map: {
+  props: readonly { kind: string }[];
+  backgroundPicture?: { ref: string };
+}): string[] {
+  const seen = new Set<string>();
+  if (map.backgroundPicture !== undefined) seen.add(map.backgroundPicture.ref);
+  for (const prop of map.props) {
+    const ref = pictureRefOfKind(prop.kind);
+    if (ref !== undefined) seen.add(ref);
+  }
+  return [...seen];
+}
+
+const handleIds = new WeakMap<object, number>();
+let nextHandleId = 1;
+
+function handleIdentity(image: unknown): string {
+  if ((typeof image === "object" && image !== null) || typeof image === "function") {
+    let id = handleIds.get(image as object);
+    if (id === undefined) {
+      id = nextHandleId++;
+      handleIds.set(image as object, id);
+    }
+    return `h${id}`;
+  }
+  return `v${typeof image}:${String(image)}`;
+}
+
+/**
+ * A text that changes when a looked-up picture arrives, goes away, or changes
+ * handle or size. Empty for no references; no lookup is made then. A lookup
+ * that throws counts as missing.
+ */
+export function buildImagesSignature(
+  references: readonly string[],
+  images: ImageLookup | undefined,
+): string {
+  if (references.length === 0) return "";
+  const parts: string[] = [];
+  for (const ref of new Set(references)) {
+    const result = resolvePicture(images, ref);
+    const state =
+      "entry" in result
+        ? `${handleIdentity(result.entry.image)},${result.entry.width},${result.entry.height}`
+        : "missing";
+    parts.push(`${JSON.stringify(ref)}=${state}`);
+  }
+  return parts.join(";");
+}
+
 export type ResolvedPicture =
   | { entry: ImageEntry }
   | { missing: Notice | undefined };
