@@ -74,6 +74,32 @@ function sorted(set: Set<string>): string[] {
   return [...set].sort();
 }
 
+// Every item that touches the unturned viewport must be in the visible set.
+// The viewport here is worked out from centre, size and zoom, while
+// visibleRegion works it out from the screen corners, so the two edges can
+// differ by rounding error (about 1e-13). The viewport is therefore taken in
+// by a small tolerance (about 3e-5 world units, under 0.002 px at the lowest
+// zoom) that is larger than the 1e-9 relative padding naiveVisible adds to
+// props; an item that is inside by more than that must be held.
+function expectHeldBy(map: EngineMap, camera: Camera): void {
+  const half = { w: camera.viewportWidth / 2 / camera.zoom, h: camera.viewportHeight / 2 / camera.zoom };
+  const slack = 1e-8 * (3000 + Math.abs(camera.centerX) + Math.abs(camera.centerY) + half.w + half.h);
+  const slackX = slack;
+  const slackY = slack;
+  const viewport = {
+    minX: camera.centerX - half.w + slackX,
+    maxX: camera.centerX + half.w - slackX,
+    minY: camera.centerY - half.h + slackY,
+    maxY: camera.centerY + half.h - slackY,
+  };
+  const set = computeVisibleSet(buildSpatialIndex(map), visibleRegion(camera, 0) as Bounds);
+  const inView = naiveVisible(map, viewport);
+  for (const id of inView.roadIds) expect(set.roadIds.has(id)).toBe(true);
+  for (const id of inView.blockedAreaIds) expect(set.blockedAreaIds.has(id)).toBe(true);
+  for (const id of inView.propIds) expect(set.propIds.has(id)).toBe(true);
+  for (const id of inView.placeIds) expect(set.placeIds.has(id)).toBe(true);
+}
+
 describe("computeVisibleSet", () => {
   // Feature: map-views, Property 4: Nothing visible is left out
   it("equals a plain check of every item against the region (model)", () => {
@@ -95,26 +121,38 @@ describe("computeVisibleSet", () => {
   it("holds every item that touches an unturned viewport", () => {
     fc.assert(
       fc.property(mapArb, cameraArb, (map, turned) => {
-        const camera: Camera = { ...turned, rotationDegrees: 0 };
-        const half = { w: camera.viewportWidth / 2 / camera.zoom, h: camera.viewportHeight / 2 / camera.zoom };
-        const viewport = {
-          minX: camera.centerX - half.w,
-          maxX: camera.centerX + half.w,
-          minY: camera.centerY - half.h,
-          maxY: camera.centerY + half.h,
-        };
-        const set = computeVisibleSet(
-          buildSpatialIndex(map),
-          visibleRegion(camera, 0) as Bounds,
-        );
-        const inView = naiveVisible(map, viewport);
-        for (const id of inView.roadIds) expect(set.roadIds.has(id)).toBe(true);
-        for (const id of inView.blockedAreaIds) expect(set.blockedAreaIds.has(id)).toBe(true);
-        for (const id of inView.propIds) expect(set.propIds.has(id)).toBe(true);
-        for (const id of inView.placeIds) expect(set.placeIds.has(id)).toBe(true);
+        expectHeldBy(map, { ...turned, rotationDegrees: 0 });
       }),
       { numRuns: 200 },
     );
+  });
+
+  // Counterexample found by seed 1669665862: the prop's left edge is at 545,
+  // and the viewport's right edge is 545 up to floating point error (the zoom
+  // is 0.05000000000000001, so 27 / zoom is 539.9999999999999).
+  it("holds a prop whose edge touches the viewport edge to within rounding", () => {
+    const map = {
+      formatVersion: 1,
+      nodes: [],
+      roads: [],
+      places: [],
+      blockedAreas: [],
+      props: [
+        { id: "b0", kind: "house", x: 558, y: 0, width: 26, height: 1, rotationDegrees: 0 },
+      ],
+      style: { colors: {}, lineStyles: {} },
+      usableRoadIds: new Set<string>(),
+      blockedRoads: [],
+    } as unknown as EngineMap;
+    const camera = createCamera({
+      centerX: 5,
+      centerY: 0,
+      zoom: 0.05000000000000001,
+      rotationDegrees: 0,
+      viewportWidth: 54,
+      viewportHeight: 50,
+    }) as Camera;
+    expectHeldBy(map, camera);
   });
 
   // Feature: map-views, Property 4: Nothing visible is left out
