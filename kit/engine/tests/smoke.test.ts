@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
+import { BROWSER_GLOBAL_ALLOWLIST, checkBrowserGlobals } from "./helpers/browser-global-scan";
 
 // Files are read as raw text through Vite's glob import, so the test needs no
 // Node type package and the engine keeps an empty dependency list.
@@ -42,10 +43,7 @@ describe("engine package smoke test", () => {
   });
 
   it("uses no browser global in any source file", () => {
-    const pattern = /\b(window|document|HTMLCanvasElement)\b/;
-    for (const [file, text] of Object.entries(sources)) {
-      expect(pattern.test(text), `${file} mentions a browser global`).toBe(false);
-    }
+    expect(checkBrowserGlobals(sources, BROWSER_GLOBAL_ALLOWLIST)).toEqual([]);
   });
 
   it("mentions no application concept in any source file", () => {

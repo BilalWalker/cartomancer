@@ -94,6 +94,70 @@ export function missingEngineFunction(name: string): ViewError {
   );
 }
 
+/** The engine argument has no map loaded, so there is nothing to show. */
+export function noMapToShow(): ViewError {
+  return error(
+    'The input "engine" has no map loaded, so no view was mounted. Load a map first.',
+    "engine",
+  );
+}
+
+/** The options argument is not an object. */
+export function badOptions(): ViewError {
+  return error(
+    'The input "options" must be an object, so no view was mounted.',
+    "options",
+  );
+}
+
+/** The canvas already has a mounted view. */
+export function canvasAlreadyMounted(): ViewError {
+  return error(
+    'The input "canvas" already has a view, so no view was mounted. Call destroy() on the first view before mounting again.',
+    "canvas",
+  );
+}
+
+/** The `images` option is not an object or a function. */
+export function badImagesOption(): ViewError {
+  return error(
+    'The option "images" must be an object or a function that gives, for a picture reference, an entry with an image and a width and height above 0, so no view was mounted.',
+    "images",
+  );
+}
+
+/** An entry of the `images` object has no usable size. The size is not repeated. */
+export function badImagesEntry(ref: string): ViewError {
+  return error(
+    `The option "images" has an unusable entry for the picture "${ref}": it must hold an image and a width and height above 0, so no view was mounted.`,
+    "images",
+  );
+}
+
+/** A service given in the `services` option is not a function. */
+export function badServiceOption(name: string): ViewError {
+  return error(
+    `The option "services" must give the service "${name}" as a function, so no view was mounted.`,
+    "services",
+  );
+}
+
+/** The host offers no animation frame service and none was given. */
+export function noFrameService(): ViewError {
+  return error(
+    'The option "services" must give "requestFrame" and "cancelFrame" because this host offers no animation frames, so no view was mounted.',
+    "services",
+  );
+}
+
+/** A browser service failed while the view was being mounted. */
+export function serviceFailed(): ViewError {
+  return error(
+    'A browser service named in the option "services" failed while mounting, so no view was mounted and nothing was left behind.',
+    "services",
+  );
+}
+
 /** A control was used after destroy(). */
 export function destroyed(): ViewError {
   return error(

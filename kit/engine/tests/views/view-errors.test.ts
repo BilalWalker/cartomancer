@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  badImagesEntry,
+  badImagesOption,
+  badOptions,
+  badServiceOption,
+  canvasAlreadyMounted,
+  noFrameService,
+  noMapToShow,
+  serviceFailed,
   badItemCoordinate,
   badNumber,
   badPoint,
@@ -58,4 +66,25 @@ describe("view error and notice factories", () => {
   it("notice wraps a message", () => {
     expect(notice("The map has no roads.")).toEqual({ message: "The map has no roads." });
   });
+});
+
+describe("mount error factories", () => {
+  const mountCases: [string, string, string, string][] = [
+    ["noMapToShow", noMapToShow().message, "engine", "no map"],
+    ["badOptions", badOptions().message, "options", "object"],
+    ["canvasAlreadyMounted", canvasAlreadyMounted().message, "canvas", "already has a view"],
+    ["badImagesOption", badImagesOption().message, "images", "object or a function"],
+    ["badImagesEntry", badImagesEntry("statue").message, '"statue"', "width and height above 0"],
+    ["badServiceOption", badServiceOption("requestFrame").message, "requestFrame", "function"],
+    ["noFrameService", noFrameService().message, "requestFrame", "cancelFrame"],
+    ["serviceFailed", serviceFailed().message, "services", "failed"],
+  ];
+  for (const [name, message, mention, rule] of mountCases) {
+    it(`${name}: names the input, states the rule, uses plain words`, () => {
+      expect(message).toContain(mention);
+      expect(message).toContain(rule);
+      expect(message).toContain("no view was mounted");
+      expect(message).not.toMatch(/undefined|NaN|\bat |Error:|stack/);
+    });
+  }
 });
