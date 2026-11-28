@@ -12,7 +12,7 @@ The Screen_Convention of the engine core applies: x grows to the right, y grows 
 
 Units and ranges used throughout this document: world coordinates are in world units; screen coordinates and sizes are in CSS pixels (px); angles are in degrees; times are in milliseconds (ms) unless stated. Every number that a caller supplies must be finite (not NaN and not infinite). Where this document gives a tolerance, it is an absolute tolerance in the stated unit unless it is called relative. An invalid input is never repaired silently: each View returns or reports a plain-worded error that names the input and its allowed range, and keeps its previous state.
 
-Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Finder (Block E), the maker (Block F), the landing page (Block G), and the art that the owner supplies later. The Block B Prop and building shapes are plain shapes. The views draw no picture for a Background_Picture or an uploaded Prop; a picture reference is drawn as a plain placeholder rectangle with the Prop kind as its label.
+Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Finder (Block E), the maker (Block F), the landing page (Block G), and the art that the owner supplies later. The Block B Prop and building shapes are plain shapes. The views draw a picture for a Background_Picture or a picture Prop only when the caller supplies the loaded image through the Image_Lookup (Requirement 24); the Engine never loads, fetches or decodes an image. A picture Prop whose image is missing is drawn as a plain placeholder rectangle with the Prop kind as its label, and a Background_Picture whose image is missing is not drawn.
 
 ## Glossary
 
@@ -23,7 +23,11 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 - **Style**: The colours and line styles stored in the map file. The Style holds the two records `colors` and `lineStyles`.
 - **Default_Style**: The built-in colours and line styles of the Views, used for every Style key the map file does not set.
 - **Resolved_Style**: The Style of the Map with every missing key filled from the Default_Style.
-- **Canvas_Interface**: The small set of drawing operations the Views call: save and restore of state, translate, rotate and scale, path building (move, line, arc, close), fill, stroke, set fill colour, set stroke colour, set line width, set line join, set line cap, set line dash, set global alpha, text drawing with a font and alignment, text measuring, and clipping to the current path. The Canvas_Interface contains no operation that is specific to a browser.
+- **Canvas_Interface**: The small set of drawing operations the Views call: save and restore of state, translate, rotate and scale, path building (move, line, arc, close), fill, stroke, set fill colour, set stroke colour, set line width, set line join, set line cap, set line dash, set global alpha, text drawing with a font and alignment, text measuring, clipping to the current path, and drawing of an image (`drawImage`) given an Image_Handle, a destination position and a destination size. The Canvas_Interface contains no operation that is specific to a browser and no operation that loads an image.
+- **Image_Handle**: An opaque value that stands for a loaded picture. The Views pass an Image_Handle to the Canvas_Interface and never read, create or inspect it. Its width and height in image pixels are supplied by the caller together with the handle (see Image_Lookup).
+- **Image_Lookup**: The optional `images` option of a Mount_Function and of a Draw_Function: a lookup from a picture reference (the `ref` of a Background_Picture, or the part of a Prop kind after `picture:` or `upload:`) to an entry that holds an Image_Handle and its width and height in image pixels, each finite and greater than 0.
+- **Picture_Prop**: A Prop whose kind starts with `picture:` or `upload:`.
+- **Background_Picture**: The optional `backgroundPicture` object of the map file with the fields `ref`, `scale` and `opacity`, as defined in `kit/engine/docs/map-file-format.md`.
 - **Canvas_Adapter**: The Views component that implements the Canvas_Interface on a browser Canvas 2D context.
 - **Recording_Canvas**: A test stand-in that implements the Canvas_Interface by storing each call in order, with its arguments and the state that was current at the call.
 - **Camera**: The state that maps world points to screen points: a world centre point, a Zoom, a rotation in degrees, and the size of the Viewport in CSS pixels.
@@ -88,6 +92,10 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 7. THE Views logic, excluding the Canvas_Adapter and the input binding, SHALL reference no browser-only global, including `window`, `document` and `HTMLCanvasElement`.
 8. IF a drawing call receives a number that is not finite, THEN THE Views SHALL skip that drawing call, SHALL report a Notice that names the drawing operation, and SHALL send no non-finite number to the Canvas_Interface.
 9. IF the Canvas_Adapter is given a canvas that has no Canvas 2D context, THEN THE Canvas_Adapter SHALL return a View_Error that states that the canvas offers no 2D drawing and SHALL mount no View.
+10. THE Canvas_Interface SHALL offer a `drawImage` operation that takes an Image_Handle, a destination position in CSS pixels, a destination width and height in CSS pixels each finite and greater than 0, and SHALL draw the image in the current transform, global alpha and clip.
+11. THE Recording_Canvas SHALL record each `drawImage` call in order with the Image_Handle, the destination position and size, and the transform and global alpha that were current at the call.
+12. THE Canvas_Adapter SHALL implement `drawImage` on the browser Canvas 2D context and SHALL hand the Image_Handle to the context without reading it.
+13. IF a `drawImage` call receives a destination position, width or height that is not finite, or a width or height not greater than 0, THEN THE Views SHALL skip that call, SHALL report a Notice that names the drawing operation `drawImage`, and SHALL send no such number to the Canvas_Interface (criterion 8 applies).
 
 ### Requirement 2: Camera and transforms
 
@@ -138,6 +146,14 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 6. THE Default_Style SHALL give the Route_Line a contrast ratio of at least 3 to 1 against every Road kind colour and against the ground colour.
 7. THE Default_Suite SHALL test the contrast ratios of criteria 5 and 6 with a contrast function written in test code, using the WCAG relative luminance formula.
 8. IF a Style line width is not finite or lies outside 0 to 100 CSS pixels, or a dash length is not finite or lies outside 0 to 1000 CSS pixels, THEN THE Views SHALL use the Default_Style value for that key and SHALL report a Notice in plain words that names the key and the allowed range.
+9. THE Views SHALL accept a Style colour value as usable if and only if it is a text of the form `#rgb`, `#rrggbb` or `#rrggbbaa`, where each `r`, `g`, `b` and `a` is a hexadecimal digit (0-9, a-f or A-F, case-insensitive), and the text has no other character.
+10. IF a Style colour value is not usable under criterion 9, including a value that is empty, is not a text, has 4, 5, 7 or any other number of hex digits than 3, 6 or 8, has a non-hex character, lacks the leading `#`, or is a colour name or a function such as `rgb(...)`, THEN THE Views SHALL use the Default_Style colour for that key and SHALL report a Notice that names the key and the default colour used.
+11. THE Default_Style SHALL use only the forms `#rgb` or `#rrggbb`, so that the contrast tests of criteria 5 to 7 need no alpha handling.
+12. THE Map file format document `kit/engine/docs/map-file-format.md` SHALL state the usable colour forms of criterion 9 and the Notice of criterion 10 in its Style section, and SHALL replace its statement that the engine does not check a colour text with a statement that the Engine loader accepts any text and that the Views apply the rule of criterion 9.
+13. THE Map file format document SHALL list in its Style section every Style key that the Views read, each with its Default_Style value, as a table of colour keys (key, default colour) and a table of line style keys (key, default width in CSS pixels, default dash), and the keys and defaults SHALL be those of `kit/engine/src/views/style.ts`, which are: colour keys `road.main`, `road.side`, `road.footpath`, `road.corridor`, `roadOutline`, `ground`, `blockedArea.mountain`, `blockedArea.water`, `blockedArea.wall`, `blockedRoad`, `prop`, `raisedBlockTop`, `raisedBlockSide`, `routeLine`, `routeLineOutline`, `playerMarker`, `destinationMarker`, `placeLabelText`, `placeLabelBackground`, `rim`, `northMark`; and line style keys `road.main`, `road.side`, `road.footpath`, `road.corridor`, `roadOutline`, `blockedRoad`, `blockedAreaOutline`, `propOutline`, `routeLine`, `routeLineOutline`, `rim`.
+14. THE Map file format document SHALL state that a Style key that the Views do not read is ignored and that a Style key that the map does not set takes its default.
+15. THE Default_Suite SHALL include a test that fails if a key or a default value in the tables of criterion 13 differs from `DEFAULT_STYLE` and the key lists in `kit/engine/src/views/style.ts`, so that the document cannot go stale.
+16. THE Default_Suite SHALL include example-based tests that accept `#abc`, `#aabbcc`, `#aabbccdd` and `#AABBCC`, and that reject `#abcd`, `#abcde`, `#aabbccd`, `abc`, `#ggg`, `red`, `rgb(0,0,0)`, the empty text and a number, each checked against the Views, and that check the key and the default colour in the Notice.
 
 ### Requirement 5: Roads that look finished
 
@@ -426,6 +442,12 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 16. THE Default_Suite SHALL include, for each numeric input with an allowed range, example-based tests at the lower bound, at the upper bound, just below the lower bound, just above the upper bound, and with NaN, positive infinity and negative infinity.
 17. THE Views SHALL leave the behaviour of the engine-core spec unchanged for every map file that has no `blockHeight` field, except for the addition of `blockHeight` described in Requirement 23, and the Views SHALL treat Requirement 23 as the one change to the Engine that is allowed in this spec besides criterion 13.
 18. THE Mount_Functions and their input binding and observer code SHALL be the only Views code that references browser-only globals, together with the Canvas_Adapter, and criterion 7 of Requirement 1 SHALL apply to all other Views logic.
+19. THE engine-core test `kit/engine/tests/smoke.test.ts` SHALL scan every file under `kit/engine/src/**` for the browser globals `window`, `document` and `HTMLCanvasElement` with the same pattern as before, `/\b(window|document|HTMLCanvasElement)\b/`, except the files of an allowlist of exactly three paths: `src/views/canvas-adapter.ts`, `src/views/input-binding.ts` and `src/views/mount.ts`.
+20. THE allowlist of criterion 19 SHALL hold no other path, no directory and no pattern, so that every other source file, including every other file under `src/views/`, stays scanned.
+21. IF a file named in the allowlist of criterion 19 does not exist under `kit/engine/src/`, THEN THE smoke test SHALL fail with a plain-worded message that names the missing path and states that the allowlist is out of date, so that the list cannot go stale.
+22. IF a scanned file mentions a browser global, THEN THE smoke test SHALL fail with a message that names the file, as it does today.
+23. THE edit of `kit/engine/tests/smoke.test.ts` required by criteria 19 to 21 SHALL be the one permitted edit of an existing engine-core test in this spec, and it SHALL be an exception to criterion 12 and to Requirement 23 criterion 12; it SHALL change only the scan rule and add the existence check, SHALL leave every other test and assertion of the engine core as it is, and SHALL be made in its own commit together with the change that needs it.
+24. THE Default_Suite SHALL include a test of the allowlist check itself with a stand-in file list, that checks that a missing allowlisted path fails, that an extra file with a browser global outside the allowlist fails, and that an allowlisted file with a browser global passes.
 
 ### Requirement 20: Gate on the large map
 
@@ -469,6 +491,10 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 17. THE Views_API_Doc SHALL document the three Mount_Functions, the options, the Mount_Handle controls, the View_Errors and `destroy()`, with one usage example for each Mount_Function.
 18. THE Default_Suite SHALL test the Mount_Functions in Node with a stand-in canvas, a stand-in animation frame scheduler, a stand-in resize observer and a stand-in Engine, and SHALL include example-based tests for each View_Error of criteria 10 to 14, for the second `destroy()` of criterion 9, and for the removal of every listener and observer of criterion 8, checked by counting the added and removed listeners and observers.
 19. FOR ALL generated sequences of calls to controls and to `destroy()`, THE number of listeners, observers and pending animation frame requests that remain after `destroy()` SHALL be 0 (destroy-leaves-nothing property).
+20. WHERE the options object holds an `images` option, THE Mount_Function SHALL accept it as an Image_Lookup and SHALL pass it to the View, and WHERE the options object holds no `images` option, THE View SHALL draw as if the Image_Lookup were empty (Requirement 24).
+21. IF the `images` option is not an object or a function, or an entry it returns has a width or height that is not finite or not greater than 0, THEN THE Mount_Function SHALL return a plain-worded View_Error that names the option `images` and the rule, and SHALL mount nothing.
+22. THE Draw_Functions SHALL accept the same optional `images` option.
+23. THE Views_API_Doc SHALL document the `images` option with a usage example in which the application loads the image and the Views only draw it.
 
 ### Requirement 22: Drawing cost
 
@@ -510,3 +536,30 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 12. THE Default_Suite of the engine core SHALL still pass after this change, and no existing test SHALL be edited to make it pass; new tests and the extension of the generator in the test helpers are allowed, and the extension SHALL leave the existing assertions as they are.
 13. THE Views SHALL read `blockHeight` only through the Map and SHALL use it only as Requirement 12 criteria 15 to 19 state.
 14. THE Views SHALL use no Prop in any decision about routes or guidance, so that `blockHeight` has no effect on routes or guidance (Requirement 6 criterion 4).
+
+### Requirement 24: Pictures for props and the background
+
+**User Story:** As a map maker, I want my uploaded pictures and my traced floor plan drawn in the views, so that the map looks as I made it, while the engine stays free of image loading.
+
+#### Acceptance Criteria
+
+1. THE Views SHALL take an optional `images` option, an Image_Lookup from a picture reference to an Image_Handle with its width and height in image pixels, on each Mount_Function and each Draw_Function.
+2. THE Engine and the Views SHALL NOT load, fetch, decode or cache an image, SHALL NOT create an Image_Handle, and SHALL draw only pictures that the caller supplies in the Image_Lookup.
+3. THE Views SHALL take the picture reference of a Picture_Prop as the text of its kind after the prefix `picture:` or `upload:`.
+4. WHEN a Picture_Prop is visible and the Image_Lookup holds an image for its picture reference, THE Views SHALL draw that image with `drawImage` at the position of the Prop, with the width, height and rotation in degrees of the Prop, placed as the plain shape of Requirement 6 criterion 3 is placed, in the layer of the flat Props.
+5. WHEN a Picture_Prop is visible and the Image_Lookup holds no image for its picture reference, THE Views SHALL draw the labelled placeholder rectangle with the Prop kind as its label, as the plain shape of an unknown Prop kind, and SHALL report a Notice that names the Prop identifier and the missing picture reference.
+6. WHEN the map has a Background_Picture and the Image_Lookup holds an image for its `ref`, THE Views SHALL draw that image with `drawImage` with its top-left corner at the world point (0, 0), with each image pixel covering `scale` world units, with the global alpha set to `opacity` for that draw and restored afterwards, in a layer directly above the ground colour and below every other layer of Requirement 6 criterion 1.
+7. WHEN the map has a Background_Picture and the Image_Lookup holds no image for its `ref`, THE Views SHALL draw nothing for the Background_Picture and SHALL report a Notice that names the picture reference and states that the background picture is not drawn.
+8. WHEN the map has no Background_Picture, THE Views SHALL make no `drawImage` call for a background and SHALL report no Notice about it.
+9. THE Views SHALL draw a picture only when it is in the Visible_Set, so that a picture entirely outside the Visible_Region costs no drawing call.
+10. THE Tilted_View SHALL draw a Picture_Prop flat on the ground, as Requirement 12 criterion 17 states for a Prop kind outside the Raised_Kinds, and SHALL draw the Background_Picture on the ground plane with the same transform as the ground.
+11. THE Views SHALL use no picture in any decision about routes, guidance, hit testing or label placement.
+12. THE Views SHALL draw the same frame for a given Image_Lookup entry on every call, and WHEN the Image_Lookup changes, THE Views SHALL draw a frame no later than the next animation frame, as Requirement 22 criterion 8 states for a change of the Style.
+13. IF the Background_Picture `scale` is not finite or not greater than 0, or its `opacity` is not finite or lies outside 0 to 1, THEN THE Views SHALL draw no Background_Picture and SHALL report a Notice that names the field and its allowed range.
+14. IF an Image_Lookup entry has a width or height in image pixels that is not finite or not greater than 0, THEN THE Views SHALL treat that picture as missing and SHALL report a Notice that names the picture reference.
+15. IF an Image_Lookup entry holds no Image_Handle, or the Image_Lookup throws when a reference is looked up, THEN THE Views SHALL treat that picture as missing, SHALL report a Notice that names the picture reference, and SHALL keep drawing the rest of the frame.
+16. IF a Picture_Prop kind has an empty picture reference after its prefix, THEN THE Views SHALL draw the placeholder rectangle with the Prop kind as its label and SHALL report a Notice that names the Prop identifier.
+17. FOR ALL generated Maps with Picture_Props and Image_Lookups that hold any subset of the references, THE number of `drawImage` calls for Picture_Props on the Recording_Canvas SHALL equal the number of visible Picture_Props that have an image, and every other visible Picture_Prop SHALL be drawn as a placeholder rectangle (picture-or-placeholder property).
+18. FOR ALL generated Background_Pictures with `scale` greater than 0 and `opacity` from 0 to 1, THE `drawImage` call of the Background_Picture on the Recording_Canvas SHALL be recorded with the global alpha equal to `opacity`, a destination width equal to the image width multiplied by `scale` and a destination height equal to the image height multiplied by `scale` in world units (converted by the transform of the call), and before every call of a later layer (background-picture property).
+19. THE Default_Suite SHALL draw each View on the Recording_Canvas with a stand-in Image_Handle and check criteria 4 to 8, 13, 14 and 15 with example-based tests, including the boundary values 0 and 1 of `opacity`, and `scale` of 0, a negative value, NaN and positive infinity.
+20. THE Views_API_Doc SHALL document the Image_Lookup, the Image_Handle, the picture reference rule of criterion 3, the placement of the Background_Picture of criterion 6, and each Notice of this requirement.
