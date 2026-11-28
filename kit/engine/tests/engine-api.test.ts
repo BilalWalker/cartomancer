@@ -194,6 +194,42 @@ describe("Engine.getMap", () => {
   });
 });
 
+describe("Engine.getPosition", () => {
+  it("is undefined before a position is fed", () => {
+    const engine = new Engine();
+    expect(engine.getPosition()).toBeUndefined();
+    engine.loadMap(mapText([]));
+    expect(engine.getPosition()).toBeUndefined();
+  });
+
+  it("returns the last position fed, with its heading", () => {
+    const engine = engineAt(joinedMapText(), 3, 4);
+    expect(engine.getPosition()).toEqual({ x: 3, y: 4, headingDegrees: 0 });
+    engine.feedPosition({ x: 7, y: 8, headingDegrees: 90 }, 10);
+    expect(engine.getPosition()).toEqual({ x: 7, y: 8, headingDegrees: 90 });
+  });
+
+  it("keeps the last good position when a bad one is rejected", () => {
+    const engine = engineAt(joinedMapText(), 3, 4);
+    expect(engine.feedPosition({ x: Number.NaN, y: 1, headingDegrees: 0 }, 5)).toBeDefined();
+    expect(engine.getPosition()).toEqual({ x: 3, y: 4, headingDegrees: 0 });
+  });
+
+  it("returns a copy: editing it does not change the engine", () => {
+    const engine = engineAt(joinedMapText(), 3, 4);
+    const copy = engine.getPosition();
+    if (!copy) throw new Error("position expected");
+    copy.x = 99;
+    expect(engine.getPosition()?.x).toBe(3);
+  });
+
+  it("is forgotten when a new map is loaded", () => {
+    const engine = engineAt(joinedMapText(), 3, 4);
+    engine.loadMap(mapText([]));
+    expect(engine.getPosition()).toBeUndefined();
+  });
+});
+
 describe("snapToRoad from the public surface", () => {
   it("snaps a point to the nearest usable road of getMap()", () => {
     const map = engineAt(joinedMapText(), 0, 0).getMap();

@@ -71,6 +71,11 @@ export class Engine {
     return this.map ? structuredClone(this.map) : undefined;
   }
 
+  /** A copy of the last position fed to the engine, or undefined before one is fed or after a map is loaded. */
+  getPosition(): Position | undefined {
+    return this.lastPosition ? { ...this.lastPosition } : undefined;
+  }
+
   /** Roads left out of routing, each with its notices. */
   getBlockedRoads(): { roadId: string; notices: Notice[] }[] {
     if (!this.map) return [];
