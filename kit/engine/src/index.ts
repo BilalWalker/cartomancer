@@ -1,5 +1,8 @@
 // Public surface of the engine.
 
+// The Views are re-exported with `export *` (documented in docs/views-api.md,
+// not in api.md, which lists only the explicit exports below).
+export * from "./views/index.js";
 export { Engine } from "./engine.js";
 export { mirrorHeading, mirrorMap } from "./mirror.js";
 export { isNoUsableRoad, snapToRoad } from "./snapping.js";
