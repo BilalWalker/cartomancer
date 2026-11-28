@@ -81,7 +81,6 @@ export const DEFAULT_STYLE: ResolvedStyle = {
 };
 
 const ROAD_KINDS: RoadKind[] = ["main", "side", "footpath", "corridor"];
-const AREA_KINDS: BlockedAreaKind[] = ["mountain", "water", "wall"];
 
 /** Allowed range of a line width in CSS pixels. */
 const WIDTH_MIN = 0;
@@ -114,9 +113,12 @@ function cloneStyle(style: ResolvedStyle): ResolvedStyle {
   };
 }
 
-/** True for a hex colour text, `#rgb` or `#rrggbb`. */
-function isUsableColor(value: unknown): value is string {
-  return typeof value === "string" && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value.trim());
+/**
+ * True if and only if the value is a text `#rgb`, `#rrggbb` or `#rrggbbaa`
+ * (hex digits of either case) with no other character.
+ */
+export function isUsableColor(value: unknown): value is string {
+  return typeof value === "string" && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value);
 }
 
 function isInRange(value: unknown, min: number, max: number): value is number {
@@ -134,32 +136,71 @@ function isInRange(value: unknown, min: number, max: number): value is number {
  * Line style keys: `road.<kind>`, `roadOutline`, `blockedRoad`,
  * `blockedAreaOutline`, `propOutline`, `routeLine`, `routeLineOutline`, `rim`.
  */
-const SIMPLE_COLOR_KEYS: [string, keyof ResolvedStyle][] = [
-  ["roadOutline", "roadOutlineColor"],
-  ["ground", "groundColor"],
-  ["blockedRoad", "blockedRoadColor"],
-  ["prop", "propColor"],
-  ["raisedBlockTop", "raisedBlockTopColor"],
-  ["raisedBlockSide", "raisedBlockSideColor"],
-  ["routeLine", "routeLineColor"],
-  ["routeLineOutline", "routeLineOutlineColor"],
-  ["playerMarker", "playerMarkerColor"],
-  ["destinationMarker", "destinationMarkerColor"],
-  ["placeLabelText", "placeLabelTextColor"],
-  ["placeLabelBackground", "placeLabelBackgroundColor"],
-  ["rim", "rimColor"],
-  ["northMark", "northMarkColor"],
-];
+/**
+ * Colour key to `ResolvedStyle` field, in table order (the order of the
+ * format tables). A path with a dot is `<field>.<kind>`.
+ */
+export const STYLE_COLOR_FIELDS: Readonly<Record<string, string>> = {
+  "road.main": "roadColors.main",
+  "road.side": "roadColors.side",
+  "road.footpath": "roadColors.footpath",
+  "road.corridor": "roadColors.corridor",
+  roadOutline: "roadOutlineColor",
+  ground: "groundColor",
+  "blockedArea.mountain": "blockedAreaColors.mountain",
+  "blockedArea.water": "blockedAreaColors.water",
+  "blockedArea.wall": "blockedAreaColors.wall",
+  blockedRoad: "blockedRoadColor",
+  prop: "propColor",
+  raisedBlockTop: "raisedBlockTopColor",
+  raisedBlockSide: "raisedBlockSideColor",
+  routeLine: "routeLineColor",
+  routeLineOutline: "routeLineOutlineColor",
+  playerMarker: "playerMarkerColor",
+  destinationMarker: "destinationMarkerColor",
+  placeLabelText: "placeLabelTextColor",
+  placeLabelBackground: "placeLabelBackgroundColor",
+  rim: "rimColor",
+  northMark: "northMarkColor",
+};
 
-const SIMPLE_LINE_KEYS: [string, keyof ResolvedStyle][] = [
-  ["roadOutline", "roadOutlineStyle"],
-  ["blockedRoad", "blockedRoadStyle"],
-  ["blockedAreaOutline", "blockedAreaOutlineStyle"],
-  ["propOutline", "propOutlineStyle"],
-  ["routeLine", "routeLineStyle"],
-  ["routeLineOutline", "routeLineOutlineStyle"],
-  ["rim", "rimStyle"],
-];
+/** Line style key to `ResolvedStyle` field, in table order. */
+export const STYLE_LINE_FIELDS: Readonly<Record<string, string>> = {
+  "road.main": "roadLineStyles.main",
+  "road.side": "roadLineStyles.side",
+  "road.footpath": "roadLineStyles.footpath",
+  "road.corridor": "roadLineStyles.corridor",
+  roadOutline: "roadOutlineStyle",
+  blockedRoad: "blockedRoadStyle",
+  blockedAreaOutline: "blockedAreaOutlineStyle",
+  propOutline: "propOutlineStyle",
+  routeLine: "routeLineStyle",
+  routeLineOutline: "routeLineOutlineStyle",
+  rim: "rimStyle",
+};
+
+/** The 21 colour keys a map may set, in table order. */
+export const STYLE_COLOR_KEYS: readonly string[] = Object.keys(STYLE_COLOR_FIELDS);
+
+/** The 11 line style keys a map may set, in table order. */
+export const STYLE_LINE_KEYS: readonly string[] = Object.keys(STYLE_LINE_FIELDS);
+
+function readPath(style: ResolvedStyle, path: string): unknown {
+  let node: unknown = style;
+  for (const part of path.split(".")) {
+    node = (node as Record<string, unknown>)[part];
+  }
+  return node;
+}
+
+function writePath(style: ResolvedStyle, path: string, value: unknown): void {
+  const parts = path.split(".");
+  let node = style as unknown as Record<string, unknown>;
+  for (let i = 0; i < parts.length - 1; i++) {
+    node = node[parts[i]!] as Record<string, unknown>;
+  }
+  node[parts[parts.length - 1]!] = value;
+}
 
 /**
  * Builds the Resolved_Style: every key the map does not set takes the
@@ -178,15 +219,15 @@ export function resolveStyle(style: StyleData | undefined): {
   const colors = style.colors ?? {};
   const lines = style.lineStyles ?? {};
 
-  const applyColor = (key: string, set: (c: string) => void): void => {
+  const applyColor = (key: string, path: string): void => {
     if (!Object.prototype.hasOwnProperty.call(colors, key)) return;
     const value: unknown = colors[key];
     if (isUsableColor(value)) {
-      set(value.trim());
+      writePath(resolved, path, value);
     } else {
       notices.push(
         notice(
-          `The style colour "${key}" is not a colour like #rgb or #rrggbb, so the default colour is used.`,
+          `The style colour "${key}" is not a colour like #rgb, #rrggbb or #rrggbbaa, so the default colour ${String(readPath(DEFAULT_STYLE, path))} is used.`,
         ),
       );
     }
@@ -227,24 +268,11 @@ export function resolveStyle(style: StyleData | undefined): {
     }
   };
 
-  for (const kind of ROAD_KINDS) {
-    applyColor(`road.${kind}`, (c) => {
-      resolved.roadColors[kind] = c;
-    });
-    applyLine(`road.${kind}`, resolved.roadLineStyles[kind]);
+  for (const key of STYLE_COLOR_KEYS) {
+    applyColor(key, STYLE_COLOR_FIELDS[key]!);
   }
-  for (const kind of AREA_KINDS) {
-    applyColor(`blockedArea.${kind}`, (c) => {
-      resolved.blockedAreaColors[kind] = c;
-    });
-  }
-  for (const [key, field] of SIMPLE_COLOR_KEYS) {
-    applyColor(key, (c) => {
-      (resolved as unknown as Record<string, unknown>)[field] = c;
-    });
-  }
-  for (const [key, field] of SIMPLE_LINE_KEYS) {
-    applyLine(key, resolved[field] as LineStyle);
+  for (const key of STYLE_LINE_KEYS) {
+    applyLine(key, readPath(resolved, STYLE_LINE_FIELDS[key]!) as LineStyle);
   }
   return { resolved, notices };
 }
