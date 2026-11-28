@@ -38,10 +38,10 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 - **Visible_Set**: The set of Roads, Blocked_Areas, Props, Places and Route parts that the visibility check reports as overlapping the visible world region of a view.
 - **Visible_Region**: The area of the world that the Viewport shows, widened by a margin that covers the line width, the label size and the block height of the items drawn.
 - **Minimap**: The round view that is centred on the player and turns so that the player's heading points up the screen.
-- **North_Mark**: The mark on the Minimap rim that points to world north, which is the negative y direction under the Screen_Convention.
+- **North_Mark**: The mark on the Minimap rim that points to world north, which is the negative y direction under the Screen_Convention. It is an upright letter `N` with a short tick on the rim (Requirement 27).
 - **Full_Map**: The view with pan, zoom, and click or tap to set a Destination.
 - **Tilted_View**: The view that shows the Map from a raised angle, centred on the player with the player's heading pointing up the screen, in which Raised_Blocks stand on the ground.
-- **Tilt_Angle**: The angle in degrees between the viewing direction and the ground plane in the Tilted_View. Allowed range 20 to 70 degrees. Default 45 degrees.
+- **Tilt_Angle**: The angle in degrees between the viewing direction and the ground plane in the Tilted_View. Allowed range 20 to 70 degrees. Default 35 degrees (Requirement 26).
 - **Raised_Block**: A Prop whose kind is in the Raised_Kinds, drawn in the Tilted_View as a box with a ground footprint, a top face and side faces that rise from the ground.
 - **Raised_Kinds**: The list of Prop kinds that the Tilted_View draws as Raised_Blocks. Default: `building`, `house`, `tower`, `wall-block`. A Prop kind outside the Raised_Kinds is drawn flat on the ground.
 - **Block_Height**: The height in world units of a Raised_Block. It is the Block_Height_Value of the Prop multiplied by a height factor. The default height factor is 1. A caller-supplied height factor per Prop kind must lie in the range 0 to 100.
@@ -54,6 +54,10 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 - **Draw_Function**: A lower-level, public function of the Views that draws one View once on a Canvas_Interface that the caller supplies.
 - **Draw_Pass**: One of the passes of Requirement 6 criterion 1 that draw many items with the same drawing state, such as the Road outlines of one kind or the Road fills of one kind.
 - **Settling**: The state of a Camera whose value differs from its target value by more than 0.01 CSS pixels (world centre, in screen distance), 0.01 degrees (rotation) or 0.1% (Zoom, relative). A Camera that is not Settling is at rest.
+- **Map_Version**: The whole number returned by `Engine.getMapVersion()`. It is 0 before any map is loaded and rises by exactly 1 on every successful `loadMap` (Requirement 25).
+- **Perspective_Projection**: The projection of the Tilted_View in which the Camera has a Focal_Distance, so that ground points and heights that are farther from the viewer are drawn smaller and closer together than nearer ones.
+- **Focal_Distance**: The distance in CSS pixels from the eye of the Perspective_Projection to the screen plane. It is finite and greater than 0.
+- **Far_Edge**: The ground point that the Perspective_Projection draws on the top edge of the Viewport, on the vertical centre line of the Viewport.
 - **Views_API_Doc**: The file `kit/engine/docs/views-api.md`.
 - **Depth_Order**: The draw order of the Tilted_View, in which items that are farther from the viewer are drawn before items that are nearer. The viewer is at the bottom of the screen, so an item is nearer when its ground footprint lies lower on the screen.
 - **Route_Line**: The drawn line of the remaining Route.
@@ -291,7 +295,7 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 5. THE Tilted_View SHALL draw ground items, Blocked_Areas, Roads, the Route_Line and the Destination_Marker on the ground plane, below every Raised_Block that lies nearer to the viewer than the ground item.
 6. THE Tilted_View SHALL draw Raised_Blocks and upright Place_Labels in Depth_Order, so that a Raised_Block that is nearer to the viewer is drawn after a Raised_Block that is farther away.
 7. WHEN two Raised_Blocks have a depth that differs by less than 0.001 world units, THE Tilted_View SHALL draw the one with the lower Prop identifier first.
-8. WHERE the caller sets a Tilt_Angle from 20 to 70 degrees, THE Tilted_View SHALL use the supplied angle and not the default of 45 degrees.
+8. WHERE the caller sets a Tilt_Angle from 20 to 70 degrees, THE Tilted_View SHALL use the supplied angle and not the default Tilt_Angle of Requirement 26.
 9. IF the caller sets a Tilt_Angle that is not finite or lies outside the range from 20 to 70 degrees, THEN THE Tilted_View SHALL return a plain-worded View_Error that names the Tilt_Angle and the allowed range and SHALL keep the previous angle.
 10. THE Tilted_View SHALL use the Visible_Set of Requirement 3, with a Visible_Region widened by the largest Block_Height so that a block whose base is outside the Viewport but whose top is inside is drawn.
 11. FOR ALL generated Maps, Cameras and Positions, THE Raised_Blocks drawn on the Recording_Canvas SHALL appear in an order in which no Raised_Block is drawn before a Raised_Block that is farther from the viewer by more than 0.001 world units (nearer-after-farther property).
@@ -303,6 +307,8 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 17. WHEN a Prop has a `blockHeight`, THE Tilted_View SHALL use the `blockHeight` as the Block_Height_Value, also for a Prop kind that is not in the Raised_Kinds, in which case the Prop stays flat on the ground as criterion 3 of Requirement 6 states.
 18. THE Tilted_View SHALL use the largest Block_Height of the visible Raised_Blocks for the margin of the Visible_Region in criterion 10.
 19. FOR ALL generated Maps with Props that have a `blockHeight` between 0 and 1,000 world units, THE top face of each Raised_Block drawn on the Recording_Canvas SHALL lie above its footprint on the screen by the Block_Height multiplied by the cosine of the Tilt_Angle within 0.01 CSS pixels divided by Zoom (block-height property).
+20. THE Tilted_View SHALL use the Perspective_Projection of Requirement 26, in which criteria 2 and 19 hold as stated at the screen point of the player and the scale of ground distances and heights changes with the depth of the point everywhere else.
+21. FOR ALL generated Maps, Cameras and Positions, THE Raised_Blocks drawn on the Recording_Canvas SHALL satisfy criterion 11 and every ground point inside the Viewport SHALL satisfy criterion 12 under the Perspective_Projection (Requirement 26 criteria 6 and 7).
 
 ### Requirement 13: Smooth movement and reduced motion
 
@@ -563,3 +569,96 @@ Out of scope: the kit's `.kiro/` folder (Block C), City Run (Block D), Room Find
 18. FOR ALL generated Background_Pictures with `scale` greater than 0 and `opacity` from 0 to 1, THE `drawImage` call of the Background_Picture on the Recording_Canvas SHALL be recorded with the global alpha equal to `opacity`, a destination width equal to the image width multiplied by `scale` and a destination height equal to the image height multiplied by `scale` in world units (converted by the transform of the call), and before every call of a later layer (background-picture property).
 19. THE Default_Suite SHALL draw each View on the Recording_Canvas with a stand-in Image_Handle and check criteria 4 to 8, 13, 14 and 15 with example-based tests, including the boundary values 0 and 1 of `opacity`, and `scale` of 0, a negative value, NaN and positive infinity.
 20. THE Views_API_Doc SHALL document the Image_Lookup, the Image_Handle, the picture reference rule of criterion 3, the placement of the Background_Picture of criterion 6, and each Notice of this requirement.
+
+### Requirement 25: Map version and maps that arrive later
+
+**User Story:** As an application developer, I want the views to notice that a new map was loaded and to wait for a first map, so that I mount each view once and never remount it when the map changes.
+
+#### Acceptance Criteria
+
+1. THE Engine SHALL provide `getMapVersion()`, which returns a whole number that is 0 before any map has been loaded.
+2. WHEN `loadMap` succeeds, THE Engine SHALL raise the Map_Version by exactly 1.
+3. IF `loadMap` fails, including a call with a value that is not text, THEN THE Engine SHALL keep the Map_Version unchanged.
+4. FOR ALL generated sequences of `loadMap` calls with valid and invalid map file text, THE Map_Version SHALL equal the number of calls that succeeded (map-version property).
+5. THE Engine SHALL return the Map_Version without copying the Map, so that a caller can read it on every animation frame.
+6. WHILE a View is mounted, THE Frame_Loop SHALL compare the Map_Version with the Map_Version of the Map that the View shows on every animation frame, and SHALL call `getMap()` only when the two differ.
+7. WHEN the Map_Version has changed, THE Frame_Loop SHALL call `setMap` of the View with the Map from `getMap()` and SHALL draw a frame no later than the next animation frame, as Requirement 22 criterion 8 states for a change of the Style.
+8. WHEN the Frame_Loop sets a new Map, THE View SHALL keep the Zoom limits, the Zoom, the Tilt_Angle, the height factors, the `images` option and the Smoothing duration that the caller set, and SHALL keep the Camera rules of its Requirement (9, 10, 12) for the new Position.
+9. WHEN the Frame_Loop sets the first Map of a Full_Map, THE Full_Map SHALL fit the whole Map as Requirement 10 states, and WHEN it sets a later Map, THE Full_Map SHALL keep its Camera unless the caller calls `fit()`.
+10. WHEN the Frame_Loop sets a new Map, THE Views SHALL discard the Visible_Set and the spatial index of the previous Map and SHALL build them once for the new Map (Requirement 3 criterion 7).
+11. THE Mount_Functions SHALL mount a View on an Engine that has no map loaded yet (Map_Version 0), SHALL replace the earlier View_Error that states that the engine has no map, and SHALL remove that View_Error from the Views.
+12. WHILE the Map_Version is 0, THE Frame_Loop of a mounted View SHALL make no call on the Canvas_Interface, and WHEN the first map is loaded, THE Frame_Loop SHALL build the View and draw it no later than the next animation frame.
+13. WHILE a View has no Map, THE Mount_Handle controls that need a Map (`select`, `selectPlace`, `fit`, `follow`, `pan`, `zoomAt`) SHALL return a plain-worded View_Error that states that no map has been loaded yet and SHALL change nothing, and the controls that only hold a setting (Zoom limits, Zoom, Tilt_Angle, height factors) SHALL check their value as before and SHALL keep it for the View that is built when the first map arrives.
+14. WHILE a Full_Map has no Map, THE input binding SHALL ignore pointer, wheel, touch and key input and SHALL report no error.
+15. IF `setMap` of a View returns a View_Error for the Map of a new Map_Version, THEN THE Frame_Loop SHALL report the View_Error as a Notice once, SHALL keep drawing the previous Map, and SHALL NOT call `getMap()` again until the Map_Version changes again.
+16. IF the Engine has no function `getMapVersion`, THEN THE Mount_Function SHALL return a plain-worded View_Error that names the engine argument and the missing function `getMapVersion`, and SHALL mount nothing (Requirement 21 criterion 12).
+17. THE Demo_Page SHALL NOT call `destroy()` and SHALL NOT mount a View again when the person switches between the Town_Map and the Large_Generated_Map, and SHALL load the chosen map into the Engine only.
+18. THE Default_Suite SHALL test in Node, with a stand-in canvas and a stand-in frame scheduler, that a View mounted before any map draws nothing and then draws after `loadMap`, that `getMap()` is called once per Map_Version change and never on a frame without a change, that a failed load does not make the View read the Map again, and that two successive loads show the second Map.
+19. THE Engine api document `kit/engine/docs/api.md` and the Views_API_Doc SHALL document `getMapVersion()`, the rule of criteria 1 to 3, the waiting mount of criterion 11, the controls of criterion 13, and the rule that an application mounts a View once and loads maps into the Engine.
+20. THE Engine-core suite SHALL stay green with the new function.
+
+### Requirement 26: Tilted view with a clearly visible perspective
+
+**User Story:** As a player, I want the tilted view to look clearly three-dimensional, so that far streets look farther and buildings show their sides.
+
+#### Acceptance Criteria
+
+1. THE Tilted_View SHALL project world points with the Perspective_Projection, a Camera with a Focal_Distance, and not only with an affine squash of the ground.
+2. THE default Tilt_Angle SHALL be 35 degrees, and THE allowed range of the Tilt_Angle SHALL stay 20 to 70 degrees.
+3. WHEN a Tilted_View has the default Tilt_Angle and a Viewport with width and height each from 200 to 1600 CSS pixels, THE Tilted_View SHALL draw a Road segment of fixed world width and fixed world length across the heading at the Far_Edge with a screen width of at most 60% of the screen width of the same segment at the Position of the player.
+4. WHEN a Tilted_View has the default Tilt_Angle, THE Tilted_View SHALL draw a Raised_Block of the kind `building` with the default Block_Height of 12 world units, a square footprint of 12 world units and its centre on the heading line 20 world units ahead of the player, with the screen area of its drawn side faces in total at least 25% of the screen area of its top face.
+5. THE Perspective_Projection SHALL place the top edge of the Viewport on the ground for every Tilt_Angle from 20 to 70 degrees, so that every point inside the Viewport has a ground point and the horizon lies outside the Viewport.
+6. FOR ALL generated Maps, Cameras and Tilt_Angles from 20 to 70 degrees, THE projection of a ground point inside the Viewport and then the inverse projection SHALL return the ground point within 0.001 world units (tilt round-trip property, Requirement 12 criterion 12).
+7. FOR ALL generated Maps, Cameras and Tilt_Angles from 20 to 70 degrees, THE Raised_Blocks SHALL be drawn nearer-after-farther by the depth of the Perspective_Projection (Requirement 12 criterion 11).
+8. FOR ALL generated pairs of ground points on the same line across the heading, THE screen distance between the two points SHALL be smaller the farther the line lies from the viewer (perspective-narrowing property).
+9. IF the Tilt_Angle or the Focal_Distance given to the projection is not finite or is outside its allowed range, THEN THE Tilted_View SHALL return a plain-worded View_Error that names the value and the allowed range and SHALL keep the previous state.
+10. THE Mount option `tiltAngleDegrees` of `mountTiltedView` SHALL stay, SHALL accept 20 to 70 degrees, and SHALL use the default of criterion 2 when absent.
+11. THE Views_API_Doc SHALL state the default Tilt_Angle of 35 degrees, the Focal_Distance rule, and the two measurable criteria 3 and 4.
+12. THE Default_Suite SHALL test criteria 3 and 4 on the Recording_Canvas in Node for the default Viewport of 400 by 300 CSS pixels and for a Viewport of 375 by 500 CSS pixels.
+
+### Requirement 27: North mark that is readable
+
+**User Story:** As a player, I want a north mark that I can tell from my own marker, so that I read the minimap at a glance.
+
+#### Acceptance Criteria
+
+1. THE Style SHALL have the colour key `northMark`, read by the Minimap for the North_Mark, with its own Default_Style colour and no shared value with `playerMarker` or `rim`.
+2. THE Default_Style colour of `northMark` SHALL give a WCAG contrast ratio of at least 3 to 1 against the Default_Style colour of `playerMarker`.
+3. THE Default_Style colour of `northMark` SHALL differ from the Default_Style colour of `playerMarker` by at least 60 degrees of hue on the HSL hue circle.
+4. THE Minimap SHALL draw the North_Mark as the upright letter `N` in the `northMark` colour, at least 12 CSS pixels high, together with a tick of 6 to 10 CSS pixels that crosses the rim at the screen direction of world north.
+5. THE Minimap SHALL draw no triangle and no arrow for the North_Mark, so that the Player_Marker pointer and the North_Mark are told apart by shape.
+6. WHEN the Camera rotates, THE Minimap SHALL move the letter and the tick along the rim with the Map, with the letter upright.
+7. FOR ALL generated Cameras of the Minimap, THE direction from the Viewport centre to the tick SHALL equal the screen direction of the world vector (0, -1) within 0.001 degrees (Requirement 9 criterion 8, north-mark property).
+8. THE Map file format document SHALL list the new default of `northMark` in its colour table, and the test of Requirement 4 criterion 15 SHALL fail while the document differs from `DEFAULT_STYLE`.
+9. THE Default_Suite SHALL test criteria 2 and 3 with a contrast function and a hue function written in test code, and criteria 4 and 5 on the Recording_Canvas.
+10. IF a map sets `northMark` to a text that is not a usable colour under Requirement 4 criterion 9, THEN THE Minimap SHALL use the default of criterion 1 and SHALL report the Notice of Requirement 4 criterion 10.
+
+### Requirement 28: Demo status text and tilt slider
+
+**User Story:** As a reviewer, I want the demo page to show the engine's own guidance wording and a tilt control, so that the page shows what the engine says and I can try the tilt.
+
+#### Acceptance Criteria
+
+1. WHILE the Engine has a Route or a No_Way_Result, THE Demo_Page SHALL show the text of `getGuidanceSentence()` exactly as the Engine returns it, with no change, no prefix and no sentence built by the Demo_Page.
+2. WHILE the Engine has neither a Route nor a No_Way_Result, THE Demo_Page SHALL show the fixed line "No destination is set. Click a place on the full map."
+3. IF the Engine has a Route or a No_Way_Result and `getGuidanceSentence()` returns an empty text or a value that is not text, THEN THE Demo_Page SHALL show the line "The guidance is not available." and SHALL write nothing else for the guidance.
+4. FOR ALL generated guidance sentences, THE status text function of the Demo_Page SHALL return the sentence unchanged when criterion 1 applies (verbatim property).
+5. THE Demo_Page SHALL show a tilt slider with the label "Tilt angle", the range 20 to 70 degrees, a step of 1 degree, the default of Requirement 26 criterion 2, and the current value in degrees as text.
+6. THE tilt slider SHALL be operable with the keyboard through the arrow keys, Home, End, Page Up and Page Down, and SHALL have a touch target at least 44 CSS pixels high.
+7. WHEN the tilt slider changes, THE Demo_Page SHALL call `setTiltAngle` of the Tilted_View handle with the value and SHALL NOT mount the Tilted_View again.
+8. IF `setTiltAngle` returns a View_Error, THEN THE Demo_Page SHALL show the plain-worded message and SHALL set the slider back to the previous value.
+9. WHEN the Demo_Page mounts the Tilted_View, THE Demo_Page SHALL pass the value of the slider as `tiltAngleDegrees`.
+10. WHILE the viewport of the page is 375 CSS pixels wide, THE tilt slider SHALL fit inside the page width without a horizontal scroll bar.
+11. THE Default_Suite SHALL test the status text function with examples for criteria 1 to 3 and the property of criterion 4, and the Demo_Page wiring with a stand-in Engine for criteria 5 to 9.
+
+### Requirement 29: Dev tooling without known fixable vulnerabilities
+
+**User Story:** As a maintainer, I want the dev tooling of the engine and the demo to have no vulnerability that a safe update fixes, so that the checkpoint report is clean.
+
+#### Acceptance Criteria
+
+1. WHEN `npm audit` is run in `kit/engine` and in `kit/demo`, THE reported vulnerabilities SHALL include none that a non-breaking update fixes, which `npm audit fix --dry-run` shows as a change.
+2. WHERE a fix needs a breaking major version of a package and the Default_Suite of that package stays green with it, THE maintainer SHALL apply the update.
+3. IF a fix needs a breaking major version and the Default_Suite does not stay green, THEN THE package SHALL be left at its version and SHALL be named, with the advisory and the reason, in the checkpoint report.
+4. THE updates SHALL change only the `devDependencies` and the lock files, and the `dependencies` field of the Engine package SHALL stay empty (Requirement 1 criterion 6).
+5. THE Default_Suite of the Engine and of the Demo_Page SHALL pass after the updates with no test skipped, no time limit raised and no threshold loosened.
