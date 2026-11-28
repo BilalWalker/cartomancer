@@ -5,7 +5,7 @@
 This plan builds Block B of `docs/brief.md` in TypeScript: the Views (Minimap, Full_Map, Tilted_View) and their Mount_Functions inside `kit/engine/src/views/`, and the bare demo page in `kit/demo/`. The order is:
 
 1. Groups 1 to 12 hold the Engine-side gaps and all pure logic: the commit rule update, `Engine.getMap`, the `snapToRoad` export, the five `blockHeight` steps, views foundation, camera, spatial index and visibility, style, layer pieces (including road batching), label placement and layer order, hit test, smoothing, tilted projection and block height, frame gate, input state machine, and a task that commits the task status files.
-2. Groups 13 to 16 hold the three Views, the canvas adapter, input binding, accessibility, the mount functions (`mount.ts`), the public exports and the Views API doc.
+2. Groups 13 to 16 hold, in this order: `drawImage` and the image lookup, picture props, the background picture layer, the frame gate image signature, the hex colour rule and the style key tables with their drift test (all in group 13, before any View uses them), then the three Views, the canvas adapter, input binding, accessibility, the mount functions (`mount.ts`, which also carries the smoke test allowlist edit), the public exports and the Views API doc.
 3. Groups 17 to 21 hold the demo page (which uses only the Mount_Functions), a checkpoint, the Playwright frame benchmark, a second checkpoint, and last the Gate.
 
 The Screen_Convention of the engine core applies everywhere: x grows right, y grows down, a heading is in degrees clockwise from the positive x axis. World north is the negative y direction.
@@ -236,54 +236,108 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Commit subject: `Specs: record map-views task status`
     - _Requirements: 19.2, 19.5_
 
-- [ ] 13. The three views
-  - [ ] 13.1 Minimap
-    - Create `src/views/minimap.ts`: player-centred camera whose rotation is the negated heading, smoothing through `advanceCamera`, clip to a circle with a rim, the North_Mark on the rim rotating with the map, the layers of `drawMapLayers`, `resize` keeps the centre, map inspection notices, and `draw` goes through the `FrameGate`. Add a small hand-written fixture `tests/views/helpers/small-town.ts`.
-    - Create `tests/views/minimap-player-centred.test.ts` and `tests/views/minimap-north-mark.test.ts` with the two properties, plus an example that draws the fixture on the `RecordingCanvas` and one that a second unchanged draw makes zero calls.
+- [ ] 13. Pictures, colour rule and the three views
+  - [ ] 13.1 drawImage on the canvas interface
+    - Add the opaque `ImageHandle` type and `drawImage(image, dx, dy, width, height)` to `src/views/canvas-interface.ts`. Implement it in `RecordingCanvas` (stores the call with the image handle, the four numbers, the current global alpha, and the accumulated transform) and in `SafeCanvas` in `src/views/draw-safe.ts` (skips the call and adds a Notice naming `drawImage` when a number is not finite or the width or height is not above 0; the image handle is passed on unread). No other file implements `CanvasInterface` yet (the adapter comes in task 14.1), so the suite stays green.
+    - Create `tests/views/canvas-interface-draw-image.test.ts`: the recorded call and its stored state on the `RecordingCanvas`, and the skipped calls and Notices on `SafeCanvas` with boundaries (width and height 0, just above 0, NaN, +Infinity, -Infinity, negative). Extend `tests/views/canvas-interface-recording.test.ts` only by adding examples; existing assertions stay.
+    - Commit subject: `Views: add drawImage to the canvas interface and test canvases`
+    - _Requirements: 1.10, 1.11, 1.12, 19.15, 19.16_
+  - [ ] 13.2 Image lookup
+    - Create `src/views/image-lookup.ts` with `ImageHandle` re-use, `ImageLookup` (object or function), `ImageEntry`, `asImageHandle` (identity cast), `pictureRefOfKind` (strips exactly one `picture:` or `upload:` prefix; `undefined` for other kinds) and `resolvePicture(images, ref)` that never throws: an entry is returned only when `images` is given, the lookup returns an object without throwing, `image` is neither `undefined` nor `null`, and `width` and `height` are finite and above 0; every other case returns `missing` with a plain Notice naming the reference. An object lookup is read with an own-property check, so `constructor` and `__proto__` find nothing.
+    - Create `tests/views/image-lookup.test.ts`: prefixes (`picture:a:b` gives `a:b`, an empty reference), each missing case, a lookup that throws, a function lookup, own-property check, and boundaries for the entry width and height (0, just above 0, NaN, +Infinity, -Infinity).
+    - Commit subject: `Views: add image lookup with a never-throwing resolver`
+    - _Requirements: 24.1, 24.2, 24.3, 24.14, 24.15, 24.16, 19.15, 19.16_
+  - [ ] 13.3 Picture props drawn as image or placeholder
+    - In `src/views/layers-areas.ts`, change `drawFlatProps` to take the lookup and a per-frame resolver (a `Map` memo so several props with one reference make one lookup and one Notice): a Picture_Prop with an entry is drawn with `drawImage` at the destination of the plain rectangle (same `save`, `translate`, `rotate`), a missing entry or an empty reference gives the labelled placeholder rectangle and a Notice naming the Prop identifier and the reference, and a Picture_Prop outside the Visible_Region makes no call. A `blockHeight` on a picture kind is ignored. Add `images?: ImageLookup` to `DrawMapLayersInput` in `src/views/draw-map-layers.ts`, create the memoised resolver once per call and pass it on; existing callers stay valid because the field is optional. Update the Views tests that read the old placeholder-only behaviour in the same commit.
+    - Create `tests/views/picture-props.test.ts` with the property over `drawMapLayers` on the `RecordingCanvas` and examples for the image, the placeholder, the empty reference, the throwing lookup and the one-lookup-per-reference memo. The extension of this property to the three Views follows in task 13.15.
+    - **Property 23: A Picture_Prop is an image or a placeholder, never nothing**
+    - **Validates: Requirements 24.4, 24.5, 24.9, 24.16, 24.17**
+    - Commit subject: `Views: draw picture props as image or placeholder`
+    - _Requirements: 24.4, 24.5, 24.9, 24.11, 24.16, 24.17, 24.19, 12.17_
+  - [ ] 13.4 Background picture layer
+    - In `src/views/layers-areas.ts`, add `drawBackgroundPicture(canvas, background, resolve, region)`: nothing and no Notice without a background; a Notice naming the field and range for a `scale` not finite or not above 0 or an `opacity` not finite or outside 0 to 1, before any lookup; a Notice naming the reference when the picture is missing; otherwise `save`, `setGlobalAlpha(opacity)`, `drawImage(image, 0, 0, image width times scale, image height times scale)`, `restore`, and no call when that rectangle lies outside the Visible_Region. `opacity` 0 still makes the call. In `src/views/draw-map-layers.ts`, add `"backgroundPicture"` to `LAYER_ORDER` between `"ground"` and `"blockedAreas"` and call the new function right after the ground. Update `tests/views/layer-order.test.ts` in the same commit so the existing layer-order property covers the twelve layers (its generator now sometimes adds a background picture and an image lookup).
+    - Create `tests/views/background-picture.test.ts` with the property and examples: no background, missing picture, bad `scale` and `opacity` with boundaries (0, just above 0, 1, just above 1, NaN, +Infinity, -Infinity), `opacity` 0 and 1, outside the region, alpha restored after the call.
+    - **Property 24: The background picture is drawn at its scale and opacity, before every later layer**
+    - **Property 5 (extended): Layer order, now with the background picture layer**
+    - **Validates: Requirements 24.6, 24.7, 24.8, 24.13, 24.18, 6.5**
+    - Commit subject: `Views: add background picture layer after the ground`
+    - _Requirements: 6.5, 24.6, 24.7, 24.8, 24.9, 24.13, 24.18, 24.19_
+  - [ ] 13.5 Frame gate notices a changed image lookup
+    - Add `imagesSignature: string` to the `FrameGate` inputs in `src/views/frame-gate.ts` (a changed signature makes `shouldDraw` true; an empty signature never does) and a pure `buildImagesSignature(references, images)` in `src/views/image-lookup.ts` (for each distinct reference of the map, the handle identity, width and height of the resolved entry or `missing`; a throwing lookup counts as `missing`; no lookup is made for a map with no pictures) plus `collectPictureReferences(map)` (every Picture_Prop reference and the background `ref`). Existing callers pass the empty signature; existing assertions stay.
+    - Extend `tests/views/frame-gate-unchanged.test.ts` (Property 19) with maps that have pictures: two draws with no change leave zero calls on the second, and a lookup entry that arrives or changes size makes the next draw non-empty. Add examples to `tests/views/frame-gate-changes.test.ts` and `tests/views/image-lookup.test.ts`.
+    - **Property 19 (extended): An unchanged frame makes zero drawing calls, including image lookups**
+    - **Validates: Requirements 14.4, 14.9, 14.10, 22.6, 24.12**
+    - Commit subject: `Views: make the frame gate notice image lookup changes`
+    - _Requirements: 14.9, 22.6, 24.12_
+  - [ ] 13.6 Hex colour rule and style key lists
+    - In `src/views/style.ts`, replace the old colour check by the exported `isUsableColor` (a text that starts with `#`, then exactly 3, 6 or 8 hexadecimal digits of either case); `resolveStyle` replaces an unusable colour by the Default_Style colour and returns one Notice that names the key and the default colour. `DEFAULT_STYLE` keeps only `#rgb` and `#rrggbb` values and `contrastRatio` is unchanged. Export `STYLE_COLOR_KEYS` (the 21 colour keys, in table order) and `STYLE_LINE_KEYS` (the 11 line style keys, in table order) with the key-to-field table used by `resolveStyle`. A map colour with an alpha part goes to `setFillColor` and `setStrokeColor` as written. Update `tests/views/style-resolution.test.ts` in the same commit only where it relied on the old rule.
+    - Create `tests/views/style-colour-rule.test.ts` with the property (an independent model in the test shares no code with `style.ts`) and the named accept and reject examples and the Notice text.
+    - **Property 25: The hex colour rule accepts exactly `#rgb`, `#rrggbb` and `#rrggbbaa`**
+    - **Validates: Requirements 4.9, 4.10, 4.11, 4.13, 4.16**
+    - Commit subject: `Views: accept #rgb, #rrggbb and #rrggbbaa colours in styles`
+    - _Requirements: 4.9, 4.10, 4.11, 4.13, 4.16_
+  - [ ] 13.7 Style tables in the format document with a drift test
+    - In the Style section of `kit/engine/docs/map-file-format.md`, add the colour rule and its Notice, two plain Markdown tables with one row per key and the key in backticks in the first column (colour keys with the default colour; line style keys with the default width in CSS pixels and the default dash, `none` when there is none), the statement that a key the Views do not read is ignored and a key the map does not set takes its default, and the statement that the Engine loader accepts any colour text and the Views apply the rule (replacing the old statement that the engine does not check a colour text). The Block A loader behaviour is not changed.
+    - Create `tests/views/style-doc-drift.test.ts`: read the document as raw text through Vite's `?raw` glob, cut out the Style section, parse both tables, and assert that the colour key list equals `STYLE_COLOR_KEYS` as a set and in order, each documented default equals the value in `DEFAULT_STYLE`, the line style key list equals `STYLE_LINE_KEYS`, and each documented width and dash equals the `LineStyle` in `DEFAULT_STYLE`. Add one example that a changed default makes the test fail (using a stand-in copy of the document text).
+    - **Validates: Requirements 4.12, 4.13, 4.14, 4.15** (an example-style test, not a property)
+    - Commit subject: `Docs: document style keys and test them against defaults`
+    - _Requirements: 4.12, 4.13, 4.14, 4.15, 19.12_
+  - [ ] 13.8 Minimap
+    - Create `src/views/minimap.ts`: player-centred camera whose rotation is the negated heading, smoothing through `advanceCamera`, clip to a circle with a rim, the North_Mark on the rim rotating with the map, the layers of `drawMapLayers` (with the optional `images` passed on), `resize` keeps the centre, map inspection notices, and `draw` goes through the `FrameGate`. Add a small hand-written fixture `tests/views/helpers/small-town.ts`.
+    - Create `tests/views/minimap-player-centred.test.ts` and `tests/views/minimap-north-mark.test.ts` with the two properties, plus an example that draws the fixture on the `RecordingCanvas`, one that a second unchanged draw makes zero calls, and one that a picture prop is drawn from the `images` lookup.
     - **Property 8: Minimap keeps the player centred with heading up**
     - **Property 9: North mark points to world north**
     - **Validates: Requirements 9.7, 9.8**
     - Commit subject: `Views: add minimap with centring and north mark properties`
-    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.6, 9.7, 9.8, 13.1, 16.3, 22.6_
-  - [ ] 13.2 Minimap zoom limits and small size
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.6, 9.7, 9.8, 13.1, 16.3, 22.6, 24.1_
+  - [ ] 13.9 Minimap zoom limits and small size
     - Add `setZoomLimits(min, max)` and `setZoom(z)` to `minimap.ts` (defaults 0.5 and 4, range 0.001 to 1000, minimum below maximum, a zoom outside the limits is an error, the player marker does not move) and the Notice for a viewport under 40 by 40 with no circle drawn. Create `tests/views/minimap-zoom.test.ts` with examples and boundaries.
     - Commit subject: `Views: add minimap zoom limits and small size notice`
     - _Requirements: 9.5, 9.9, 9.10, 9.11_
-  - [ ] 13.3 Full map camera operations
-    - Create `src/views/full-map.ts` with the camera at rotation 0, `pan`, `zoomAt` (clamped to the zoom limits with a Notice, defaults of the fit zoom and 8), `fit` (extent with a 5% margin, extent of at least 1 unit, empty map gives a `ViewError`), `follow`, the pan clamp that keeps at least 20% of the extent in view, `resize` keeps the centre, and `draw` through the `FrameGate`. Create `tests/views/full-map-camera.test.ts` with examples and boundaries.
+  - [ ] 13.10 Full map camera operations
+    - Create `src/views/full-map.ts` with the camera at rotation 0, `pan`, `zoomAt` (clamped to the zoom limits with a Notice, defaults of the fit zoom and 8), `fit` (extent with a 5% margin, extent of at least 1 unit, empty map gives a `ViewError`), `follow`, the pan clamp that keeps at least 20% of the extent in view, `resize` keeps the centre, and `draw` through the `FrameGate` (with the optional `images` passed on to `drawMapLayers`). Create `tests/views/full-map-camera.test.ts` with examples and boundaries.
     - Commit subject: `Views: add full map pan, zoom, fit and follow`
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.9, 10.10, 10.11, 10.12, 16.3_
-  - [ ] 13.4 Full map selection sets the destination
+  - [ ] 13.11 Full map selection sets the destination
     - Add `select(screenPoint)` to `full-map.ts`: hit test the place markers (20 px), else convert with `screenToWorld` and call `Engine.setDestination({ point })`; set a place by id; a caller handler replaces setting the destination; a No_Way_Result message is shown to the caller; errors for a point outside the viewport, a map with no usable road, and a spot more than 100 world units or 200 px from a road (using `snapToRoad`). The view computes no route itself.
     - Create `tests/views/full-map-click-snaps.test.ts` with the property and examples for each branch.
     - **Property 11: A click lands on a usable road**
     - **Validates: Requirements 11.8**
     - Commit subject: `Views: add full map click to set a destination`
     - _Requirements: 11.2, 11.4, 11.5, 11.6, 11.7, 11.8, 11.10, 11.11, 11.12_
-  - [ ] 13.5 Full map place focus by keyboard
+  - [ ] 13.12 Full map place focus by keyboard
     - Add `focusNextPlace`, `focusPreviousPlace` and `activateFocusedPlace` to `full-map.ts` (order by identifier, a visible focus ring drawn on the focused place, Enter sets the destination, announcements for no places and no selected place returned as text for the live region). Create `tests/views/full-map-focus.test.ts`.
     - Commit subject: `Views: add full map place focus by keyboard`
     - _Requirements: 15.6, 15.16, 15.17_
-  - [ ] 13.6 Tilted view with block heights
-    - Create `src/views/tilted-view.ts`: player-centred heading-up camera with the player in the lower half, ground layers first, raised blocks (kinds in `RAISED_KINDS`) with top and darker side faces in depth order, each block's height from `blockHeightOf` (flat with a Notice when the height is not usable, a Prop outside the raised kinds drawn flat), other props flat, visible region widened by `largestBlockHeight`, `resize` keeps the centre, and `draw` through the `FrameGate`.
+  - [ ] 13.13 Tilted view with block heights
+    - Create `src/views/tilted-view.ts`: player-centred heading-up camera with the player in the lower half, ground layers first (pictures are added in task 13.15), raised blocks (kinds in `RAISED_KINDS`) with top and darker side faces in depth order, each block's height from `blockHeightOf` (flat with a Notice when the height is not usable, a Prop outside the raised kinds drawn flat), other props flat, visible region widened by `largestBlockHeight`, `resize` keeps the centre, and `draw` through the `FrameGate`.
     - Create `tests/views/tilted-depth-order.test.ts` with the depth property and `tests/views/tilted-block-height.test.ts` with the block-height property, both over the `RecordingCanvas`, plus an example drawing the fixture and an example with `blockHeight` over the default, a `blockHeight` of 0 and a footprint `height` that is not used as a block height.
     - **Property 13: Raised blocks are drawn nearer after farther**
     - **Property 20: Raised block top lies above its footprint by the block height**
     - **Validates: Requirements 12.11, 12.15, 12.17, 12.19**
     - Commit subject: `Views: add tilted view with raised blocks and block heights`
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.10, 12.11, 12.14, 12.15, 12.16, 12.17, 12.18, 12.19, 23.13_
-  - [ ] 13.7 Tilted view settings
+  - [ ] 13.14 Tilted view settings
     - Add `setTiltAngle` (20 to 70, default 45) and `setHeightFactor(kind, factor)` (0 to 100, default 1) to `tilted-view.ts`, each returning a `ViewError` and keeping the previous value for an input out of range. Create `tests/views/tilted-settings.test.ts` with examples and boundaries, and an example that a changed factor changes the drawn top lift.
     - Commit subject: `Views: add tilt angle and height factor settings`
     - _Requirements: 12.8, 12.9, 12.13_
+  - [ ] 13.15 Tilted view pictures and Property 23 on all three views
+    - In `tilted-view.ts`, accept the optional `images` lookup, create the per-frame memoised resolver at the top of `draw`, call `drawBackgroundPicture` right after the ground with the tilted ground transform (`translate`, `rotate`, `scale(zoom, zoom * sin(tilt))`, `translate`) so the picture lies on the ground plane, and draw Picture_Props through `drawFlatProps` (flat, never raised; a `blockHeight` on a picture kind is ignored).
+    - Create `tests/views/tilted-pictures.test.ts` (flat Picture_Prop, background on the ground plane, no depth sort involved) and extend `tests/views/picture-props.test.ts` so Property 23 runs on the Full_Map, the Minimap and the Tilted_View. Add the static test that `label-placement.ts`, `hit-test.ts` and `visible-set.ts` do not import `image-lookup.ts` to `tests/views/views-boundary.test.ts`.
+    - **Property 23 (extended): A Picture_Prop is an image or a placeholder on every view**
+    - **Validates: Requirements 24.4, 24.5, 24.10, 24.11, 24.17**
+    - Commit subject: `Views: draw pictures in the tilted view and test all views`
+    - _Requirements: 24.4, 24.5, 24.10, 24.11, 24.17, 12.17_
 
 - [ ] 14. Canvas adapter, input binding and accessibility
   - [ ] 14.1 Canvas adapter
     - Create `src/views/canvas-adapter.ts` (`CanvasAdapter implements CanvasInterface` on a 2D context, `mount(canvas)` returning a `ViewError` when there is no 2D context, pixel size from CSS size times the pixel ratio rounded, one scale by the ratio, ratio limited to 3 and to a 16384 px side with a Notice, bad ratio replaced by 1 with a Notice, a bad CSS size returns a `ViewError` and keeps the previous size).
-    - Create `tests/views/canvas-adapter.test.ts` using hand-written fake context and canvas objects, with boundaries for the ratio (0.5, 8, just below, just above, NaN, infinities) and the size.
+    - The adapter implements `drawImage` by passing the opaque handle to the context's `drawImage` (cast to the context's own image source type, which is a TypeScript type, not a browser global). Browser-global rule for this task: until task 15.1, the old smoke test scan is still in force, so `canvas-adapter.ts` must not contain the words `window`, `document` or `HTMLCanvasElement` anywhere (not in code, comments or strings). It uses structural types for the canvas, the context and the pixel ratio (passed in as an argument).
+    - Create `tests/views/canvas-adapter.test.ts` using hand-written fake context and canvas objects, with boundaries for the ratio (0.5, 8, just below, just above, NaN, infinities) and the size, and examples that `drawImage` reaches the fake context with the same handle and numbers (Requirement 1.13).
     - Commit subject: `Views: add canvas adapter with pixel ratio handling`
-    - _Requirements: 1.2, 1.9, 14.1, 14.2, 14.3, 14.5, 14.6, 14.7, 14.8, 16.7_
+    - _Requirements: 1.2, 1.9, 1.13, 14.1, 14.2, 14.3, 14.5, 14.6, 14.7, 14.8, 16.7_
   - [ ] 14.2 Input binding
+    - Browser-global rule for this task and task 14.3: until task 15.1, the old smoke test scan is still in force, so `input-binding.ts` (and `accessibility.ts` if it is created) must not contain the words `window`, `document` or `HTMLCanvasElement` anywhere. They work on the canvas and the event target that are passed in, with structural types.
     - Create `src/views/input-binding.ts`: attach pointer, wheel, touch and key listeners to a canvas, build plain `InputEvent` records, call `processEvents`, apply the commands to a `FullMap`, call `preventDefault` for wheel and touch, set `touch-action: none`, and return a function that removes every listener it added. Create `tests/views/input-binding.test.ts` with a fake event target that counts added and removed listeners.
     - Commit subject: `Views: add input binding for the full map`
     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.10, 15.15_
@@ -294,11 +348,12 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
 
 - [ ] 15. Mount functions
   - [ ] 15.1 Mount core and mountMinimap
-    - Create `src/views/mount.ts` with the `MountServices` option (request and cancel frame, resize observer, reduced-motion query, pixel ratio; defaults to the real globals, reached only here), argument validation (canvas element, Engine functions the View reads, options ranges, a module-level `WeakSet` of mounted canvases), the Frame_Loop (reads Position, Route, remaining Route, Guidance and Map from the Engine on each frame, keeps exactly one pending frame request, passes the frame timestamp on), `destroy()` (cancels the frame, removes every listener, disconnects every observer, clears the mounted mark; a second call does nothing; controls after it return a destroyed `ViewError`) and `mountMinimap` with its handle (`setZoomLimits`, `setZoom`, `destroy`). Mounting order: validate, create the adapter, then register side effects, so a failure leaves nothing behind.
+    - Smoke test allowlist edit (decided: it lands in THIS commit, the one that adds `mount.ts`, the last of the three allowlisted files; `canvas-adapter.ts` and `input-binding.ts` already exist and name no browser global, so the old scan stayed green until now). Create `tests/helpers/browser-global-scan.ts` with `BROWSER_GLOBAL_ALLOWLIST` (exactly `src/views/canvas-adapter.ts`, `src/views/input-binding.ts`, `src/views/mount.ts`), `BROWSER_GLOBAL_PATTERN` (`/\b(window|document|HTMLCanvasElement)\b/`, as today) and the pure `checkBrowserGlobals(files, allowlist)`: it strips the leading `../`, first adds a plain message for each allowlisted path with no matching file (`The allowlisted path "src/views/mount.ts" does not exist under kit/engine/src, so the allowlist is out of date.`), then adds `src/x.ts mentions a browser global` for each non-allowlisted file that matches the pattern; the match is on the exact path, no directory, pattern or prefix. Change the one test in `tests/smoke.test.ts` that scans for browser globals to `expect(checkBrowserGlobals(sources, BROWSER_GLOBAL_ALLOWLIST)).toEqual([])` over the same glob; this is the one permitted edit of an engine-core test and no other assertion in that file changes. Create `tests/smoke-allowlist.test.ts` with stand-in file lists: (a) a missing allowlisted path fails and the message names it; (b) an extra file that mentions `window` fails and the message names the file; (c) an allowlisted file that mentions `document` passes; (d) `src/views/mount-extra.ts` is still scanned; (e) all three present and clean gives an empty result. If `canvas-adapter.ts` or `input-binding.ts` turned out to need a browser global name earlier, this edit would instead have to land with the last of the three files to exist; the commit must leave the whole engine-core suite green.
+    - Create `src/views/mount.ts` with the `MountServices` option (request and cancel frame, resize observer, reduced-motion query, pixel ratio; defaults to the real globals, reached only here), argument validation (canvas element, Engine functions the View reads, options ranges, an optional `images` that must be an object or a function, and for an object every own entry checked at mount with a View_Error naming `images` and the reference, a module-level `WeakSet` of mounted canvases), the Frame_Loop (reads Position, Route, remaining Route, Guidance and Map from the Engine on each frame, keeps exactly one pending frame request, passes the frame timestamp and the `images` lookup on, and builds `imagesSignature` for the `FrameGate` with `buildImagesSignature`), `destroy()` (cancels the frame, removes every listener, disconnects every observer, clears the mounted mark; a second call does nothing; controls after it return a destroyed `ViewError`) and `mountMinimap` with its handle (`setZoomLimits`, `setZoom`, `destroy`). Mounting order: validate, create the adapter, then register side effects, so a failure leaves nothing behind.
     - Create `tests/views/helpers/stand-ins.ts` (fake canvas, frame scheduler, resize observer, reduced-motion query and Engine, each counting what is added and removed) and `tests/views/mount-functions.test.ts` with examples: a valid mount, the loop reading from the Engine each frame, one pending frame, a reduced-motion change used from the next frame, the second `destroy()`, controls after `destroy()`.
     - Create `kit/engine/docs/views-api.md` with the mounting section: the three Mount_Functions, the options, the Mount_Handle, the View_Errors and `destroy()`, and the usage example for `mountMinimap`.
     - Commit subject: `Views: add mount core and mountMinimap`
-    - _Requirements: 13.6, 21.1, 21.2, 21.4, 21.5, 21.6, 21.7, 21.8, 21.9, 21.10, 21.17, 21.18_
+    - _Requirements: 13.6, 19.19, 19.20, 19.21, 19.22, 19.23, 19.24, 21.20, 21.21, 21.22, 21.1, 21.2, 21.4, 21.5, 21.6, 21.7, 21.8, 21.9, 21.10, 21.17, 21.18_
   - [ ] 15.2 mountFullMap
     - Add `mountFullMap` to `mount.ts`: the same validation and mounting order, binds the input of Requirement 15 through `input-binding.ts` and the accessibility parts, and returns a handle with `pan`, `zoomAt`, `fit`, `follow`, `select` and `destroy`. Add examples to `tests/views/mount-functions.test.ts` (input bound, handle controls reach the view, every listener added by the input binding is removed by `destroy()`). Add the usage example for `mountFullMap` to `views-api.md`.
     - Commit subject: `Views: add mountFullMap`
@@ -308,7 +363,7 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - Commit subject: `Views: add mountTiltedView`
     - _Requirements: 21.1, 21.2, 21.4, 21.13, 21.17_
   - [ ] 15.4 Mount errors and destroy-leaves-nothing
-    - Create `tests/views/mount-errors.test.ts` with one example for each View_Error of Requirement 21 criteria 10 to 14 on each Mount_Function (not a canvas, Engine missing a function, option not an object or out of range with boundaries for the Zoom limits, smoothing duration, tilt angle and height factor, canvas already mounted, controls after destroy), each checking plain words, the named input and nothing left behind (Requirement 21.15). Create `tests/views/mount-destroy-leaves-nothing.test.ts` with the property.
+    - Create `tests/views/mount-errors.test.ts` with one example for each View_Error of Requirement 21 criteria 10 to 14 on each Mount_Function (not a canvas, Engine missing a function, option not an object or out of range with boundaries for the Zoom limits, smoothing duration, tilt angle and height factor, `images` that is `null`, a number or a text, and an `images` entry with a width or height that is not finite or not above 0, canvas already mounted, controls after destroy), each checking plain words, the named input and nothing left behind (Requirement 21.15). Create `tests/views/mount-destroy-leaves-nothing.test.ts` with the property.
     - **Property 17: Destroy leaves nothing behind**
     - **Validates: Requirements 21.8, 21.15, 21.19**
     - Commit subject: `Views tests: mount errors and destroy leaves nothing`
@@ -316,17 +371,17 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
 
 - [ ] 16. Public surface and docs
   - [ ] 16.1 Views exports
-    - Create `src/views/index.ts` re-exporting the documented View functions and types (including the three Mount_Functions and the public Draw_Functions), and re-export them from `src/index.ts` without changing the existing exports. Create `tests/views/exports.test.ts` listing the expected export names.
+    - Create `src/views/index.ts` re-exporting the documented View functions and types (including the three Mount_Functions, the public Draw_Functions, `drawBackgroundPicture`, `ImageLookup`, `ImageEntry`, `ImageHandle`, `asImageHandle`, `isUsableColor`, `STYLE_COLOR_KEYS` and `STYLE_LINE_KEYS`), and re-export them from `src/index.ts` without changing the existing exports. Create `tests/views/exports.test.ts` listing the expected export names.
     - Commit subject: `Views: add public exports`
     - _Requirements: 19.14, 21.7_
   - [ ] 16.2 Views API doc
-    - Complete `kit/engine/docs/views-api.md` with one entry per remaining exported function and type: description, inputs with units and ranges, outputs, View_Errors, one usage example. Add a test in `tests/views/exports.test.ts` that the export list and the doc entries match exactly, and that the doc has a usage example for each of the three Mount_Functions.
+    - Complete `kit/engine/docs/views-api.md` with one entry per remaining exported function and type (including the `images` option, the `ImageLookup` shape with a usage example of an application that loads pictures and passes the lookup, and the colour rule): description, inputs with units and ranges, outputs, View_Errors, one usage example. Add a test in `tests/views/exports.test.ts` that the export list and the doc entries match exactly, and that the doc has a usage example for each of the three Mount_Functions.
     - Commit subject: `Views: add API reference doc`
     - _Requirements: 19.14, 21.17_
 
 - [ ] 17. Demo page
   - [ ] 17.1 Scaffold the demo package
-    - Create `kit/demo/package.json` (no `dependencies`; devDependencies vite, vitest, typescript, @playwright/test; scripts `build` = `tsc --noEmit`, `test` = `vitest --run`, `dev`, `bench`, `gate`), `tsconfig.json` (strict), `vite.config.ts`, `vitest.config.ts`, `index.html` with an empty body and `src/main.ts` with an empty export, and a smoke test `tests/smoke.test.ts` that asserts there is no `dependencies` field and strict mode is on. Run `npm install` in `kit/demo` and commit the lockfile with it. Check that `.gitignore` already ignores `node_modules/` and `dist/`.
+    - Create `kit/demo/package.json` (no `dependencies`; devDependencies vite, vitest, typescript, @playwright/test; scripts `build` = `tsc --noEmit`, `test` = `vitest --run`, `dev`, `bench`, `gate`), `tsconfig.json` (strict), `vite.config.ts` (with `server.port` 5173 and `strictPort: true`, so the address never changes silently), `vitest.config.ts`, `index.html` with an empty body and `src/main.ts` with an empty export, and a smoke test `tests/smoke.test.ts` that asserts there is no `dependencies` field and strict mode is on. Run `npm install` in `kit/demo` and commit the lockfile with it. Check that `.gitignore` already ignores `node_modules/` and `dist/`.
     - Commit subject: `Demo: add package scaffold`
     - _Requirements: 17.1_
   - [ ] 17.2 Town_Map
@@ -351,13 +406,14 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     - _Requirements: 16.1, 16.2, 16.4, 16.5, 17.4, 17.11_
   - [ ] 17.7 Wire the page with the mount functions
     - Fill `kit/demo/src/main.ts`: load the chosen map into the `Engine` (on failure show the errors and keep the previous map), mount the three Views only with `mountMinimap`, `mountFullMap` and `mountTiltedView` (no direct adapter, input binding or frame loop code in the demo), move the dot with the arrow keys while no canvas has focus, feed only the position and a timestamp to the Engine each frame, show the status text. Keep the logic in small testable functions; add `tests/main-wiring.test.ts` using fake canvases and the engine stand-ins for a load, a click, a position feed and a failed load, and a test that `main.ts` imports none of `CanvasAdapter`, `bindInput` or `requestAnimationFrame` directly. Run `npm run build` in `kit/demo` to check the Vite build.
+    - Create `kit/demo/README.md` that states how to start the demo page: run `npm run dev` in `kit/demo`, then open `http://localhost:5173/` (the address of the Vite dev server, fixed by `strictPort`), plus the other scripts (`build`, `test`, `bench`, `gate`) and what the page shows. Add a test to `kit/demo/tests/smoke.test.ts` that reads the README and `vite.config.ts` and asserts the README contains `npm run dev`, `kit/demo` and `http://localhost:5173/`, and that the config sets port 5173 with `strictPort`.
     - Commit subject: `Demo: wire engine and views into the page`
     - _Requirements: 16.3, 17.1, 17.5, 17.7, 17.8, 17.9, 17.12, 21.16_
 
 - [ ] 18. Checkpoint - Demo page
   - Run `npm run build` and `npm test` in `kit/engine` and in `kit/demo`, each as its own call, and note the run time of each (the engine default suite must stay under 60 seconds). Run `npm run bench` in `kit/engine` once for the route times. Run `git status` and `git log --oneline` as separate calls.
   - Update the task status in `.kiro/specs/map-views/tasks.md` and `.kiro/specs/map-views/tasks.meta.json` (if it exists), and commit those two files together as one commit with the subject `Specs: record map-views task status`. If the status files did not change, make no commit.
-  - Report plainly: real `git status` output, the commit list, test results with time, the measured route times, and anything not done or not verified. No frame times exist yet at this point. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
+  - Report plainly: the command that starts the demo page (`npm run dev` in `kit/demo`) and its address (`http://localhost:5173/`, as written in `kit/demo/README.md` and fixed in `vite.config.ts`), real `git status` output, the commit list, test results with time, the measured route times, and anything not done or not verified. No frame times exist yet at this point. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
   - _Requirements: 19.2, 19.5, 19.6, 19.7_
 
 - [ ] 19. Frame benchmark
@@ -371,7 +427,7 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
 - [ ] 20. Checkpoint - End of block
   - Run `npm run build` and `npm test` in `kit/engine` and in `kit/demo`, each as its own call, with run times. Run `npm run bench` in `kit/engine` and `npm run bench` in `kit/demo` once more. Run `git status` and `git log --oneline` as separate calls.
   - Update the task status in `tasks.md` and `tasks.meta.json` (if it exists) and commit those two files together with the subject `Specs: record map-views task status`.
-  - Report plainly: real `git status` output, the commit list, test results with time, measured route times, measured frame times (median, 95th percentile, maximum for each View, with the machine description) and paths begun per frame, and anything not done or not verified. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
+  - Report plainly: the start command and address of the demo page (`npm run dev` in `kit/demo`, `http://localhost:5173/`), real `git status` output, the commit list, test results with time, measured route times, measured frame times (median, 95th percentile, maximum for each View, with the machine description) and paths begun per frame, and anything not done or not verified. Do not report credit figures. Do not push. Ensure all tests pass, ask the user if questions arise.
   - _Requirements: 18.7, 19.2, 19.3, 19.4, 19.5, 19.6, 19.7, 19.12, 19.17_
 
 - [ ] 21. Gate (last task)
@@ -389,10 +445,14 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
 ## Notes
 
 - Property tests are required tasks and carry no `*` marker. They are written inside the task of the code they test, so code and tests always land in one commit.
-- Property numbers 1 to 22 match the design. Requirement 19.3 names 14 properties; design Properties 1 and 2 together cover the transform round trip. Properties 17 to 22 come from Requirements 21, 22, 12 and 23: 17 in task 15.4, 18 in task 7.3, 19 in task 12.1, 20 in task 13.6, 21 in task 2.6, 22 in task 2.7.
-- Property 19 is first proved on the gate over `drawMapLayers` (task 12.1); each View task (13.1, 13.3, 13.6) adds an example that its own `draw` makes zero calls when nothing changed.
+- Property numbers 1 to 25 match the design. Requirement 19.3 names 14 properties; design Properties 1 and 2 together cover the transform round trip. Properties 17 to 25 come from Requirements 21, 22, 12, 23, 24 and 4: 17 in task 15.4, 18 in task 7.3, 19 in task 12.1 (extended with image lookups in task 13.5), 20 in task 13.13, 21 in task 2.6, 22 in task 2.7, 23 in task 13.3 (extended to all three views in task 13.15), 24 in task 13.4, 25 in task 13.6.
+- Property 5 (layer order) is extended in task 13.4 to twelve layers, by updating the Views test in the same commit as `LAYER_ORDER`.
+- Task numbers after 12 changed: group 13 now starts with the picture and style tasks 13.1 to 13.7, and the three Views are tasks 13.8 to 13.15. Groups 14 to 21 keep their numbers.
+- Smoke test allowlist (Requirement 19.19 to 19.24): the edit lands in task 15.1, the commit that adds `mount.ts`, the last of the three allowlisted files. Tasks 14.1 to 14.3 must not name `window`, `document` or `HTMLCanvasElement` in any file, so the old scan stays green until then.
+- Property 19 is first proved on the gate over `drawMapLayers` (task 12.1); each View task (13.8, 13.10, 13.13) adds an example that its own `draw` makes zero calls when nothing changed.
 - Requirement 8.9 (destination label kept) and the other criteria without a listed property are covered by example tests in their tasks.
-- Requirement 12 criteria 15 to 18 (defaults, fallback, factor, margin) are examples in task 11.3; criterion 19 is Property 20 in task 13.6.
+- Requirement 12 criteria 15 to 18 (defaults, fallback, factor, margin) are examples in task 11.3; criterion 19 is Property 20 in task 13.13.
+- Requirement 4.15 (format document against `DEFAULT_STYLE`) is an example-style drift test in task 13.7, not a property. The demo page start command and address are fixed in task 17.1, written in `kit/demo/README.md` in task 17.7 and reported in tasks 18 and 20.
 - The pure logic stays in groups 1 to 12; groups 13 to 16 hold the three Views, adapter, binding and mount; the demo page (group 17) uses only the Mount_Functions.
 - The Gate task is the last task. The end-of-block checkpoint (task 20) comes before it and reports build, tests and frame times; task 21.2 reports the Gate result.
 - Task 1.1 is already committed as `e0bdb87` and is marked done.
@@ -444,25 +504,33 @@ Each task is small (a few files) and ends with its own commit. A piece of code a
     { "id": 38, "tasks": ["13.5"] },
     { "id": 39, "tasks": ["13.6"] },
     { "id": 40, "tasks": ["13.7"] },
-    { "id": 41, "tasks": ["14.1"] },
-    { "id": 42, "tasks": ["14.2"] },
-    { "id": 43, "tasks": ["14.3"] },
-    { "id": 44, "tasks": ["15.1"] },
-    { "id": 45, "tasks": ["15.2"] },
-    { "id": 46, "tasks": ["15.3"] },
-    { "id": 47, "tasks": ["15.4"] },
-    { "id": 48, "tasks": ["16.1"] },
-    { "id": 49, "tasks": ["16.2"] },
-    { "id": 50, "tasks": ["17.1"] },
-    { "id": 51, "tasks": ["17.2"] },
-    { "id": 52, "tasks": ["17.3"] },
-    { "id": 53, "tasks": ["17.4"] },
-    { "id": 54, "tasks": ["17.5"] },
-    { "id": 55, "tasks": ["17.6"] },
-    { "id": 56, "tasks": ["17.7"] },
-    { "id": 57, "tasks": ["19.1"] },
-    { "id": 58, "tasks": ["21.1"] },
-    { "id": 59, "tasks": ["21.2"] }
+    { "id": 41, "tasks": ["13.8"] },
+    { "id": 42, "tasks": ["13.9"] },
+    { "id": 43, "tasks": ["13.10"] },
+    { "id": 44, "tasks": ["13.11"] },
+    { "id": 45, "tasks": ["13.12"] },
+    { "id": 46, "tasks": ["13.13"] },
+    { "id": 47, "tasks": ["13.14"] },
+    { "id": 48, "tasks": ["13.15"] },
+    { "id": 49, "tasks": ["14.1"] },
+    { "id": 50, "tasks": ["14.2"] },
+    { "id": 51, "tasks": ["14.3"] },
+    { "id": 52, "tasks": ["15.1"] },
+    { "id": 53, "tasks": ["15.2"] },
+    { "id": 54, "tasks": ["15.3"] },
+    { "id": 55, "tasks": ["15.4"] },
+    { "id": 56, "tasks": ["16.1"] },
+    { "id": 57, "tasks": ["16.2"] },
+    { "id": 58, "tasks": ["17.1"] },
+    { "id": 59, "tasks": ["17.2"] },
+    { "id": 60, "tasks": ["17.3"] },
+    { "id": 61, "tasks": ["17.4"] },
+    { "id": 62, "tasks": ["17.5"] },
+    { "id": 63, "tasks": ["17.6"] },
+    { "id": 64, "tasks": ["17.7"] },
+    { "id": 65, "tasks": ["19.1"] },
+    { "id": 66, "tasks": ["21.1"] },
+    { "id": 67, "tasks": ["21.2"] }
   ]
 }
 ```
