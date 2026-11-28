@@ -4,6 +4,7 @@
 
 import type {
   CanvasInterface,
+  ImageHandle,
   LineCap,
   LineJoin,
   TextAlign,
@@ -18,6 +19,7 @@ export interface RecordedState {
   fillColor: string;
   strokeColor: string;
   lineWidth: number;
+  globalAlpha: number;
   transform: Matrix;
 }
 
@@ -40,6 +42,7 @@ export class RecordingCanvas implements CanvasInterface {
   private fillColor = "#000000";
   private strokeColor = "#000000";
   private lineWidth = 1;
+  private globalAlpha = 1;
   private transform: Matrix = IDENTITY;
   private stack: RecordedState[] = [];
 
@@ -66,6 +69,7 @@ export class RecordingCanvas implements CanvasInterface {
         fillColor: this.fillColor,
         strokeColor: this.strokeColor,
         lineWidth: this.lineWidth,
+        globalAlpha: this.globalAlpha,
         transform: this.transform,
       },
     });
@@ -77,6 +81,7 @@ export class RecordingCanvas implements CanvasInterface {
       fillColor: this.fillColor,
       strokeColor: this.strokeColor,
       lineWidth: this.lineWidth,
+      globalAlpha: this.globalAlpha,
       transform: this.transform,
     });
   }
@@ -88,6 +93,7 @@ export class RecordingCanvas implements CanvasInterface {
       this.fillColor = top.fillColor;
       this.strokeColor = top.strokeColor;
       this.lineWidth = top.lineWidth;
+      this.globalAlpha = top.globalAlpha;
       this.transform = top.transform;
     }
   }
@@ -181,10 +187,15 @@ export class RecordingCanvas implements CanvasInterface {
 
   setGlobalAlpha(alpha: number): void {
     this.record("setGlobalAlpha", [alpha]);
+    this.globalAlpha = alpha;
   }
 
   drawText(text: string, x: number, y: number, font: string, align: TextAlign): void {
     this.record("drawText", [text, x, y, font, align]);
+  }
+
+  drawImage(image: ImageHandle, dx: number, dy: number, width: number, height: number): void {
+    this.record("drawImage", [image, dx, dy, width, height]);
   }
 
   /** A fixed-size estimate (8 px per character, 12 px high); it is recorded too. */

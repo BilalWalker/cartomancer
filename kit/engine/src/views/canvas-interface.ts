@@ -11,6 +11,9 @@ export interface TextSize {
   height: number;
 }
 
+/** An opaque picture handle. The Views pass it on and never look inside. */
+export type ImageHandle = unknown;
+
 export interface CanvasInterface {
   save(): void;
   restore(): void;
@@ -34,4 +37,5 @@ export interface CanvasInterface {
   setGlobalAlpha(alpha: number): void;
   drawText(text: string, x: number, y: number, font: string, align: TextAlign): void;
   measureText(text: string, font: string): TextSize;
+  drawImage(image: ImageHandle, dx: number, dy: number, width: number, height: number): void;
 }

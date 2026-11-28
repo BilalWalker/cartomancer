@@ -4,6 +4,7 @@
 
 import type {
   CanvasInterface,
+  ImageHandle,
   LineCap,
   LineJoin,
   TextAlign,
@@ -107,5 +108,13 @@ export class SafeCanvas implements CanvasInterface {
   }
   measureText(text: string, font: string): TextSize {
     return this.inner.measureText(text, font);
+  }
+  drawImage(image: ImageHandle, dx: number, dy: number, width: number, height: number): void {
+    if (!this.ok("drawImage", [dx, dy, width, height])) return;
+    if (width > 0 && height > 0) {
+      this.inner.drawImage(image, dx, dy, width, height);
+    } else {
+      this.collected.push(skippedDrawing("drawImage"));
+    }
   }
 }

@@ -123,3 +123,13 @@ describe("RecordingCanvas", () => {
     expect(canvas.getCalls()[0]?.args).toEqual([[4, 2]]);
   });
 });
+
+describe("RecordingCanvas drawImage and alpha state", () => {
+  it("records drawImage in order with the alpha current at the call", () => {
+    const canvas = new RecordingCanvas();
+    canvas.setGlobalAlpha(0.4);
+    canvas.drawImage("h", 1, 2, 3, 4);
+    expect(canvas.getCalls().map((c) => c.op)).toEqual(["setGlobalAlpha", "drawImage"]);
+    expect(canvas.getCalls()[1]?.state.globalAlpha).toBe(0.4);
+  });
+});
