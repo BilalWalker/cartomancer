@@ -9,7 +9,7 @@
 import type { EngineMap, Position, PropData, Route } from "../types.js";
 import type { Camera, Point } from "./camera.js";
 import { validateCamera } from "./camera.js";
-import { blockHeightOf, largestBlockHeight, RAISED_KINDS } from "./block-height.js";
+import { blockHeightOf, largestBlockHeight, RAISED_KINDS, validateHeightFactor } from "./block-height.js";
 import type { CanvasInterface } from "./canvas-interface.js";
 import { drawIfDue, FrameGate } from "./frame-gate.js";
 import {
@@ -36,7 +36,7 @@ import {
   validateSmoothingDuration,
 } from "./smoothing.js";
 import { resolveStyle, type ResolvedStyle } from "./style.js";
-import { DEFAULT_TILT_DEGREES, projectTilted, sortByDepth } from "./tilted-projection.js";
+import { DEFAULT_TILT_DEGREES, projectTilted, sortByDepth, validateTilt } from "./tilted-projection.js";
 import { badSize, isViewError, notice, type Notice, type ViewError } from "./view-errors.js";
 import {
   buildSpatialIndex,
@@ -185,6 +185,29 @@ export class TiltedView {
   /** The tilt angle in degrees. */
   getTiltAngle(): number {
     return this.tiltDegrees;
+  }
+
+  /** Sets the tilt angle, 20 to 70 degrees. A value out of range is refused and the old angle is kept. */
+  setTiltAngle(degrees: number): ViewError | undefined {
+    const error = validateTilt(degrees);
+    if (error) return error;
+    this.tiltDegrees = degrees;
+    this.styleVersion++;
+    return undefined;
+  }
+
+  /** Sets the height factor of a kind, 0 to 100 (default 1). A value out of range is refused and the old factor is kept. */
+  setHeightFactor(kind: string, factor: number): ViewError | undefined {
+    const error = validateHeightFactor(kind, factor);
+    if (error) return error;
+    Object.defineProperty(this.heightFactors, kind, {
+      value: factor,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+    this.styleVersion++;
+    return undefined;
   }
 
   /** Replaces the map. A map with a coordinate that is not finite is refused and the old map is kept. */
