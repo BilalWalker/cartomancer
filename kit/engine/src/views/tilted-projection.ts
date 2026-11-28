@@ -68,6 +68,53 @@ export function projectTilted(
   };
 }
 
+/** Depth differences below this many world units count as a tie. */
+export const DEPTH_TIE_TOLERANCE = 0.001;
+
+/**
+ * Depth of a ground point for the Depth_Order, in world units: the forward
+ * offset from the viewport centre after rotation and before the tilt. A larger
+ * value is nearer the viewer (lower on the screen). An unusable camera or point
+ * returns a ViewError.
+ */
+export function depthOf(ground: Point, camera: Camera): number | ViewError {
+  const flat = worldToScreen(camera, ground);
+  if (isViewError(flat)) return flat;
+  return (flat.y - camera.viewportHeight / 2) / camera.zoom;
+}
+
+/**
+ * Returns the items ordered farther first, nearer last. Items whose depth
+ * differs from the first item of their group by less than 0.001 world units
+ * are drawn by ascending identifier. The input is not changed. An unusable
+ * camera or ground point returns a ViewError.
+ */
+export function sortByDepth<T extends { id: string; ground: Point }>(
+  items: readonly T[],
+  camera: Camera,
+): T[] | ViewError {
+  const keyed: { item: T; depth: number }[] = [];
+  for (const item of items) {
+    const depth = depthOf(item.ground, camera);
+    if (isViewError(depth)) return depth;
+    keyed.push({ item, depth });
+  }
+  keyed.sort((a, b) => a.depth - b.depth);
+  const result: T[] = [];
+  let start = 0;
+  while (start < keyed.length) {
+    let end = start + 1;
+    while (end < keyed.length && keyed[end]!.depth - keyed[start]!.depth < DEPTH_TIE_TOLERANCE) {
+      end += 1;
+    }
+    const group = keyed.slice(start, end).map((k) => k.item);
+    group.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    result.push(...group);
+    start = end;
+  }
+  return result;
+}
+
 /** Maps a screen point back to the ground (height 0) world point. */
 export function unprojectTilted(
   screen: Point,
