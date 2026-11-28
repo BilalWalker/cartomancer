@@ -22,7 +22,7 @@ import type { MediaQueryLike } from "./reduced-motion.js";
 import {
   blockedRoadLines,
   distanceLeftText,
-  guidanceText,
+  guidanceStatusText,
   mapLoadErrorLines,
   noUsableRoadText,
   noWayText,
@@ -221,7 +221,8 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
   };
 
   const refreshStatus = (): void => {
-    setText(status.guidance, guidanceText(engine.getGuidanceSentence()));
+    const hasRouteOrNoWay = engine.getRoute() !== undefined || engine.getLastNoWayResult() !== undefined;
+    setText(status.guidance, guidanceStatusText(engine.getGuidanceSentence(), hasRouteOrNoWay));
     setText(status.distance, distanceLeftText(engine.getGuidance()));
     setText(status.message, noWayText(engine.getLastNoWayResult()) || dotMessage || viewMessage);
   };

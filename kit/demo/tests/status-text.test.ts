@@ -4,20 +4,20 @@ import {
   NO_GUIDANCE_TEXT,
   blockedRoadLines,
   distanceLeftText,
-  guidanceText,
+  guidanceStatusText,
   mapLoadErrorLines,
   noUsableRoadText,
   noWayText,
   roadCountText,
 } from "../src/status-text.js";
 
-describe("guidanceText", () => {
+describe("guidanceStatusText", () => {
   it("passes the sentence through", () => {
-    expect(guidanceText("Turn left in 20 units.")).toBe("Turn left in 20 units.");
+    expect(guidanceStatusText("Turn left in 20 units.", true)).toBe("Turn left in 20 units.");
   });
-  it("gives a plain line when there is no sentence", () => {
-    expect(guidanceText(undefined)).toBe(NO_GUIDANCE_TEXT);
-    expect(guidanceText("  ")).toBe(NO_GUIDANCE_TEXT);
+  it("gives the fixed line when there is no route or no-way result", () => {
+    expect(guidanceStatusText("Turn left.", false)).toBe(NO_GUIDANCE_TEXT);
+    expect(guidanceStatusText(undefined, false)).toBe(NO_GUIDANCE_TEXT);
   });
 });
 

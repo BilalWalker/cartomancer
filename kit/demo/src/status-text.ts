@@ -7,9 +7,16 @@ export const NO_GUIDANCE_TEXT = "No destination is set. Click a place on the ful
 export const DEMO_NOTE =
   "This page is a demonstration of the map views. It is not an application.";
 
-/** The guidance sentence, or a plain line when there is none. */
-export function guidanceText(sentence: string | undefined | null): string {
-  if (typeof sentence !== "string" || sentence.trim() === "") return NO_GUIDANCE_TEXT;
+export const GUIDANCE_NOT_AVAILABLE_TEXT = "The guidance is not available.";
+
+/**
+ * The guidance line of the status area. With a Route or a No_Way_Result the
+ * Engine's sentence is returned unchanged; with neither, the fixed line; an
+ * empty or non-text sentence gives the "not available" line.
+ */
+export function guidanceStatusText(sentence: unknown, hasRouteOrNoWay: boolean): string {
+  if (!hasRouteOrNoWay) return NO_GUIDANCE_TEXT;
+  if (typeof sentence !== "string" || sentence === "") return GUIDANCE_NOT_AVAILABLE_TEXT;
   return sentence;
 }
 
