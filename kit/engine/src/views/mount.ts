@@ -6,10 +6,27 @@
 // Mounting order, so a failure leaves nothing behind: validate every input,
 // build the View and the canvas adapter, set the canvas size, and only then
 // register side effects (observer, listeners, the first frame request).
+// Every Mount_Function runs through the same core (`mountView`).
 
-import { describeCanvas, type AccessibleElement } from "./accessibility.js";
+import {
+  createLiveRegion,
+  describeCanvas,
+  type AccessibleElement,
+  type LiveRegion,
+  type LiveRegionElement,
+  type ViewKind,
+} from "./accessibility.js";
 import { CanvasAdapter, type CanvasLike } from "./canvas-adapter.js";
+import type { Point } from "./camera.js";
+import {
+  FullMap,
+  type DestinationTarget,
+  type FullMapChange,
+  type FullMapSelectResult,
+  type FullMapSelection,
+} from "./full-map.js";
 import type { ImageLookup } from "./image-lookup.js";
+import { bindInput, type BindableCanvas } from "./input-binding.js";
 import {
   DEFAULT_MINIMAP_ZOOM_MAX,
   DEFAULT_MINIMAP_ZOOM_MIN,
@@ -73,6 +90,11 @@ export interface BaseMountOptions {
   onGuidance?(sentence: string): void;
   /** Loaded pictures: an object or a function from a picture reference to an entry. */
   images?: ImageLookup;
+  /**
+   * An element that becomes an `aria-live="polite"` region and receives the
+   * guidance sentence (and, for the Full_Map, the focus announcements).
+   */
+  liveRegion?: LiveRegionElement;
 }
 
 /** Options of `mountMinimap`. */
@@ -83,6 +105,16 @@ export interface MinimapMountOptions extends BaseMountOptions {
   maxZoom?: number;
   /** First zoom, inside the limits. Default 1. */
   zoom?: number;
+}
+
+/** Options of `mountFullMap`. */
+export interface FullMapMountOptions extends BaseMountOptions {
+  /** Lowest zoom, 0.001 to 1000 CSS pixels per world unit. Default: the zoom that fits the map. */
+  minZoom?: number;
+  /** Highest zoom, 0.001 to 1000 CSS pixels per world unit. Default 8. */
+  maxZoom?: number;
+  /** When given, called with each selection instead of setting the destination on the engine. */
+  onSelect?(selection: FullMapSelection): void;
 }
 
 /** What every Mount_Function returns when it succeeds. */
@@ -99,6 +131,24 @@ export interface MinimapHandle extends MountHandle {
   resize(): ViewError | undefined;
 }
 
+/** The handle of `mountFullMap`. Camera controls return a ViewError, or nothing when they worked. */
+export interface FullMapHandle extends MountHandle {
+  /** Moves the map by a screen distance in CSS pixels. */
+  pan(dx: number, dy: number): ViewError | undefined;
+  /** Multiplies the zoom by `factor`, keeping the world point under `anchor` fixed. */
+  zoomAt(anchor: Point, factor: number): ViewError | undefined;
+  /** Fits the whole map in the view. */
+  fit(): ViewError | undefined;
+  /** Centres the view on the player and keeps following until the next pan. */
+  follow(): ViewError | undefined;
+  /** Selects a spot (CSS pixels) or a place marker on it, as a click would. */
+  select(screenPoint: Point): FullMapSelectResult | ViewError;
+  /** Selects a place by identifier, as a hit on its marker would. */
+  selectPlace(placeId: string): FullMapSelectResult | ViewError;
+  /** Reads the CSS size of the canvas again and resizes the view. */
+  resize(): ViewError | undefined;
+}
+
 /** The part of a canvas element a mounted View uses. */
 export interface MountableCanvas extends CanvasLike, AccessibleElement {
   /** CSS width in pixels. */
@@ -106,6 +156,9 @@ export interface MountableCanvas extends CanvasLike, AccessibleElement {
   /** CSS height in pixels. */
   clientHeight: number;
 }
+
+/** A canvas that `mountFullMap` can bind pointer, wheel, touch and key input to. */
+export type FullMapCanvas = MountableCanvas & BindableCanvas;
 
 /** The part of an Engine a Minimap reads. */
 export interface MinimapEngine {
@@ -115,12 +168,17 @@ export interface MinimapEngine {
   getGuidanceSentence(): string;
 }
 
+/** The part of an Engine a Full_Map reads and writes. The real Engine satisfies it. */
+export interface FullMapEngine extends MinimapEngine, DestinationTarget {}
+
 const MINIMAP_ENGINE_FUNCTIONS = [
   "getMap",
   "getPosition",
   "getRemainingRoute",
   "getGuidanceSentence",
 ] as const;
+
+const FULL_MAP_ENGINE_FUNCTIONS = [...MINIMAP_ENGINE_FUNCTIONS, "setDestination"] as const;
 
 /** Canvases that have a mounted View. */
 const mountedCanvases = new WeakSet<object>();
@@ -227,6 +285,11 @@ function isMountableCanvas(value: unknown): value is MountableCanvas {
   );
 }
 
+/** A canvas that can also take input: it can say where it is on the page. */
+function isBindableCanvas(value: unknown): boolean {
+  return typeof (value as Record<string, unknown>)?.getBoundingClientRect === "function";
+}
+
 function checkEngine(engine: unknown, names: readonly string[]): ViewError | undefined {
   for (const name of names) {
     const found =
@@ -272,6 +335,17 @@ function checkBaseOptions(options: BaseMountOptions): ViewError | undefined {
   if (options.onGuidance !== undefined && typeof options.onGuidance !== "function") {
     return outOfRange("onGuidance", "a function");
   }
+  if (options.liveRegion !== undefined) {
+    const region = options.liveRegion as unknown as Record<string, unknown> | null;
+    if (
+      typeof region !== "object" ||
+      region === null ||
+      typeof region.setAttribute !== "function" ||
+      typeof region.removeAttribute !== "function"
+    ) {
+      return outOfRange("liveRegion", "an element that can take attributes and text");
+    }
+  }
   return checkImages(options.images);
 }
 
@@ -291,55 +365,89 @@ function minimapZoomPlan(options: MinimapMountOptions): { min: number; max: numb
   return { min, max, zoom };
 }
 
+/** The zoom limits the caller gave for a Full_Map; an absent one keeps the view's default. */
+function fullMapZoomPlan(options: FullMapMountOptions): { min?: number; max?: number } | ViewError {
+  const rule = `a number from ${ZOOM_RANGE_MIN} to ${ZOOM_RANGE_MAX}`;
+  if (options.minZoom !== undefined && !zoomInRange(options.minZoom)) return outOfRange("minZoom", rule);
+  if (options.maxZoom !== undefined && !zoomInRange(options.maxZoom)) return outOfRange("maxZoom", rule);
+  if (options.onSelect !== undefined && typeof options.onSelect !== "function") {
+    return outOfRange("onSelect", "a function");
+  }
+  return { min: options.minZoom, max: options.maxZoom };
+}
+
 // ---------------------------------------------------------------------------
-// mountMinimap
+// The mount core, shared by every Mount_Function
+
+/** What the core needs of a View. */
+interface CoreView {
+  resize(width: number, height: number): ViewError | undefined;
+  draw(canvas: CanvasAdapter, state: MinimapState, timestampMs: number): { notices: Notice[] } | ViewError;
+  getNotices(): Notice[];
+  /** Only the Views that smooth their camera have it. */
+  setReducedMotion?(reducedMotion: boolean): void;
+}
+
+/** What a Mount_Function adds to the core. */
+interface ViewSpec<V extends CoreView, P> {
+  kind: ViewKind;
+  engineFunctions: readonly string[];
+  /** Validates the options of this View, after the base options, and returns what `build` needs. */
+  plan(given: never): P | ViewError;
+  /** Builds the View for the map and the CSS size of the canvas. Touches nothing on the canvas. */
+  build(map: EngineMap, width: number, height: number, plan: P): V | ViewError;
+  /** Registers listeners of this View; returns the function that removes them. */
+  bind?(view: V, hooks: { report(notice: Notice): void; announce(text: string): void }): () => void;
+  /** Extra check of the canvas, run with the other canvas checks. */
+  checkCanvas?(canvas: unknown): ViewError | undefined;
+}
+
+interface MountCore<V> {
+  view: V;
+  isDestroyed(): boolean;
+  destroy(): void;
+  /** Reads the CSS size of the canvas again and resizes the View. */
+  applySize(): ViewError | undefined;
+}
 
 /**
- * Puts a Minimap on a canvas and starts its frame loop. The loop reads the
- * position, the remaining route and the guidance from the engine on every
- * frame; the application only feeds positions to the engine. Returns a
- * handle, or a ViewError and mounts nothing.
+ * Validates, builds, sizes and registers, in that order, and runs the frame
+ * loop. Returns a core the Mount_Function wraps in its handle, or a ViewError
+ * with nothing left behind.
  */
-export function mountMinimap(
+function mountView<V extends CoreView, P>(
   canvas: MountableCanvas,
-  engine: MinimapEngine,
-  options?: MinimapMountOptions,
-): MinimapHandle | ViewError {
+  engine: unknown,
+  options: unknown,
+  spec: ViewSpec<V, P>,
+): MountCore<V> | ViewError {
   // 1. Validate.
   if (!isMountableCanvas(canvas)) return notACanvas();
-  const engineError = checkEngine(engine, MINIMAP_ENGINE_FUNCTIONS);
+  const engineError = checkEngine(engine, spec.engineFunctions);
   if (engineError) return engineError;
   if (options !== undefined && (typeof options !== "object" || options === null || Array.isArray(options))) {
     return badOptions();
   }
-  const given: MinimapMountOptions = options ?? {};
+  const given = (options ?? {}) as BaseMountOptions;
   const optionError = checkBaseOptions(given);
   if (optionError) return optionError;
-  const plan = minimapZoomPlan(given);
+  const plan = spec.plan(given as never);
   if (isViewError(plan)) return plan;
+  const canvasError = spec.checkCanvas?.(canvas);
+  if (canvasError) return canvasError;
   if (mountedCanvases.has(canvas)) return canvasAlreadyMounted();
   const resolved = resolveServices(given.services);
   if (isViewError(resolved)) return resolved;
   const services = resolved;
-  const map = engine.getMap();
+  const reader = engine as MinimapEngine;
+  const map = reader.getMap();
   if (map === undefined) return noMapToShow();
 
   // 2. Build the View and the adapter. Nothing on the canvas has changed yet.
   const cssWidth = canvas.clientWidth;
   const cssHeight = canvas.clientHeight;
-  const minimap = Minimap.create(map, {
-    width: cssWidth,
-    height: cssHeight,
-    smoothingDurationMs: given.smoothingDurationMs,
-    images: given.images,
-  });
-  if (isViewError(minimap)) return minimap;
-  const limitsError = minimap.setZoomLimits(plan.min, plan.max);
-  if (limitsError) return limitsError;
-  if (plan.zoom !== undefined) {
-    const zoomError = minimap.setZoom(plan.zoom);
-    if (zoomError) return zoomError;
-  }
+  const view = spec.build(map, cssWidth, cssHeight, plan);
+  if (isViewError(view)) return view;
   const adapter = CanvasAdapter.mount(canvas);
   if (isViewError(adapter)) return adapter;
 
@@ -363,11 +471,13 @@ export function mountMinimap(
   let observer: { observe(element: unknown): void; disconnect(): void } | undefined;
   let motion: ReturnType<MountServices["matchReducedMotion"]> | undefined;
   let undescribe: (() => void) | undefined;
+  let unbind: (() => void) | undefined;
+  let live: LiveRegion | undefined;
   let lastProblem: string | undefined;
   let lastSentence: string | undefined;
 
   const applyMotion = (): void => {
-    if (motion !== undefined) minimap.setReducedMotion(motion.matches);
+    if (motion !== undefined) view.setReducedMotion?.(motion.matches);
   };
 
   const applySize = (): ViewError | undefined => {
@@ -375,7 +485,7 @@ export function mountMinimap(
     const height = canvas.clientHeight;
     const result = adapter.resize(width, height, services.devicePixelRatio());
     if (isViewError(result)) return result;
-    const error = minimap.resize(width, height);
+    const error = view.resize(width, height);
     if (error) return error;
     for (const notice of result.notices) report(notice);
     return undefined;
@@ -388,11 +498,12 @@ export function mountMinimap(
   };
 
   const runFrame = (timestampMs: number): void => {
-    const position = engine.getPosition();
-    const remainingRoute = engine.getRemainingRoute();
-    const sentence = engine.getGuidanceSentence();
+    const position = reader.getPosition();
+    const remainingRoute = reader.getRemainingRoute();
+    const sentence = reader.getGuidanceSentence();
     if (sentence !== lastSentence) {
       lastSentence = sentence;
+      live?.setGuidance(sentence);
       try {
         given.onGuidance?.(sentence);
       } catch {
@@ -406,7 +517,7 @@ export function mountMinimap(
       remainingRoute,
       destinationPlaceId: destination !== undefined && "placeId" in destination ? destination.placeId : undefined,
     };
-    const drawn = minimap.draw(adapter, state, timestampMs);
+    const drawn = view.draw(adapter, state, timestampMs);
     if (isViewError(drawn)) {
       if (drawn.message !== lastProblem) {
         lastProblem = drawn.message;
@@ -441,20 +552,33 @@ export function mountMinimap(
     }
     if (motion !== undefined) motion.removeListener(applyMotion);
     if (observer !== undefined) observer.disconnect();
+    if (unbind !== undefined) unbind();
     if (undescribe !== undefined) undescribe();
+    if (live !== undefined) live.dispose();
     motion = undefined;
     observer = undefined;
+    unbind = undefined;
     undescribe = undefined;
+    live = undefined;
     mountedCanvases.delete(canvas);
   };
 
   try {
-    undescribe = describeCanvas(canvas, "minimap");
+    undescribe = describeCanvas(canvas, spec.kind);
+    if (given.liveRegion !== undefined) live = createLiveRegion(given.liveRegion);
     observer = services.createResizeObserver(onSizeChange);
     observer.observe(canvas);
-    motion = services.matchReducedMotion();
-    applyMotion();
-    motion.addListener(applyMotion);
+    if (view.setReducedMotion !== undefined) {
+      motion = services.matchReducedMotion();
+      applyMotion();
+      motion.addListener(applyMotion);
+    }
+    unbind = spec.bind?.(view, {
+      report,
+      announce: (text) => {
+        if (!isDestroyed) live?.announce(text);
+      },
+    });
     mountedCanvases.add(canvas);
     schedule();
   } catch {
@@ -465,17 +589,152 @@ export function mountMinimap(
     return serviceFailed();
   }
 
-  for (const notice of minimap.getNotices()) report(notice);
+  for (const notice of view.getNotices()) report(notice);
   for (const notice of sized.notices) report(notice);
 
   return {
+    view,
+    isDestroyed: () => isDestroyed,
     destroy(): void {
       if (isDestroyed) return;
       isDestroyed = true;
       teardown();
     },
-    setZoom: (zoom) => (isDestroyed ? destroyed() : minimap.setZoom(zoom)),
-    setZoomLimits: (min, max) => (isDestroyed ? destroyed() : minimap.setZoomLimits(min, max)),
-    resize: () => (isDestroyed ? destroyed() : applySize()),
+    applySize,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// mountMinimap
+
+/**
+ * Puts a Minimap on a canvas and starts its frame loop. The loop reads the
+ * position, the remaining route and the guidance from the engine on every
+ * frame; the application only feeds positions to the engine. Returns a
+ * handle, or a ViewError and mounts nothing.
+ */
+export function mountMinimap(
+  canvas: MountableCanvas,
+  engine: MinimapEngine,
+  options?: MinimapMountOptions,
+): MinimapHandle | ViewError {
+  const core = mountView<Minimap, { min: number; max: number; zoom?: number }>(
+    canvas,
+    engine,
+    options,
+    {
+      kind: "minimap",
+      engineFunctions: MINIMAP_ENGINE_FUNCTIONS,
+      plan: (given: MinimapMountOptions) => minimapZoomPlan(given),
+      build(map, width, height, plan) {
+        const minimap = Minimap.create(map, {
+          width,
+          height,
+          smoothingDurationMs: options?.smoothingDurationMs,
+          images: options?.images,
+        });
+        if (isViewError(minimap)) return minimap;
+        const limitsError = minimap.setZoomLimits(plan.min, plan.max);
+        if (limitsError) return limitsError;
+        if (plan.zoom !== undefined) {
+          const zoomError = minimap.setZoom(plan.zoom);
+          if (zoomError) return zoomError;
+        }
+        return minimap;
+      },
+    },
+  );
+  if (isViewError(core)) return core;
+  const { view, isDestroyed } = core;
+  return {
+    destroy: core.destroy,
+    setZoom: (zoom) => (isDestroyed() ? destroyed() : view.setZoom(zoom)),
+    setZoomLimits: (min, max) => (isDestroyed() ? destroyed() : view.setZoomLimits(min, max)),
+    resize: () => (isDestroyed() ? destroyed() : core.applySize()),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// mountFullMap
+
+/**
+ * Puts a Full_Map on a canvas, binds its mouse, touch and keyboard input and
+ * starts its frame loop. A selection goes to the engine as a destination
+ * (or to `onSelect`, when given). Returns a handle, or a ViewError and
+ * mounts nothing.
+ */
+export function mountFullMap(
+  canvas: FullMapCanvas,
+  engine: FullMapEngine,
+  options?: FullMapMountOptions,
+): FullMapHandle | ViewError {
+  const core = mountView<FullMap, { min?: number; max?: number }>(
+    canvas,
+    engine,
+    options,
+    {
+      kind: "fullMap",
+      engineFunctions: FULL_MAP_ENGINE_FUNCTIONS,
+      plan: (given: FullMapMountOptions) => fullMapZoomPlan(given),
+      checkCanvas: (candidate) =>
+        isBindableCanvas(candidate) ? undefined : outOfRange("canvas", "a canvas element that can take input"),
+      build(map, width, height, plan) {
+        const view = FullMap.create(map, {
+          engine,
+          onSelect: options?.onSelect,
+          width,
+          height,
+          images: options?.images,
+        });
+        if (isViewError(view)) return view;
+        if (plan.min !== undefined || plan.max !== undefined) {
+          const limits = view.getZoomLimits();
+          const error = view.setZoomLimits(plan.min ?? limits.min, plan.max ?? limits.max);
+          if (error) return error;
+        }
+        return view;
+      },
+      bind(view, hooks) {
+        return bindInput(canvas, view, {
+          onChange: (change) => {
+            if (isViewError(change)) {
+              hooks.report({ message: change.message });
+              return;
+            }
+            for (const notice of change.notices) hooks.report(notice);
+            if (change.announcement !== undefined) hooks.announce(change.announcement);
+          },
+          onSelectResult: (result) => {
+            if (isViewError(result)) hooks.report({ message: result.message });
+            else if (result.noWayMessage !== undefined) hooks.report({ message: result.noWayMessage });
+          },
+        });
+      },
+    },
+  );
+  if (isViewError(core)) return core;
+  const { view, isDestroyed } = core;
+
+  const change = (result: FullMapChange | ViewError): ViewError | undefined => {
+    if (isViewError(result)) return result;
+    for (const notice of result.notices) {
+      try {
+        options?.onNotice?.(notice);
+      } catch {
+        // A failing callback of the application must not stop the view.
+      }
+    }
+    return undefined;
+  };
+
+  return {
+    destroy: core.destroy,
+    pan: (dx, dy) => (isDestroyed() ? destroyed() : change(view.pan(dx, dy))),
+    zoomAt: (anchor, factor) => (isDestroyed() ? destroyed() : change(view.zoomAt(anchor, factor))),
+    fit: () => (isDestroyed() ? destroyed() : change(view.fit())),
+    follow: () => (isDestroyed() ? destroyed() : change(view.follow())),
+    select: (screenPoint) => (isDestroyed() ? destroyed() : view.select(screenPoint)),
+    selectPlace: (placeId) => (isDestroyed() ? destroyed() : view.selectPlace(placeId)),
+    resize: () => (isDestroyed() ? destroyed() : core.applySize()),
   };
 }

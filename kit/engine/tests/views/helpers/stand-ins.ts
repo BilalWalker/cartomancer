@@ -240,3 +240,43 @@ export function makeStandIns(options: { reducedMotion?: boolean; pixelRatio?: nu
     },
   };
 }
+
+/** A canvas that also keeps its listeners, so a test can send it events. */
+export class FakeInputCanvas extends FakeCanvas {
+  style: { outline?: string; outlineOffset?: string; touchAction?: string } = {};
+  private readonly handlers = new Map<string, Set<(event: never) => void>>();
+
+  getBoundingClientRect(): { left: number; top: number } {
+    return { left: 0, top: 0 };
+  }
+  addEventListener(type: string, listener: (event: never) => void): void {
+    super.addEventListener(type, listener as () => void);
+    const set = this.handlers.get(type) ?? new Set();
+    set.add(listener);
+    this.handlers.set(type, set);
+  }
+  removeEventListener(type: string, listener: (event: never) => void): void {
+    super.removeEventListener(type, listener as () => void);
+    this.handlers.get(type)?.delete(listener);
+  }
+  /** How many listeners of this type are attached now. */
+  listenersOf(type: string): number {
+    return this.handlers.get(type)?.size ?? 0;
+  }
+  /** Sends an event to every listener of its type; returns true when preventDefault was called. */
+  dispatch(type: string, fields: Record<string, unknown> = {}): boolean {
+    let prevented = false;
+    const event = { ...fields, preventDefault: () => (prevented = true) };
+    for (const listener of [...(this.handlers.get(type) ?? [])]) listener(event as never);
+    return prevented;
+  }
+}
+
+/** A FakeEngine that also takes destinations, like the real Engine. */
+export class FakeDestinationEngine extends FakeEngine {
+  destinations: unknown[] = [];
+  setDestination(destination: unknown): never {
+    this.destinations.push(destination);
+    return { reason: "no-way", message: "There is no way to get there." } as never;
+  }
+}

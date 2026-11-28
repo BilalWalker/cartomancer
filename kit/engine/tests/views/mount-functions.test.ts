@@ -1,12 +1,22 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Engine } from "../../src/engine.js";
 import {
+  mountFullMap,
   mountMinimap,
+  type FullMapHandle,
+  type FullMapMountOptions,
   type MinimapHandle,
   type MinimapMountOptions,
 } from "../../src/views/mount.js";
 import { isViewError, type Notice, type ViewError } from "../../src/views/view-errors.js";
-import { FakeCanvas, FakeEngine, makeStandIns, type StandIns } from "./helpers/stand-ins.js";
+import {
+  FakeCanvas,
+  FakeDestinationEngine,
+  FakeEngine,
+  FakeInputCanvas,
+  makeStandIns,
+  type StandIns,
+} from "./helpers/stand-ins.js";
 
 interface Mounted {
   canvas: FakeCanvas;
@@ -601,5 +611,354 @@ describe("mountMinimap: default services", () => {
     expect(canvas.context.calls).toBeGreaterThan(afterMount + 10);
     handle.destroy();
     expect(cancelled).toEqual([2]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mountFullMap
+
+class FakeLiveRegion {
+  textContent: string | null = null;
+  readonly attributes = new Map<string, string>();
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+  removeAttribute(name: string): void {
+    this.attributes.delete(name);
+  }
+}
+
+interface MountedFull {
+  canvas: FakeInputCanvas;
+  engine: FakeDestinationEngine;
+  stand: StandIns;
+  handle: FullMapHandle;
+  region: FakeLiveRegion;
+  notices: Notice[];
+}
+
+function mountFull(
+  options: FullMapMountOptions = {},
+  setup: { canvas?: FakeInputCanvas; engine?: FakeDestinationEngine; stand?: StandIns } = {},
+): MountedFull {
+  const canvas = setup.canvas ?? new FakeInputCanvas();
+  const engine = setup.engine ?? new FakeDestinationEngine();
+  const stand = setup.stand ?? makeStandIns();
+  const region = new FakeLiveRegion();
+  const notices: Notice[] = [];
+  const handle = mountFullMap(canvas, engine, {
+    services: stand.services,
+    liveRegion: region,
+    onNotice: (notice) => notices.push(notice),
+    ...options,
+  });
+  if (isViewError(handle)) throw new Error(handle.message);
+  return { canvas, engine, stand, handle, region, notices };
+}
+
+const INPUT_EVENT_TYPES = [
+  "pointerdown",
+  "pointermove",
+  "pointerup",
+  "pointercancel",
+  "wheel",
+  "touchstart",
+  "touchmove",
+  "touchend",
+  "touchcancel",
+  "keydown",
+];
+
+describe("mountFullMap: a valid mount", () => {
+  it("sizes and describes the canvas, binds the input and requests one frame", () => {
+    const { canvas, stand } = mountFull();
+    expect(canvas.width).toBe(200);
+    expect(canvas.attributes.get("aria-label")).toBe("Full map");
+    expect(canvas.attributes.get("tabindex")).toBe("0");
+    expect(canvas.style.touchAction).toBe("none");
+    for (const type of INPUT_EVENT_TYPES) expect(canvas.listenersOf(type)).toBe(1);
+    expect(stand.scheduler.pending).toBe(1);
+  });
+
+  it("returns a handle with the full map controls", () => {
+    const { handle } = mountFull();
+    for (const name of ["pan", "zoomAt", "fit", "follow", "select", "selectPlace", "destroy"] as const) {
+      expect(typeof handle[name]).toBe("function");
+    }
+  });
+
+  it("makes the live region polite and shows the guidance sentence once per change", () => {
+    const { region, engine, stand } = mountFull();
+    expect(region.attributes.get("aria-live")).toBe("polite");
+    stand.scheduler.runFrame(0);
+    expect(region.textContent).toBe("Go straight on.");
+    engine.sentence = "Turn left.";
+    stand.scheduler.runFrame(16);
+    expect(region.textContent).toBe("Turn left.");
+  });
+
+  it("draws a frame and reads the engine on each frame", () => {
+    const { canvas, engine, stand } = mountFull();
+    const afterMount = canvas.context.calls;
+    stand.scheduler.runFrame(0);
+    expect(canvas.context.calls).toBeGreaterThan(afterMount + 10);
+    expect(engine.reads.position).toBe(1);
+  });
+
+  it("works with a real Engine as the destination target", () => {
+    const engine = new Engine();
+    const text = JSON.stringify({
+      formatVersion: 1,
+      nodes: [
+        { id: "a", x: 0, y: 0 },
+        { id: "b", x: 100, y: 0 },
+      ],
+      roads: [{ id: "r1", fromNodeId: "a", toNodeId: "b", width: 6, kind: "main" }],
+      places: [{ id: "p1", name: "Bank", category: "shop", x: 100, y: 0 }],
+      blockedAreas: [],
+      props: [],
+      style: { colors: {}, lineStyles: {} },
+    });
+    expect("map" in engine.loadMap(text)).toBe(true);
+    engine.feedPosition({ x: 0, y: 0, headingDegrees: 0 }, 0);
+    const canvas = new FakeInputCanvas();
+    const stand = makeStandIns();
+    const handle = mountFullMap(canvas, engine, { services: stand.services });
+    if (isViewError(handle)) throw new Error(handle.message);
+    const result = handle.selectPlace("p1");
+    expect(isViewError(result)).toBe(false);
+    expect(engine.getRemainingRoute()).toBeDefined();
+    handle.destroy();
+  });
+});
+
+describe("mountFullMap: input is bound", () => {
+  it("sends the place keys to the view and announces them in the live region", () => {
+    const { canvas, engine, region } = mountFull();
+    expect(canvas.dispatch("keydown", { key: "]" })).toBe(true);
+    expect(region.textContent).toContain("Focused place: Bakery");
+    canvas.dispatch("keydown", { key: "Enter" });
+    expect(engine.destinations).toEqual([{ placeId: "p1" }]);
+    expect(region.textContent).toBe("There is no way to get there.");
+  });
+
+  it("announces that no place is marked when Enter is pressed first", () => {
+    const { canvas, engine, region } = mountFull();
+    canvas.dispatch("keydown", { key: "Enter" });
+    expect(engine.destinations).toEqual([]);
+    expect(region.textContent).toContain("No place is selected");
+  });
+
+  it("lets the browser handle a key the map does not use", () => {
+    const { canvas } = mountFull();
+    expect(canvas.dispatch("keydown", { key: "q" })).toBe(false);
+  });
+
+  it("moves the camera with a key, so the next frame is drawn again", () => {
+    const { canvas, stand } = mountFull();
+    stand.scheduler.runFrame(0);
+    stand.scheduler.runFrame(16);
+    const still = canvas.context.calls;
+    canvas.dispatch("keydown", { key: "+" });
+    stand.scheduler.runFrame(32);
+    expect(canvas.context.calls).toBeGreaterThan(still);
+  });
+
+  it("stops the page from scrolling on a wheel event", () => {
+    const { canvas } = mountFull();
+    expect(canvas.dispatch("wheel", { clientX: 10, clientY: 10, deltaY: -100 })).toBe(true);
+  });
+
+});
+
+describe("mountFullMap: the handle controls reach the view", () => {
+  it("moves, zooms, fits and follows, and the next frame is drawn again", () => {
+    const { canvas, stand, handle } = mountFull();
+    stand.scheduler.runFrame(0);
+    let calls = canvas.context.calls;
+    const steps: Array<() => ViewError | undefined> = [
+      () => handle.zoomAt({ x: 100, y: 100 }, 2),
+      () => handle.pan(20, 10),
+      () => handle.follow(),
+      () => handle.fit(),
+    ];
+    let time = 16;
+    for (const step of steps) {
+      expect(step()).toBeUndefined();
+      stand.scheduler.runFrame(time);
+      time += 16;
+      expect(canvas.context.calls).toBeGreaterThan(calls);
+      calls = canvas.context.calls;
+    }
+  });
+
+  it("returns a plain error for a zoom factor that cannot be used", () => {
+    const { handle } = mountFull();
+    const error = handle.zoomAt({ x: 1, y: 1 }, 0);
+    expect(isViewError(error)).toBe(true);
+  });
+
+  it("reports a zoom limit as a notice and still returns nothing", () => {
+    const { handle, notices } = mountFull();
+    const before = notices.length;
+    expect(handle.zoomAt({ x: 100, y: 100 }, 1000)).toBeUndefined();
+    expect(notices.length).toBe(before + 1);
+    expect(notices[before]!.message).toContain("highest zoom");
+  });
+
+  it("selects a place through the engine, and a spot as a point", () => {
+    const { handle, engine } = mountFull();
+    const result = handle.selectPlace("p2");
+    expect(isViewError(result)).toBe(false);
+    expect(engine.destinations).toEqual([{ placeId: "p2" }]);
+  });
+
+  it("gives the selection to onSelect instead of the engine when it is set", () => {
+    const heard: unknown[] = [];
+    const { handle, engine } = mountFull({ onSelect: (selection) => heard.push(selection) });
+    handle.selectPlace("p1");
+    expect(heard).toEqual([{ kind: "place", placeId: "p1" }]);
+    expect(engine.destinations).toEqual([]);
+  });
+
+  it("reads the CSS size again on resize()", () => {
+    const { canvas, handle } = mountFull();
+    canvas.clientWidth = 120;
+    canvas.clientHeight = 90;
+    expect(handle.resize()).toBeUndefined();
+    expect(canvas.width).toBe(120);
+    expect(canvas.height).toBe(90);
+  });
+
+  it("applies the zoom limits given as options", () => {
+    mountFull({ minZoom: 0.5, maxZoom: 2 });
+    const refused = mountFullMap(new FakeInputCanvas(), new FakeDestinationEngine(), {
+      services: makeStandIns().services,
+      minZoom: 3,
+      maxZoom: 2,
+    });
+    expect(isViewError(refused)).toBe(true);
+  });
+});
+
+describe("mountFullMap: destroy", () => {
+  it("removes every listener the input binding added and restores the canvas", () => {
+    const { canvas, stand, handle, region } = mountFull();
+    stand.scheduler.runFrame(0);
+    handle.destroy();
+    for (const type of INPUT_EVENT_TYPES) expect(canvas.listenersOf(type)).toBe(0);
+    expect(canvas.listenersOf("focus")).toBe(0);
+    expect(canvas.listenersOf("blur")).toBe(0);
+    expect(canvas.openListeners).toBe(0);
+    expect(canvas.listenerRemoves).toBe(canvas.listenerAdds);
+    expect(canvas.style.touchAction).toBeUndefined();
+    expect(canvas.attributes.size).toBe(0);
+    expect(region.attributes.size).toBe(0);
+    expect(region.textContent).toBe("");
+    expect(stand.scheduler.pending).toBe(0);
+    expect(stand.observers.active).toBe(0);
+  });
+
+  it("does nothing on a second call, and keys after destroy reach nothing", () => {
+    const { canvas, engine, handle } = mountFull();
+    handle.destroy();
+    const removes = canvas.listenerRemoves;
+    expect(handle.destroy()).toBeUndefined();
+    expect(canvas.listenerRemoves).toBe(removes);
+    canvas.dispatch("keydown", { key: "]" });
+    canvas.dispatch("keydown", { key: "Enter" });
+    expect(engine.destinations).toEqual([]);
+  });
+
+  it("makes every control return a destroyed error", () => {
+    const { handle } = mountFull();
+    handle.destroy();
+    const results = [
+      handle.pan(1, 1),
+      handle.zoomAt({ x: 1, y: 1 }, 2),
+      handle.fit(),
+      handle.follow(),
+      handle.select({ x: 1, y: 1 }),
+      handle.selectPlace("p1"),
+      handle.resize(),
+    ];
+    for (const result of results) {
+      expect(isViewError(result)).toBe(true);
+      expect((result as ViewError).message).toContain("destroyed");
+    }
+  });
+
+  it("frees the canvas so it can be mounted again", () => {
+    const canvas = new FakeInputCanvas();
+    mountFull({}, { canvas }).handle.destroy();
+    expect(mountFull({}, { canvas }).stand.scheduler.pending).toBe(1);
+  });
+});
+
+describe("mountFullMap: refused input leaves nothing behind", () => {
+  function refusedFull(
+    options: unknown,
+    setup: { canvas?: unknown; engine?: unknown } = {},
+  ): { error: ViewError; canvas: FakeInputCanvas; stand: StandIns } {
+    const canvas = "canvas" in setup ? (setup.canvas as FakeInputCanvas) : new FakeInputCanvas();
+    const engine = "engine" in setup ? setup.engine : new FakeDestinationEngine();
+    const stand = makeStandIns();
+    const result = mountFullMap(canvas as never, engine as never, { services: stand.services, ...(options as object) });
+    if (!isViewError(result)) throw new Error("the mount was expected to be refused");
+    return { error: result, canvas: canvas as FakeInputCanvas, stand };
+  }
+
+  it("refuses an engine that cannot take a destination and names the function", () => {
+    const engine = new FakeEngine();
+    const { error, canvas, stand } = refusedFull({}, { engine });
+    expect(error.message).toContain('"setDestination"');
+    expect(stand.scheduler.requested).toBe(0);
+    expect(canvas.listenerAdds).toBe(0);
+    expect(canvas.attributes.size).toBe(0);
+  });
+
+  it("refuses a canvas that cannot take input", () => {
+    const { error, canvas } = refusedFull({}, { canvas: new FakeCanvas() });
+    expect(error.message).toContain('"canvas"');
+    expect(canvas.listenerAdds).toBe(0);
+  });
+
+  it("refuses a zoom limit outside 0.001 to 1000 and an onSelect that is not a function", () => {
+    for (const bad of [0, 1001, Number.NaN]) {
+      const { error, canvas } = refusedFull({ minZoom: bad });
+      expect(error.message).toContain('"minZoom"');
+      expect(canvas.listenerAdds).toBe(0);
+    }
+    expect(refusedFull({ onSelect: 5 }).error.message).toContain('"onSelect"');
+  });
+
+  it("refuses a live region that is not an element", () => {
+    const { error, canvas } = refusedFull({ liveRegion: 5 });
+    expect(error.message).toContain('"liveRegion"');
+    expect(canvas.listenerAdds).toBe(0);
+  });
+
+  it("refuses a canvas that already has a view", () => {
+    const canvas = new FakeInputCanvas();
+    mountFull({}, { canvas });
+    const { error } = refusedFull({}, { canvas });
+    expect(error.message).toContain("already has a view");
+  });
+
+  it("leaves nothing behind when a service fails in the middle of mounting", () => {
+    const stand = makeStandIns();
+    const canvas = new FakeInputCanvas();
+    const failing = {
+      ...stand.services,
+      createResizeObserver: () => {
+        throw new Error("no observer");
+      },
+    };
+    const { error } = refusedFull({ services: failing }, { canvas });
+    expect(error.message).toContain("failed");
+    expect(canvas.openListeners).toBe(0);
+    expect(canvas.attributes.size).toBe(0);
+    expect(canvas.width).toBe(300);
+    mountFull({}, { canvas });
   });
 });

@@ -64,6 +64,50 @@ minimap.setZoom(3); // returns a ViewError when 3 is outside the zoom limits
 minimap.destroy(); // stops the loop and removes everything the mount added
 ```
 
+### `mountFullMap`
+
+Puts a Full_Map on a canvas: a north-up map the player can pan and zoom, with the route line,
+the player, the markers and the place names. It binds mouse, touch and keyboard input to the
+canvas (drag to pan, wheel or pinch to zoom, click or tap to choose a destination, and the keys
+of the canvas description: arrows, plus, minus, Home, F, the square brackets and Enter). A
+selection goes to the engine as a destination; the view finds no route itself.
+
+- Inputs: `mountFullMap(canvas, engine, options?)`.
+  - `canvas`: as for `mountMinimap`, and it must also take input (`getBoundingClientRect`, a
+    `style`, pointer, wheel, touch and key events). A real canvas element does.
+  - `engine`: an `Engine` with a map loaded. It must offer the four functions of `mountMinimap`
+    and `setDestination`.
+  - `options`: see "Options" below. `liveRegion` should be given so that a screen reader hears
+    the guidance sentence and the place focus announcements.
+- Outputs: a `FullMapHandle`, or a `ViewError`.
+- Errors: those of `mountMinimap` (except the first-zoom ones), an engine without
+  `setDestination`, a canvas that cannot take input, a zoom limit outside its range, an
+  `onSelect` that is not a function, a `liveRegion` that is not an element.
+
+```ts
+import { Engine } from "./index.js";
+import { mountFullMap } from "./views/mount.js";
+
+const engine = new Engine();
+engine.loadMap(mapText);
+engine.feedPosition({ x: 0, y: 0, headingDegrees: 0 }, performance.now());
+
+const canvas = document.querySelector("canvas")!;
+const liveRegion = document.querySelector("#guidance")!; // becomes aria-live="polite"
+const fullMap = mountFullMap(canvas, engine, {
+  liveRegion,
+  onNotice: (notice) => console.warn(notice.message),
+});
+if ("message" in fullMap) throw new Error(fullMap.message); // a plain ViewError
+
+// Clicks, taps, wheel and keys now work on the canvas.
+fullMap.selectPlace("bank"); // same as clicking the marker; the engine finds the route
+fullMap.zoomAt({ x: 200, y: 150 }, 1.25); // keeps the point under (200, 150) fixed
+fullMap.follow(); // keep the player centred until the next pan
+fullMap.fit(); // show the whole map
+fullMap.destroy(); // stops the loop and removes the input listeners too
+```
+
 ## Options
 
 Every option is optional.
@@ -75,9 +119,15 @@ Every option is optional.
 | `services` | all | an object with some or all of the five services, see "Services" | the real browser globals |
 | `onNotice` | all | a function called with `{ message }` for each notice and drawing problem | none |
 | `onGuidance` | all | a function called with the guidance sentence whenever it changes | none |
+| `liveRegion` | all | an element; it becomes an `aria-live="polite"` region and receives the guidance sentence (and, for the full map, the focus announcements) | none |
 | `minZoom` | `mountMinimap` | number from 0.001 to 1000 | 0.5 (or the first zoom, if lower) |
 | `maxZoom` | `mountMinimap` | number from 0.001 to 1000, above `minZoom` | 4 (or the first zoom, if higher) |
 | `zoom` | `mountMinimap` | number from 0.001 to 1000, inside the zoom limits | 1 |
+| `minZoom` | `mountFullMap` | number from 0.001 to 1000 | the zoom that fits the whole map |
+| `maxZoom` | `mountFullMap` | number from 0.001 to 1000, above `minZoom` | 8 |
+| `onSelect` | `mountFullMap` | a function called with each selection instead of setting the engine destination | none |
+
+`smoothingDurationMs` has no effect on the full map, which does not smooth its camera.
 
 A rejected option returns a `ViewError` that names the option and its range.
 
@@ -95,6 +145,21 @@ Every handle has `destroy()`. The controls return a `ViewError`, or nothing when
   1000 and `min` is below `max`. A zoom outside the new limits moves to the nearest limit.
 - `resize()`: reads the CSS size of the canvas again and resizes the View. The View also does
   this by itself when the CSS size of the canvas changes.
+
+`FullMapHandle` (plus `destroy()` as above; `destroy()` also removes every input listener and
+restores the canvas `touch-action`):
+
+- `pan(dx, dy)`: moves the map by a screen distance in CSS pixels; ends following.
+- `zoomAt(anchor, factor)`: multiplies the zoom by `factor` (finite, above 0), keeping the world
+  point under `anchor` fixed. A zoom past a limit is set to the limit and reported as a notice.
+- `fit()`: shows the whole map. `follow()`: centres on the player until the next pan.
+- `select(screenPoint)`: chooses a place marker or a spot, as a click does. Returns the result
+  (`selection`, `handled`, `route` or `noWayMessage`) or a `ViewError`.
+- `selectPlace(placeId)`: chooses a place by identifier, as a hit on its marker does.
+- `resize()`: as for the minimap.
+
+`pan`, `zoomAt`, `fit`, `follow` and `resize` return a `ViewError`, or nothing when they worked;
+their notices go to `onNotice`.
 
 After `destroy()` every control returns a `ViewError` that says the view has been destroyed.
 
