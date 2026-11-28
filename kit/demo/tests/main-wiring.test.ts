@@ -10,9 +10,11 @@ interface FakeCanvas {
   name: string;
 }
 
-function setup(options: { focused?: () => boolean; failMinimap?: boolean } = {}) {
+function setup(options: { focused?: () => boolean; failMinimap?: boolean; initialTilt?: number } = {}) {
   const engine = new Engine();
   const calls: string[] = [];
+  const tiltMounts: Array<number | undefined> = [];
+  const tiltCalls: number[] = [];
   const destroyed: string[] = [];
   const handle = (name: string) => ({
     destroy: () => {
@@ -29,9 +31,17 @@ function setup(options: { focused?: () => boolean; failMinimap?: boolean } = {})
       calls.push(canvas.name);
       return handle("fullMap") as never;
     },
-    mountTiltedView(canvas: FakeCanvas) {
+    mountTiltedView(canvas: FakeCanvas, _engine: Engine, opts?: { tiltAngleDegrees?: number }) {
       calls.push(canvas.name);
-      return handle("tilted") as never;
+      tiltMounts.push(opts?.tiltAngleDegrees);
+      return {
+        ...handle("tilted"),
+        setTiltAngle: (degrees: number) => {
+          tiltCalls.push(degrees);
+          if (degrees < 20 || degrees > 70) return { message: "The tilt angle must be from 20 to 70 degrees." } as ViewError;
+          return undefined;
+        },
+      } as never;
     },
   } as Mounts<FakeCanvas>;
   const text = () => ({ textContent: "" as string | null });
@@ -52,8 +62,9 @@ function setup(options: { focused?: () => boolean; failMinimap?: boolean } = {})
     reducedMotionQuery: { matches: false },
     requestFrame: () => 1,
     cancelFrame: () => {},
+    ...(options.initialTilt === undefined ? {} : { initialTiltDegrees: options.initialTilt }),
   };
-  return { demo: createDemo(deps), engine, calls, destroyed, status };
+  return { demo: createDemo(deps), engine, calls, destroyed, status, tiltMounts, tiltCalls };
 }
 
 const key = (name: string) => ({ key: name, preventDefault: () => {} });
@@ -135,6 +146,44 @@ describe("demo wiring", () => {
     demo.loadChoice("town");
     expect(demo.setSpeedText("500")).toContain("1 to 200");
     expect(demo.setSpeedText("60")).toBeNull();
+  });
+
+  it("passes the slider value to the tilted mount, default 35", () => {
+    const first = setup();
+    first.demo.loadChoice("town");
+    expect(first.tiltMounts).toEqual([35]);
+    const second = setup({ initialTilt: 50 });
+    second.demo.loadChoice("town");
+    expect(second.tiltMounts).toEqual([50]);
+  });
+
+  it("a tilt change calls setTiltAngle once and does not mount again", () => {
+    const { demo, calls, tiltCalls, tiltMounts } = setup();
+    demo.loadChoice("town");
+    expect(demo.setTiltAngle(55)).toBeNull();
+    expect(tiltCalls).toEqual([55]);
+    expect(calls.length).toBe(3);
+    expect(tiltMounts.length).toBe(1);
+    expect(demo.tiltDegrees).toBe(55);
+  });
+
+  it("a refused tilt shows the message and keeps the previous value", () => {
+    const { demo, status } = setup();
+    demo.loadChoice("town");
+    demo.setTiltAngle(50);
+    expect(demo.setTiltAngle(80)).toContain("20 to 70");
+    expect(status.errors.textContent).toContain("20 to 70");
+    expect(demo.tiltDegrees).toBe(50);
+    expect(demo.setTiltAngle(60)).toBeNull();
+    expect(status.errors.textContent).toBe("");
+  });
+
+  it("a map change mounts the tilted view with the current tilt", () => {
+    const { demo, tiltMounts } = setup();
+    demo.loadChoice("town");
+    demo.setTiltAngle(45);
+    demo.loadChoice("town");
+    expect(tiltMounts).toEqual([35, 45]);
   });
 
   it("main.ts mounts only through the mount functions", () => {

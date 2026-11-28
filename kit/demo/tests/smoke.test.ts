@@ -45,6 +45,19 @@ describe("demo page layout", () => {
     expect(css).toMatch(/overflow-x:\s*hidden/);
   });
 
+  it("has a labelled tilt slider from 20 to 70, step 1, default 35", () => {
+    expect(html).toContain('<label for="tilt-input">Tilt angle</label>');
+    expect(html).toMatch(/<input id="tilt-input" type="range" min="20" max="70" step="1" value="35"/);
+    expect(html).toContain('id="tilt-value"');
+    expect(html).toContain("35 degrees");
+  });
+
+  it("gives the tilt slider a 44 px height and keeps it inside the page width", () => {
+    expect(css).toMatch(/input\[type="range"\][^}]*min-height:\s*44px/);
+    expect(css).toMatch(/input\[type="range"\][^}]*min-width:\s*0/);
+    expect(css).toMatch(/input\[type="range"\][^}]*max-width:\s*100%/);
+  });
+
   it("shows three columns from 1200 px", () => {
     expect(css).toMatch(/@media \(min-width:\s*1200px\)/);
     expect(css).toMatch(/repeat\(3,/);

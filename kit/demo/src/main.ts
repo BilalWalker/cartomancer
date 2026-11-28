@@ -16,6 +16,8 @@ const fullMap = element<HTMLCanvasElement>("fullmap-canvas");
 const tilted = element<HTMLCanvasElement>("tilted-canvas");
 const mapChoice = element<HTMLSelectElement>("map-choice");
 const speedInput = element<HTMLInputElement>("speed-input");
+const tiltInput = element<HTMLInputElement>("tilt-input");
+const tiltValue = element<HTMLElement>("tilt-value");
 
 const demo = createDemo<HTMLCanvasElement>({
   engine: new Engine(),
@@ -34,7 +36,9 @@ const demo = createDemo<HTMLCanvasElement>({
     return active === minimap || active === fullMap || active === tilted;
   },
   reducedMotionQuery: window.matchMedia(REDUCED_MOTION_QUERY),
+  initialTiltDegrees: Number(tiltInput.value),
 });
+tiltValue.textContent = `${tiltInput.value} degrees`;
 
 let shownMap = mapChoice.value;
 mapChoice.addEventListener("change", () => {
@@ -43,6 +47,11 @@ mapChoice.addEventListener("change", () => {
 });
 speedInput.addEventListener("change", () => {
   demo.setSpeedText(speedInput.value);
+});
+tiltInput.addEventListener("input", () => {
+  demo.setTiltAngle(Number(tiltInput.value));
+  tiltInput.value = String(demo.tiltDegrees);
+  tiltValue.textContent = `${demo.tiltDegrees} degrees`;
 });
 document.addEventListener("keydown", (event) => demo.keyDown(event));
 document.addEventListener("keyup", (event) => demo.keyUp(event));

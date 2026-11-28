@@ -28,6 +28,13 @@
           <label for="speed-input">Speed (world units per second, 1 to 200)</label>
           <input id="speed-input" type="number" inputmode="decimal" min="1" max="200" step="1" value="30" />
         </div>
+        <div class="control">
+          <label for="tilt-input">Tilt angle</label>
+          <div class="slider-row">
+            <input id="tilt-input" type="range" min="20" max="70" step="1" value="35" />
+            <output id="tilt-value" for="tilt-input">35 degrees</output>
+          </div>
+        </div>
         <p class="hint">
           Move the player dot with the arrow keys while no map has keyboard
           focus. Click or tap the full map to set a destination.

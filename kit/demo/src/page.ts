@@ -47,8 +47,15 @@ export interface StatusElements {
 export interface Mounts<C> {
   mountMinimap(canvas: C, engine: Engine, options?: ViewOptions): MinimapHandle | ViewError;
   mountFullMap(canvas: C, engine: Engine, options?: ViewOptions): FullMapHandle | ViewError;
-  mountTiltedView(canvas: C, engine: Engine, options?: ViewOptions): TiltedViewHandle | ViewError;
+  mountTiltedView(
+    canvas: C,
+    engine: Engine,
+    options?: ViewOptions & { tiltAngleDegrees?: number },
+  ): TiltedViewHandle | ViewError;
 }
+
+/** The default tilt angle of the demo, in degrees. */
+export const DEFAULT_TILT_DEGREES = 35;
 
 /** The options the demo passes to every Mount_Function. */
 export interface ViewOptions {
@@ -69,6 +76,8 @@ export interface DemoDeps<C> {
   /** True while one of the view canvases has keyboard focus. */
   isViewFocused(): boolean;
   reducedMotionQuery: MediaQueryLike;
+  /** The value of the tilt slider at the first mount. Default 35. */
+  initialTiltDegrees?: number;
   /** Asks for one animation frame for the demo's own position feed. Default: the browser's. */
   requestFrame?(callback: (timestampMs: number) => void): number;
   cancelFrame?(handle: number): void;
@@ -79,6 +88,14 @@ export interface Demo {
   loadChoice(name: string): boolean;
   /** Sets the speed from page text; returns the message or null. */
   setSpeedText(text: string): string | null;
+  /**
+   * Sets the tilt angle of the mounted Tilted_View without mounting it again.
+   * Returns null on success, or the plain message when the value was refused;
+   * then `tiltDegrees` still holds the previous value.
+   */
+  setTiltAngle(degrees: number): string | null;
+  /** The tilt angle in use now, in degrees. */
+  readonly tiltDegrees: number;
   keyDown(event: KeyEventLike): void;
   keyUp(event: KeyEventLike): void;
   /** Feeds the position and the timestamp to the Engine and refreshes the status text. */
@@ -128,6 +145,9 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
     deps.requestFrame ?? ((callback: (timestampMs: number) => void): number => globalThis.requestAnimationFrame(callback));
   const cancelFrame = deps.cancelFrame ?? ((handle: number): void => globalThis.cancelAnimationFrame(handle));
   let handles: Array<{ destroy(): void }> = [];
+  let tiltedHandle: TiltedViewHandle | undefined;
+  let tiltDegrees = deps.initialTiltDegrees ?? DEFAULT_TILT_DEGREES;
+  let tiltMessageShown = false;
   let dot: PlayerDot | undefined;
   let hasMap = false;
   let speed = DEFAULT_SPEED;
@@ -143,6 +163,7 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
   const destroyViews = (): void => {
     for (const handle of handles) handle.destroy();
     handles = [];
+    tiltedHandle = undefined;
   };
 
   const mountViews = (): string[] => {
@@ -153,15 +174,15 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
       },
       services: { matchReducedMotion: reducedMotionService(deps.reducedMotionQuery) },
     };
-    const results = [
-      mounts.mountMinimap(canvases.minimap, engine, options),
-      mounts.mountFullMap(canvases.fullMap, engine, options),
-      mounts.mountTiltedView(canvases.tilted, engine, options),
-    ];
+    const minimap = mounts.mountMinimap(canvases.minimap, engine, options);
+    const fullMap = mounts.mountFullMap(canvases.fullMap, engine, options);
+    const tilted = mounts.mountTiltedView(canvases.tilted, engine, { ...options, tiltAngleDegrees: tiltDegrees });
+    const results = [minimap, fullMap, tilted];
     for (const result of results) {
       if (isViewError(result)) errors.push(result.message);
       else handles.push(result);
     }
+    if (!isViewError(tilted)) tiltedHandle = tilted;
     return errors;
   };
 
@@ -191,6 +212,7 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
     engine.feedPosition(start, 0);
     const mountErrors = mountViews();
 
+    tiltMessageShown = false;
     setText(status.errors, mountErrors.join(" "));
     setText(status.roads, [roadCountText(result.map.roads.length), noUsableRoadText(result.map.usableRoadIds.size)].filter(Boolean).join(" "));
     setText(status.notices, blockedRoadLines(result.notices).join(" "));
@@ -234,6 +256,25 @@ export function createDemo<C>(deps: DemoDeps<C>): Demo {
       if (message === null) speed = value;
       else setText(status.message, message);
       return message;
+    },
+    setTiltAngle(degrees) {
+      const refuse = (message: string): string => {
+        setText(status.errors, message);
+        tiltMessageShown = true;
+        return message;
+      };
+      if (tiltedHandle === undefined) return refuse("The tilted view is not mounted, so the tilt angle was not changed.");
+      const error = tiltedHandle.setTiltAngle(degrees);
+      if (error !== undefined) return refuse(error.message);
+      tiltDegrees = degrees;
+      if (tiltMessageShown) {
+        setText(status.errors, "");
+        tiltMessageShown = false;
+      }
+      return null;
+    },
+    get tiltDegrees() {
+      return tiltDegrees;
     },
     keyDown(event) {
       const direction = ARROWS[event.key];

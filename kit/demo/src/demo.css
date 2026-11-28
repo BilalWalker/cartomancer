@@ -81,6 +81,26 @@ canvas:focus-visible {
   outline-offset: 2px;
 }
 
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 0;
+}
+
+.slider-row output {
+  flex: 0 0 auto;
+  min-width: 5.5em;
+}
+
 .hint {
   margin: 0;
 }
