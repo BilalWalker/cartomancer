@@ -122,6 +122,50 @@ describe("North_Mark drawing", () => {
     expect(result.notices.filter((n) => /letter N/.test(n.message))).toHaveLength(1);
     expect(canvas.getCalls().some((c) => c.op === "setStrokeColor" && c.args[0] === DEFAULT_STYLE.northMarkColor)).toBe(true);
   });
+
+  // The rim radius of a square minimap is size / 2 minus half the rim width.
+  const sizeForRadius = (radius: number): number => 2 * radius + DEFAULT_STYLE.rimStyle.widthPx;
+  const letterNotices = (notices: { message: string }[]): number =>
+    notices.filter((n) => /too small to show the letter N/.test(n.message)).length;
+  const letters = (canvas: RecordingCanvas): number => canvas.findCalls("drawText").filter((c) => c.args[0] === "N").length;
+
+  it("draws the letter at exactly 42 px, with no letter Notice", () => {
+    const { canvas, result } = drawn(sizeForRadius(42));
+    expect(letters(canvas)).toBe(1);
+    expect(letterNotices(result.notices)).toBe(0);
+  });
+
+  it("draws the tick only, with one Notice, just below 42 px", () => {
+    const { canvas, result } = drawn(sizeForRadius(41.9));
+    expect(letters(canvas)).toBe(0);
+    expect(letterNotices(result.notices)).toBe(1);
+  });
+
+  it("draws the letter just above 42 px", () => {
+    const { canvas, result } = drawn(sizeForRadius(42.1));
+    expect(letters(canvas)).toBe(1);
+    expect(letterNotices(result.notices)).toBe(0);
+  });
+
+  it("reports the letter Notice once per drawn frame, and none on a frame that is not redrawn", () => {
+    const base = drawn(80);
+    const unchanged = base.minimap.draw(new RecordingCanvas(), { position: { x: 0, y: 0, headingDegrees: 0 } }, 16);
+    if (isViewError(unchanged)) throw new Error(unchanged.message);
+    expect(unchanged.drew).toBe(false);
+    expect(letterNotices(unchanged.notices)).toBe(0);
+    const moved = base.minimap.draw(new RecordingCanvas(), { position: { x: 5, y: 0, headingDegrees: 0 } }, 32);
+    if (isViewError(moved)) throw new Error(moved.message);
+    expect(moved.drew).toBe(true);
+    expect(letterNotices(moved.notices)).toBe(1);
+  });
+
+  it("keeps the under 40 by 40 notice unchanged and draws nothing else", () => {
+    const { canvas, result } = drawn(39);
+    expect(result.notices.map((n) => n.message)).toEqual([
+      "The minimap needs at least 40 by 40 CSS pixels, so no circle was drawn.",
+    ]);
+    expect(letters(canvas)).toBe(0);
+  });
 });
 
 describe("North_Mark map colour", () => {

@@ -391,6 +391,7 @@ The tick and the letter of the north mark on the rim of the minimap for a given 
 - Inputs: `camera` (a valid `Camera`), `radius` in px (finite, above 0).
 - Outputs: a `NorthMark`, or a `ViewError`.
 - Errors: an unusable camera field, or a radius that is not finite and above 0.
+- Small minimap rule: when the rim radius is under 42 px, `showLetter` is false. The minimap then draws the tick without the letter N and reports one Notice per drawn frame: "The minimap is too small to show the letter N, so only the tick on the rim is drawn." At 42 px or more the letter is drawn. A minimap under 40 by 40 px draws no circle and keeps its own Notice.
 
 ```ts
 const mark = northMarkFor(camera, 100);
