@@ -55,6 +55,26 @@
     "12.2 Pointer drag and selection": {
       "status": "passed",
       "lastRunTimestamp": 1795687629510
+    },
+    "13.3 Picture props drawn as image or placeholder": {
+      "status": "passed",
+      "lastRunTimestamp": 1795689570472
+    },
+    "13.6 Hex colour rule and style key lists": {
+      "status": "passed",
+      "lastRunTimestamp": 1795690170331
+    },
+    "13.8 Minimap": {
+      "status": "passed",
+      "lastRunTimestamp": 1795690476647
+    },
+    "13.13 Tilted view with block heights": {
+      "status": "passed",
+      "lastRunTimestamp": 1795691440226
+    },
+    "15.4 Mount errors and destroy-leaves-nothing": {
+      "status": "passed",
+      "lastRunTimestamp": 1795693408688
     }
   },
   "executionHistory": {
@@ -245,6 +265,16 @@
         "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
         "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
         "timestamp": 1795685309112
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694319933
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694694406
       }
     ],
     "5. Spatial index and visibility": [
@@ -551,6 +581,425 @@
         "executionId": "bf92d67d-f24e-45b5-ba72-89159e8e81c2",
         "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
         "timestamp": 1795687794037
+      }
+    ],
+    "13.1 drawImage on the canvas interface": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795689201363
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795689361298
+      }
+    ],
+    "13.2 Image lookup": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795689366752
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795689477977
+      }
+    ],
+    "13.3 Picture props drawn as image or placeholder": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795689483501
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795689624684
+      }
+    ],
+    "13.4 Background picture layer": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795689630146
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795689830464
+      }
+    ],
+    "13.5 Frame gate notices a changed image lookup": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795689835987
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690016997
+      }
+    ],
+    "13.6 Hex colour rule and style key lists": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690017267
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690203496
+      }
+    ],
+    "13.7 Style tables in the format document with a drift test": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690208814
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690298370
+      }
+    ],
+    "13.8 Minimap": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690303550
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690520785
+      }
+    ],
+    "13.9 Minimap zoom limits and small size": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690526554
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690639716
+      }
+    ],
+    "13.10 Full map camera operations": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690646474
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690898088
+      }
+    ],
+    "13.11 Full map selection sets the destination": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795690903673
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691073082
+      }
+    ],
+    "13.12 Full map place focus by keyboard": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691079300
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691199796
+      }
+    ],
+    "13.13 Tilted view with block heights": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691205007
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691494258
+      }
+    ],
+    "13.14 Tilted view settings": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691499506
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691602385
+      }
+    ],
+    "13.15 Tilted view pictures and Property 23 on all three views": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691607803
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691764770
+      }
+    ],
+    "13. Pictures, colour rule and the three views": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691764993
+      }
+    ],
+    "14.1 Canvas adapter": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691770624
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691901377
+      }
+    ],
+    "14.2 Input binding": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795691906803
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795692079581
+      }
+    ],
+    "14.3 Canvas accessibility": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795692079926
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795692192904
+      }
+    ],
+    "14. Canvas adapter, input binding and accessibility": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795692193184
+      }
+    ],
+    "15.1 Mount core and mountMinimap": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795692198595
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795692856870
+      }
+    ],
+    "15.2 mountFullMap": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795692862176
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693151865
+      }
+    ],
+    "15.3 mountTiltedView": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693157388
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693314877
+      }
+    ],
+    "15.4 Mount errors and destroy-leaves-nothing": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693320408
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693462861
+      }
+    ],
+    "15. Mount functions": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693462939
+      }
+    ],
+    "16.1 Views exports": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693468318
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693613517
+      }
+    ],
+    "16.2 Views API doc": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693619860
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693855298
+      }
+    ],
+    "16. Public surface and docs": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693855403
+      }
+    ],
+    "17.1 Scaffold the demo package": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693861221
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795693999460
+      }
+    ],
+    "17.2 Town_Map": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694005138
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694188513
+      }
+    ],
+    "17.3 Map choice": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694193815
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694319817
+      }
+    ],
+    "17.4 Player dot": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694694567
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694811893
+      }
+    ],
+    "17.5 Reduced motion and status text": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694818415
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694828063
+      }
+    ],
+    "17.6 Page layout": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795694970227
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795695071608
+      }
+    ],
+    "17.7 Wire the page with the mount functions": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795695077995
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795695330068
+      }
+    ],
+    "17. Demo page": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795695330190
+      }
+    ],
+    "18. Checkpoint - Demo page": [
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795695344727
+      },
+      {
+        "executionId": "53383756-73a3-4dae-a999-d3fdd0dde49d",
+        "chatSessionId": "sess_822f2039-fa77-430a-9942-7440c049c6c9",
+        "timestamp": 1795695386835
       }
     ]
   }
