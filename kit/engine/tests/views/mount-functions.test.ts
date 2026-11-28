@@ -3,6 +3,9 @@ import { Engine } from "../../src/engine.js";
 import {
   mountFullMap,
   mountMinimap,
+  mountTiltedView,
+  type TiltedViewHandle,
+  type TiltedViewMountOptions,
   type FullMapHandle,
   type FullMapMountOptions,
   type MinimapHandle,
@@ -960,5 +963,190 @@ describe("mountFullMap: refused input leaves nothing behind", () => {
     expect(canvas.attributes.size).toBe(0);
     expect(canvas.width).toBe(300);
     mountFull({}, { canvas });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mountTiltedView
+
+interface MountedTilted {
+  canvas: FakeCanvas;
+  engine: FakeEngine;
+  stand: StandIns;
+  handle: TiltedViewHandle;
+}
+
+function mountTilted(
+  options: TiltedViewMountOptions = {},
+  setup: { canvas?: FakeCanvas; stand?: StandIns } = {},
+): MountedTilted {
+  const canvas = setup.canvas ?? new FakeCanvas();
+  const engine = new FakeEngine();
+  const stand = setup.stand ?? makeStandIns();
+  const handle = mountTiltedView(canvas, engine, { services: stand.services, ...options });
+  if (isViewError(handle)) throw new Error(handle.message);
+  return { canvas, engine, stand, handle };
+}
+
+function refusedTilted(options: unknown): { error: ViewError; canvas: FakeCanvas; stand: StandIns } {
+  const canvas = new FakeCanvas();
+  const stand = makeStandIns();
+  const result = mountTiltedView(canvas, new FakeEngine(), { services: stand.services, ...(options as object) });
+  if (!isViewError(result)) throw new Error("the mount was expected to be refused");
+  return { error: result, canvas, stand };
+}
+
+describe("mountTiltedView: a valid mount", () => {
+  it("sizes and describes the canvas, observes it and requests one frame", () => {
+    const { canvas, stand } = mountTilted();
+    expect(canvas.width).toBe(200);
+    expect(canvas.attributes.get("aria-label")).toBe("Tilted view");
+    expect(stand.observers.observed).toBe(1);
+    expect(stand.scheduler.pending).toBe(1);
+  });
+
+  it("returns a handle with the tilted view controls", () => {
+    const { handle } = mountTilted({ tiltAngleDegrees: 20, heightFactors: { building: 0, house: 100 } });
+    for (const name of ["setTiltAngle", "setHeightFactor", "resize", "destroy"] as const) {
+      expect(typeof handle[name]).toBe("function");
+    }
+  });
+
+  it("reads the engine and draws on each frame", () => {
+    const { canvas, engine, stand } = mountTilted();
+    const afterMount = canvas.context.calls;
+    stand.scheduler.runFrame(0);
+    expect(canvas.context.calls).toBeGreaterThan(afterMount + 10);
+    expect(engine.reads.position).toBe(1);
+    expect(stand.scheduler.pending).toBe(1);
+  });
+});
+
+describe("mountTiltedView: the controls", () => {
+  it("sets the tilt angle and a height factor, and the next frame is drawn again", () => {
+    const { canvas, stand, handle } = mountTilted();
+    stand.scheduler.runFrame(0);
+    stand.scheduler.runFrame(16);
+    let calls = canvas.context.calls;
+    expect(handle.setTiltAngle(60)).toBeUndefined();
+    stand.scheduler.runFrame(32);
+    expect(canvas.context.calls).toBeGreaterThan(calls);
+    stand.scheduler.runFrame(48);
+    calls = canvas.context.calls;
+    expect(handle.setHeightFactor("building", 2)).toBeUndefined();
+    stand.scheduler.runFrame(64);
+    expect(canvas.context.calls).toBeGreaterThan(calls);
+  });
+
+  it("returns a plain error for a tilt angle or height factor out of range", () => {
+    const { handle } = mountTilted();
+    const tilt = handle.setTiltAngle(80);
+    expect(tilt?.message).toContain("tilt angle");
+    expect(tilt?.message).toContain("20 to 70");
+    const factor = handle.setHeightFactor("building", 101);
+    expect(factor?.message).toContain("building");
+    expect(factor?.message).toContain("0 to 100");
+  });
+
+  it("reads the CSS size again on resize()", () => {
+    const { canvas, handle } = mountTilted();
+    canvas.clientWidth = 120;
+    canvas.clientHeight = 90;
+    expect(handle.resize()).toBeUndefined();
+    expect(canvas.width).toBe(120);
+    expect(canvas.height).toBe(90);
+  });
+});
+
+describe("mountTiltedView: destroy", () => {
+  it("cancels the frame and removes every listener and observer", () => {
+    const { canvas, stand, handle } = mountTilted();
+    stand.scheduler.runFrame(0);
+    handle.destroy();
+    expect(stand.scheduler.pending).toBe(0);
+    expect(canvas.openListeners).toBe(0);
+    expect(canvas.attributes.size).toBe(0);
+    expect(stand.observers.active).toBe(0);
+    expect(stand.motion.open).toBe(0);
+  });
+
+  it("does nothing on a second call and makes every control return a destroyed error", () => {
+    const { handle } = mountTilted();
+    handle.destroy();
+    expect(handle.destroy()).toBeUndefined();
+    for (const result of [handle.setTiltAngle(30), handle.setHeightFactor("house", 1), handle.resize()]) {
+      expect(isViewError(result)).toBe(true);
+      expect(result?.message).toContain("destroyed");
+    }
+  });
+
+  it("frees the canvas so it can be mounted again", () => {
+    const canvas = new FakeCanvas();
+    mountTilted({}, { canvas }).handle.destroy();
+    expect(mountTilted({}, { canvas }).stand.scheduler.pending).toBe(1);
+  });
+});
+
+describe("mountTiltedView: refused input leaves nothing behind", () => {
+  it("refuses a tilt angle outside 20 to 70, with boundaries", () => {
+    for (const bad of [19.999, 70.001, 0]) {
+      const { error, canvas, stand } = refusedTilted({ tiltAngleDegrees: bad });
+      expect(error.message).toContain("tilt angle");
+      expect(error.message).toContain("20 to 70");
+      expectNothingLeft(canvas, stand);
+    }
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const { error, canvas, stand } = refusedTilted({ tiltAngleDegrees: bad });
+      expect(error.message).toContain("tilt angle");
+      expect(error.message).toContain("finite number");
+      expectNothingLeft(canvas, stand);
+    }
+    mountTilted({ tiltAngleDegrees: 20 });
+    mountTilted({ tiltAngleDegrees: 70 });
+  });
+
+  it("refuses a height factor outside 0 to 100, naming the kind, with boundaries", () => {
+    for (const bad of [-0.001, 100.001]) {
+      const { error, canvas, stand } = refusedTilted({ heightFactors: { house: 1, building: bad } });
+      expect(error.message).toContain("building");
+      expect(error.message).toContain("0 to 100");
+      expectNothingLeft(canvas, stand);
+    }
+    for (const bad of [Number.NaN, Number.NEGATIVE_INFINITY]) {
+      const { error, canvas, stand } = refusedTilted({ heightFactors: { house: 1, building: bad } });
+      expect(error.message).toContain("building");
+      expect(error.message).toContain("finite number");
+      expectNothingLeft(canvas, stand);
+    }
+    mountTilted({ heightFactors: { building: 0, house: 100 } });
+  });
+
+  it("refuses height factors that are not an object", () => {
+    for (const bad of [null, 5, "tall", [1]]) {
+      const { error, canvas, stand } = refusedTilted({ heightFactors: bad });
+      expect(error.message).toContain('"heightFactors"');
+      expectNothingLeft(canvas, stand);
+    }
+  });
+
+  it("refuses a smoothing duration outside 1 to 5000 and a canvas that already has a view", () => {
+    const smoothing = refusedTilted({ smoothingDurationMs: 0 });
+    expect(smoothing.error.message).toContain("1 to 5000");
+    expectNothingLeft(smoothing.canvas, smoothing.stand);
+    const canvas = new FakeCanvas();
+    mountTilted({}, { canvas });
+    const stand = makeStandIns();
+    const second = mountTiltedView(canvas, new FakeEngine(), { services: stand.services });
+    expect(isViewError(second) && second.message).toContain("already has a view");
+    expect(stand.scheduler.requested).toBe(0);
+  });
+
+  it("refuses a first argument that is not a canvas and an engine without a function", () => {
+    const stand = makeStandIns();
+    const notCanvas = mountTiltedView({} as never, new FakeEngine(), { services: stand.services });
+    expect(isViewError(notCanvas) && notCanvas.message).toContain("canvas element");
+    const noEngine = mountTiltedView(new FakeCanvas(), {} as never, { services: stand.services });
+    expect(isViewError(noEngine) && noEngine.message).toContain("engine");
+    expect(stand.scheduler.requested).toBe(0);
   });
 });

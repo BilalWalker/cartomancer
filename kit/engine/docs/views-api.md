@@ -108,6 +108,42 @@ fullMap.fit(); // show the whole map
 fullMap.destroy(); // stops the loop and removes the input listeners too
 ```
 
+### `mountTiltedView`
+
+Puts a Tilted_View on a canvas: the map seen from above at a slant, centred on the player with
+the heading up the screen, in which buildings and houses are raised blocks, with the route
+line, the player, the markers and the place names.
+
+- Inputs: `mountTiltedView(canvas, engine, options?)`.
+  - `canvas`: as for `mountMinimap`.
+  - `engine`: as for `mountMinimap`.
+  - `options`: see "Options" below. `tiltAngleDegrees` and `heightFactors` are checked at mount.
+- Outputs: a `TiltedViewHandle`, or a `ViewError`.
+- Errors: those of `mountMinimap` (except the zoom ones), a tilt angle outside 20 to 70
+  degrees, `heightFactors` that is not an object, or a height factor outside 0 to 100 (the
+  message names the prop kind).
+
+```ts
+import { Engine } from "./index.js";
+import { mountTiltedView } from "./views/mount.js";
+
+const engine = new Engine();
+engine.loadMap(mapText);
+engine.feedPosition({ x: 0, y: 0, headingDegrees: 0 }, performance.now());
+
+const canvas = document.querySelector("canvas")!;
+const tilted = mountTiltedView(canvas, engine, {
+  tiltAngleDegrees: 50,
+  heightFactors: { building: 1.5 }, // taller buildings; other kinds keep the factor 1
+});
+if ("message" in tilted) throw new Error(tilted.message); // a plain ViewError
+
+// The loop now draws every frame. The application only feeds positions.
+tilted.setTiltAngle(60); // returns a ViewError when 60 is outside 20 to 70
+tilted.setHeightFactor("house", 2); // returns a ViewError outside 0 to 100
+tilted.destroy(); // stops the loop and removes everything the mount added
+```
+
 ## Options
 
 Every option is optional.
@@ -126,6 +162,8 @@ Every option is optional.
 | `minZoom` | `mountFullMap` | number from 0.001 to 1000 | the zoom that fits the whole map |
 | `maxZoom` | `mountFullMap` | number from 0.001 to 1000, above `minZoom` | 8 |
 | `onSelect` | `mountFullMap` | a function called with each selection instead of setting the engine destination | none |
+| `tiltAngleDegrees` | `mountTiltedView` | finite number from 20 to 70 (degrees) | 45 |
+| `heightFactors` | `mountTiltedView` | an object from prop kind to a finite number from 0 to 100 | factor 1 for every kind |
 
 `smoothingDurationMs` has no effect on the full map, which does not smooth its camera.
 
@@ -160,6 +198,13 @@ restores the canvas `touch-action`):
 
 `pan`, `zoomAt`, `fit`, `follow` and `resize` return a `ViewError`, or nothing when they worked;
 their notices go to `onNotice`.
+
+`TiltedViewHandle` (plus `destroy()` as above):
+
+- `setTiltAngle(degrees)`: sets the tilt angle, a finite number from 20 to 70.
+- `setHeightFactor(kind, factor)`: sets the height factor of a prop kind, a finite number from
+  0 to 100. A value out of range is refused and the old one is kept.
+- `resize()`: as for the minimap.
 
 After `destroy()` every control returns a `ViewError` that says the view has been destroyed.
 

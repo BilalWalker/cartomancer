@@ -33,7 +33,10 @@ import {
   Minimap,
   type MinimapState,
 } from "./minimap.js";
+import { validateHeightFactor } from "./block-height.js";
 import { validateSmoothingDuration } from "./smoothing.js";
+import { TiltedView } from "./tilted-view.js";
+import { validateTilt } from "./tilted-projection.js";
 import {
   badImagesEntry,
   badImagesOption,
@@ -117,6 +120,14 @@ export interface FullMapMountOptions extends BaseMountOptions {
   onSelect?(selection: FullMapSelection): void;
 }
 
+/** Options of `mountTiltedView`. */
+export interface TiltedViewMountOptions extends BaseMountOptions {
+  /** Tilt angle in degrees, 20 to 70. Default 45. */
+  tiltAngleDegrees?: number;
+  /** Height factor of each prop kind, 0 to 100. A kind not listed keeps the factor 1. */
+  heightFactors?: Record<string, number>;
+}
+
 /** What every Mount_Function returns when it succeeds. */
 export interface MountHandle {
   /** Stops the frame loop, removes every listener and observer. A second call does nothing. */
@@ -145,6 +156,16 @@ export interface FullMapHandle extends MountHandle {
   select(screenPoint: Point): FullMapSelectResult | ViewError;
   /** Selects a place by identifier, as a hit on its marker would. */
   selectPlace(placeId: string): FullMapSelectResult | ViewError;
+  /** Reads the CSS size of the canvas again and resizes the view. */
+  resize(): ViewError | undefined;
+}
+
+/** The handle of `mountTiltedView`. Controls return a ViewError, or nothing when they worked. */
+export interface TiltedViewHandle extends MountHandle {
+  /** Sets the tilt angle, 20 to 70 degrees. */
+  setTiltAngle(degrees: number): ViewError | undefined;
+  /** Sets the height factor of a prop kind, 0 to 100. */
+  setHeightFactor(kind: string, factor: number): ViewError | undefined;
   /** Reads the CSS size of the canvas again and resizes the view. */
   resize(): ViewError | undefined;
 }
@@ -374,6 +395,30 @@ function fullMapZoomPlan(options: FullMapMountOptions): { min?: number; max?: nu
     return outOfRange("onSelect", "a function");
   }
   return { min: options.minZoom, max: options.maxZoom };
+}
+
+/** The tilt angle and height factors to apply, checked with the ranges of Requirement 12. */
+function tiltedPlan(
+  options: TiltedViewMountOptions,
+): { tilt?: number; factors: Array<[string, number]> } | ViewError {
+  if (options.tiltAngleDegrees !== undefined) {
+    const error = validateTilt(options.tiltAngleDegrees);
+    if (error) return error;
+  }
+  const factors: Array<[string, number]> = [];
+  if (options.heightFactors !== undefined) {
+    const given: unknown = options.heightFactors;
+    if (typeof given !== "object" || given === null || Array.isArray(given)) {
+      return outOfRange("heightFactors", "an object from prop kind to a number from 0 to 100");
+    }
+    for (const kind of Object.keys(given)) {
+      const factor = (given as Record<string, number>)[kind]!;
+      const error = validateHeightFactor(kind, factor);
+      if (error) return error;
+      factors.push([kind, factor]);
+    }
+  }
+  return { tilt: options.tiltAngleDegrees, factors };
 }
 
 // ---------------------------------------------------------------------------
@@ -735,6 +780,56 @@ export function mountFullMap(
     follow: () => (isDestroyed() ? destroyed() : change(view.follow())),
     select: (screenPoint) => (isDestroyed() ? destroyed() : view.select(screenPoint)),
     selectPlace: (placeId) => (isDestroyed() ? destroyed() : view.selectPlace(placeId)),
+    resize: () => (isDestroyed() ? destroyed() : core.applySize()),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// mountTiltedView
+
+/**
+ * Puts a Tilted_View on a canvas and starts its frame loop. Returns a handle,
+ * or a ViewError and mounts nothing.
+ */
+export function mountTiltedView(
+  canvas: MountableCanvas,
+  engine: MinimapEngine,
+  options?: TiltedViewMountOptions,
+): TiltedViewHandle | ViewError {
+  const core = mountView<TiltedView, { tilt?: number; factors: Array<[string, number]> }>(
+    canvas,
+    engine,
+    options,
+    {
+      kind: "tiltedView",
+      engineFunctions: MINIMAP_ENGINE_FUNCTIONS,
+      plan: (given: TiltedViewMountOptions) => tiltedPlan(given),
+      build(map, width, height, plan) {
+        const view = TiltedView.create(map, {
+          width,
+          height,
+          smoothingDurationMs: options?.smoothingDurationMs,
+          images: options?.images,
+        });
+        if (isViewError(view)) return view;
+        if (plan.tilt !== undefined) {
+          const tiltError = view.setTiltAngle(plan.tilt);
+          if (tiltError) return tiltError;
+        }
+        for (const [kind, factor] of plan.factors) {
+          const factorError = view.setHeightFactor(kind, factor);
+          if (factorError) return factorError;
+        }
+        return view;
+      },
+    },
+  );
+  if (isViewError(core)) return core;
+  const { view, isDestroyed } = core;
+  return {
+    destroy: core.destroy,
+    setTiltAngle: (degrees) => (isDestroyed() ? destroyed() : view.setTiltAngle(degrees)),
+    setHeightFactor: (kind, factor) => (isDestroyed() ? destroyed() : view.setHeightFactor(kind, factor)),
     resize: () => (isDestroyed() ? destroyed() : core.applySize()),
   };
 }
