@@ -77,20 +77,15 @@ function sorted(set: Set<string>): string[] {
 // Every item that touches the unturned viewport must be in the visible set.
 // The viewport here is worked out from centre, size and zoom, while
 // visibleRegion works it out from the screen corners, so the two edges can
-// differ by rounding error (about 1e-13). The viewport is therefore taken in
-// by a small tolerance (about 3e-5 world units, under 0.002 px at the lowest
-// zoom) that is larger than the 1e-9 relative padding naiveVisible adds to
-// props; an item that is inside by more than that must be held.
+// differ by rounding error (about 1e-13). visibleRegion widens its result by
+// a small rounding allowance, so the check here is strict: the exact viewport.
 function expectHeldBy(map: EngineMap, camera: Camera): void {
   const half = { w: camera.viewportWidth / 2 / camera.zoom, h: camera.viewportHeight / 2 / camera.zoom };
-  const slack = 1e-8 * (3000 + Math.abs(camera.centerX) + Math.abs(camera.centerY) + half.w + half.h);
-  const slackX = slack;
-  const slackY = slack;
   const viewport = {
-    minX: camera.centerX - half.w + slackX,
-    maxX: camera.centerX + half.w - slackX,
-    minY: camera.centerY - half.h + slackY,
-    maxY: camera.centerY + half.h - slackY,
+    minX: camera.centerX - half.w,
+    maxX: camera.centerX + half.w,
+    minY: camera.centerY - half.h,
+    maxY: camera.centerY + half.h,
   };
   const set = computeVisibleSet(buildSpatialIndex(map), visibleRegion(camera, 0) as Bounds);
   const inView = naiveVisible(map, viewport);
@@ -231,7 +226,16 @@ describe("visibleRegion", () => {
   const camera = createCamera({ centerX: 10, centerY: 20, zoom: 2, viewportWidth: 100, viewportHeight: 60 }) as Camera;
 
   it("is the viewport in world units widened by the margin", () => {
-    expect(visibleRegion(camera, 5)).toEqual({ minX: -20, maxX: 40, minY: 0, maxY: 40 });
+    const region = visibleRegion(camera, 5) as Bounds;
+    expect(region.minX).toBeCloseTo(-20, 6);
+    expect(region.maxX).toBeCloseTo(40, 6);
+    expect(region.minY).toBeCloseTo(0, 6);
+    expect(region.maxY).toBeCloseTo(40, 6);
+    // The region is never narrower than the exact viewport plus margin.
+    expect(region.minX).toBeLessThanOrEqual(-20);
+    expect(region.maxX).toBeGreaterThanOrEqual(40);
+    expect(region.minY).toBeLessThanOrEqual(0);
+    expect(region.maxY).toBeGreaterThanOrEqual(40);
   });
 
   it("returns a plain error for a bad margin", () => {

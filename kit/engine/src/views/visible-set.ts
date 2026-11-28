@@ -176,13 +176,23 @@ export function visibleRegion(camera: Camera, margin: number): Bounds | ViewErro
     if (world.x > maxX) maxX = world.x;
     if (world.y > maxY) maxY = world.y;
   }
+  // Rounding allowance: an item that touches the true viewport within
+  // floating point error must be included. Drawing an item a hair outside
+  // costs nothing; leaving out a touching item would be wrong.
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+  const allowX = ROUNDING_ALLOWANCE * (1 + Math.max(Math.abs(minX), Math.abs(maxX)) + spanX);
+  const allowY = ROUNDING_ALLOWANCE * (1 + Math.max(Math.abs(minY), Math.abs(maxY)) + spanY);
   return {
-    minX: minX - margin,
-    minY: minY - margin,
-    maxX: maxX + margin,
-    maxY: maxY + margin,
+    minX: minX - margin - allowX,
+    minY: minY - margin - allowY,
+    maxX: maxX + margin + allowX,
+    maxY: maxY + margin + allowY,
   };
 }
+
+/** Relative size of the rounding allowance added by visibleRegion. */
+const ROUNDING_ALLOWANCE = 1e-9;
 
 function overlaps(a: Bounds, b: Bounds): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
