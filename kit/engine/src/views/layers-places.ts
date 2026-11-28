@@ -5,11 +5,11 @@
 // is drawn centred vertically on the given y.
 
 import type { PlaceData } from "../types.js";
-import { worldToScreen, type Camera } from "./camera.js";
+import { worldToScreen, type Camera, type Point } from "./camera.js";
 import type { CanvasInterface } from "./canvas-interface.js";
 import { placeLabels, type LabelCandidate } from "./label-placement.js";
 import type { ResolvedStyle } from "./style.js";
-import { isViewError, notice, type Notice } from "./view-errors.js";
+import { isViewError, notice, type Notice, type ViewError } from "./view-errors.js";
 
 /** The label font size is kept between these sizes, in CSS pixels, at every zoom. */
 export const LABEL_FONT_MIN_PX = 11;
@@ -83,6 +83,7 @@ export function drawPlaceLabels(
   camera: Camera,
   destinationPlaceId?: string,
   fontPx: number = LABEL_FONT_DEFAULT_PX,
+  project: (point: Point) => Point | ViewError = (point) => worldToScreen(camera, point),
 ): Notice[] {
   if (!Number.isFinite(camera.zoom) || camera.zoom <= 0) return [zoomNotice()];
   const notices: Notice[] = [];
@@ -104,7 +105,7 @@ export function drawPlaceLabels(
       notices.push(emptyNameNotice(place));
       continue;
     }
-    const screen = worldToScreen(camera, { x: place.x, y: place.y });
+    const screen = project({ x: place.x, y: place.y });
     if (isViewError(screen)) {
       notices.push(notice(screen.message));
       continue;
