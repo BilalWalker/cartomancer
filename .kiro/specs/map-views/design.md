@@ -8,6 +8,8 @@ The Views read the Map, the Route, the remaining Route, the Guidance and the Pos
 
 Applications use the Views through three one-call Mount_Functions (`mountMinimap`, `mountFullMap`, `mountTiltedView`, Requirement 21) that create the adapter, set the pixel ratio, observe the canvas size, bind input and run a Frame_Loop that reads the Position, Route and Guidance from the Engine. The lower-level Draw_Functions stay public. Drawing is cheap by construction: Roads are batched into one path per kind and per pixel width in each Draw_Pass (Requirement 22), and a change-detection gate makes a frame with no change cost zero Canvas_Interface calls (Requirements 14.9, 14.10, 22). The Tilted_View reads an optional per-Prop `blockHeight` that this spec adds to map file format version 1 (Requirement 23).
 
+Pictures (Requirement 24) follow one rule: the caller loads, the Views draw. A caller passes an optional `images` lookup (picture reference to `{ image, width, height }`) to a Mount_Function or a Draw_Function. The Views hand the opaque `ImageHandle` to a new `CanvasInterface.drawImage` operation and never read it. A Picture_Prop is drawn as its image, or as a labelled placeholder rectangle when the image is missing. A Background_Picture is drawn in a new layer between the ground and the blocked areas, with its `scale` and `opacity`, and not at all when its image is missing. Every missing or bad picture is a Notice, never a thrown error. Two further small changes ride along: the Style colour rule widens to `#rgb`, `#rrggbb` and `#rrggbbaa` with a documented key table that a test keeps in step with `DEFAULT_STYLE` (Requirement 4 criteria 9 to 16), and the engine-core smoke test replaces its blanket browser-global scan with a scan that has a three-path allowlist (Requirement 19 criteria 19 to 24).
+
 Logic and drawing are split the same way the engine core splits pure logic from nothing browser-specific: every draw call goes through a Canvas_Interface; a Recording_Canvas stores calls for Node tests; a Canvas_Adapter implements the interface on a real `CanvasRenderingContext2D`. Browser globals are allowed in exactly three Views files: `canvas-adapter.ts`, `input-binding.ts` and `mount.ts` (Requirement 19.18). Input handling is split the same way: a pure input state machine turns a sequence of pointer/key events into pan, zoom and selection commands; a thin binding layer attaches real DOM listeners and feeds them into the state machine.
 
 ## Architecture
@@ -21,7 +23,13 @@ kit/engine/
   src/
     ... (Block A files, unchanged except index.ts's export list growing)
     views/
-      canvas-interface.ts     # Canvas_Interface type: the operations Views call
+      canvas-interface.ts     # Canvas_Interface type: the operations Views call,
+                               # including drawImage and the opaque ImageHandle type
+      draw-safe.ts             # SafeCanvas: wraps a CanvasInterface, skips a call with a
+                               # non-finite number (and a drawImage with a size not above
+                               # 0) and collects a Notice naming the operation
+      image-lookup.ts          # ImageLookup, ImageEntry, asImageHandle (identity cast),
+                               # pictureRefOfKind, resolvePicture (pure; never throws)
       recording-canvas.ts     # Recording_Canvas: stores calls, no browser code
       canvas-adapter.ts        # Canvas_Adapter: implements Canvas_Interface on
                                # CanvasRenderingContext2D; one of the THREE files
@@ -32,9 +40,15 @@ kit/engine/
       visible-set.ts            # buildSpatialIndex(map), computeVisibleSet(camera,
                                # index, margins) — pure, Node-testable
       style.ts                  # DEFAULT_STYLE, resolveStyle(map.style) ->
-                               # Resolved_Style, contrast() helper (test-shared)
+                               # Resolved_Style, contrast() helper (test-shared),
+                               # the hex colour rule (#rgb, #rrggbb, #rrggbbaa), and the
+                               # exported key lists the format document is checked against
       layers.ts                 # drawLayer functions in fixed order, called by
-                               # each view's draw() in the same sequence
+                               # each view's draw() in the same sequence. In the code
+                               # this is the files layers-areas.ts (ground, background
+                               # picture, blocked areas, flat props), layers-roads.ts,
+                               # layers-route.ts, layers-places.ts, and draw-map-layers.ts
+                               # (the fixed order, LAYER_ORDER)
       road-batching.ts          # groups visible Usable_Roads by (kind, pixel width)
                                # and Blocked_Roads by pixel width; builds one path
                                # per group per Draw_Pass (pure, uses CanvasInterface)
@@ -73,9 +87,27 @@ kit/engine/
                                # the three Mount_Functions, options, Mount_Handle
                                # controls, View_Errors and destroy(), one usage
                                # example for each Mount_Function
-    map-file-format.md           # existing; gains `blockHeight` (Requirement 23.9)
+    map-file-format.md           # existing; gains `blockHeight` (Requirement 23.9) and, in
+                               # its Style section, the colour rule, the Notice, the two
+                               # key tables and the ignored-key / default statements
+                               # (Requirement 4.12 to 4.14)
   tests/
+    smoke.test.ts                # existing engine-core test; the ONE permitted edit
+                               # (Requirement 19.23): allowlist scan + missing-path check
+    smoke-allowlist.test.ts      # tests the allowlist check with a stand-in file list
+    helpers/browser-global-scan.ts # pure check(files, allowlist) used by both tests above
     views/
+      canvas-interface-draw-image.test.ts # drawImage on Recording_Canvas, SafeCanvas,
+                                          # Canvas_Adapter stand-in context (1.10-1.13)
+      image-lookup.test.ts                # picture refs, missing/bad entries, throwing
+                                          # lookup (24.3, 24.14-24.16)
+      picture-props.test.ts               # Picture_Prop as image or placeholder (24.4, 24.5,
+                                          # 24.16, 24.19) and Property 23
+      background-picture.test.ts          # background layer, order, alpha, bad scale/opacity
+                                          # (24.6-24.8, 24.13, 24.19) and Property 24
+      tilted-pictures.test.ts             # flat Picture_Prop, ground-plane background (24.10)
+      style-colour-rule.test.ts           # accept/reject examples of 4.16, Notice text
+      style-doc-drift.test.ts             # format document tables vs DEFAULT_STYLE (4.15)
       canvas-interface-recording.test.ts
       camera-round-trip.test.ts
       camera-no-shear.test.ts
@@ -251,18 +283,40 @@ interface CanvasInterface {
   setGlobalAlpha(alpha: number): void;
   drawText(text: string, x: number, y: number, font: string, align: "left" | "center" | "right"): void;
   measureText(text: string, font: string): { width: number; height: number };
+  // Requirement 1.10: dx, dy, width, height in the current transform's units; the
+  // image is drawn at (dx, dy) with the given size, under the current alpha and clip.
+  drawImage(image: ImageHandle, dx: number, dy: number, width: number, height: number): void;
 }
 ```
 
-Every number argument is checked for finiteness by the calling layer (`layers.ts`) before the call reaches an implementation (Requirement 1.8); neither implementation re-validates, keeping `CanvasInterface` a thin, mechanical seam.
+`ImageHandle` is an opaque type (see Data Models): it has no readable member, so no Views code can inspect it, and the interface offers no operation that loads or decodes an image (Requirement 24.2). `drawImage` has no source-rectangle form because no requirement needs cropping.
+
+Every number argument is checked for finiteness by the calling layer (`layers.ts`) before the call reaches an implementation (Requirement 1.8); neither implementation re-validates, keeping `CanvasInterface` a thin, mechanical seam. For `drawImage` the check is stricter: `SafeCanvas` also rejects a `width` or `height` that is not above 0 (Requirement 1.13).
+
+### `draw-safe.ts` — `SafeCanvas`
+
+`SafeCanvas` already wraps any `CanvasInterface` and skips a call whose numbers are not finite, collecting a Notice from `skippedDrawing(operation)`. It gains one method:
+
+```ts
+drawImage(image, dx, dy, width, height): void {
+  if (!this.ok("drawImage", [dx, dy, width, height])) return; // adds the Notice
+  if (width <= 0 || height <= 0) {
+    this.collected.push(skippedDrawing("drawImage"));
+    return;
+  }
+  this.inner.drawImage(image, dx, dy, width, height);
+}
+```
+
+A non-finite number and a size of 0 or less both skip the call with exactly one Notice that names `drawImage`, and nothing reaches the wrapped canvas (Requirement 1.13). The handle is passed through untouched. Because `drawMapLayers` and every layer draw through a `SafeCanvas`, no layer needs its own check.
 
 ### `recording-canvas.ts` — `class RecordingCanvas implements CanvasInterface`
 
-Stores an ordered `{ op: string; args: unknown[]; state: { fillColor, strokeColor, lineWidth, transform } }[]`, where `transform` is the accumulated translate/rotate/scale stack at the time of the call (a 2x3 matrix), kept so a test can ask "what matrix was active when this path was drawn" without re-deriving it (Requirement 1.4). Exposes `getCalls()` and `findCalls(op)` for tests.
+Stores an ordered `{ op: string; args: unknown[]; state: { fillColor, strokeColor, lineWidth, globalAlpha, transform } }[]`, where `transform` is the accumulated translate/rotate/scale stack at the time of the call (a 2x3 matrix), kept so a test can ask "what matrix was active when this path was drawn" without re-deriving it (Requirement 1.4). `globalAlpha` is added to the recorded state so a `drawImage` call carries the alpha current at the call (Requirement 1.11); `save` and `restore` push and pop it with the other state. A `drawImage` call is stored as `{ op: "drawImage", args: [image, dx, dy, width, height], state }` with the handle kept by reference, so a test compares it with the stand-in handle it supplied. Exposes `getCalls()` and `findCalls(op)` for tests.
 
 ### `canvas-adapter.ts` — `class CanvasAdapter implements CanvasInterface`
 
-Wraps a `CanvasRenderingContext2D`, translating each method 1:1 (e.g. `drawText` calls `fillText`/`textAlign`/`font`). Owns the Device_Pixel_Ratio scaling (Requirement 14.1/14.2/14.3/14.5): on construction and on a `resize(cssWidth, cssHeight, devicePixelRatio)` call, sets `canvas.width/height` to the rounded pixel size and calls `ctx.scale(dpr, dpr)` once so all other calls stay in CSS pixels. `CanvasAdapter.mount(canvas): CanvasAdapter | ViewError` returns a `View_Error` without constructing anything if `canvas.getContext("2d")` is `null` (Requirement 1.9).
+Wraps a `CanvasRenderingContext2D`, translating each method 1:1 (e.g. `drawText` calls `fillText`/`textAlign`/`font`, and `drawImage` calls `ctx.drawImage(handle, dx, dy, width, height)` with the handle cast to the context's image source type and not read, Requirement 1.12). Owns the Device_Pixel_Ratio scaling (Requirement 14.1/14.2/14.3/14.5): on construction and on a `resize(cssWidth, cssHeight, devicePixelRatio)` call, sets `canvas.width/height` to the rounded pixel size and calls `ctx.scale(dpr, dpr)` once so all other calls stay in CSS pixels. `CanvasAdapter.mount(canvas): CanvasAdapter | ViewError` returns a `View_Error` without constructing anything if `canvas.getContext("2d")` is `null` (Requirement 1.9).
 
 ### `camera.ts`
 
@@ -302,13 +356,84 @@ function computeVisibleSet(index: SpatialIndex, region: VisibleRegion): {
 const DEFAULT_STYLE: ResolvedStyle; // one entry per key named in Requirement 4.3
 function resolveStyle(style: StyleData | undefined): { resolved: ResolvedStyle; notices: Notice[] };
 function contrastRatio(hex1: string, hex2: string): number; // WCAG relative-luminance formula
+function isUsableColor(value: unknown): value is string;    // the hex rule below (exported for tests)
+const STYLE_COLOR_KEYS: readonly string[];      // the 21 colour keys, in table order
+const STYLE_LINE_KEYS: readonly string[];       // the 11 line style keys, in table order
 ```
 
-`resolveStyle` walks every key `DEFAULT_STYLE` defines; for each, if the map's `StyleData` has a usable value (a parseable colour string, or a line style whose width/dash values are finite and in range) it is kept, otherwise the default is used and a `Notice` naming the key is appended (Requirement 4.4/4.8). `contrastRatio` is exported so `tests/views/style-contrast.test.ts` can assert Requirement 4.5/4.6/4.7 directly against `DEFAULT_STYLE`'s own values, and so the demo page's palette file (one per application, per the brief) can self-check later.
+**The colour rule (Requirement 4.9, 4.10).** `isUsableColor` is true if and only if the value is a text matching `/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/`. The current code trims the text and accepts only the 3 and 6 digit forms; the change adds the 8 digit form and removes the `trim()`, because the rule says the text has no other character, so `" #abc"` is rejected like any other text with a stray character. Everything else is rejected: the empty text, a number or other non-text, 4, 5, 7 or 9 or more digits, a non-hex digit, a missing `#`, a colour name and a function such as `rgb(0,0,0)`. A rejected value gives the Default_Style colour for that key and a Notice whose text names the key and the default colour used, for example `The style colour "routeLine" is not a colour like #rgb, #rrggbb or #rrggbbaa, so the default colour #0b4fb3 is used.` (the exact words are fixed by `view-error-messages.test.ts`). The accepted value is stored as written, so `#AABBCC` stays `#AABBCC`.
+
+**Default_Style stays opaque and short (Requirement 4.11).** `DEFAULT_STYLE` keeps only `#rgb` and `#rrggbb` values, so `contrastRatio` and its `parseHex` need no alpha handling and still throw for anything else. A map's own `#rrggbbaa` colour is used only for drawing: the `rrggbbaa` text goes to `setFillColor` and `setStrokeColor` as it is, which a Canvas 2D context accepts. `contrastRatio` is never called on a map colour.
+
+**Key lists and the format document (Requirements 4.12 to 4.15).** `STYLE_COLOR_KEYS` and `STYLE_LINE_KEYS` are the single source for what a map file may set. They hold the keys of Requirement 4.13, and a small table `colorKeyToField` maps each key to its `ResolvedStyle` field (for example `road.main` to `roadColors.main`, `routeLine` to `routeLineColor`), which `resolveStyle` already needs to fill the record. `kit/engine/docs/map-file-format.md` gets, in its Style section: the colour rule and the Notice; two tables, colour keys (key, default colour) and line style keys (key, default width in CSS pixels, default dash); the statement that a key the Views do not read is ignored and a key the map does not set takes its default; and the statement that the Engine loader accepts any colour text and the Views apply the rule (replacing the old statement that the engine does not check a colour text). The tables are plain Markdown tables with one row per key, the key in backticks in the first column, so a test can read them.
+
+**Drift test (Requirement 4.15).** `tests/views/style-doc-drift.test.ts` reads `docs/map-file-format.md` as raw text through Vite's `?raw` glob (the same way `smoke.test.ts` reads files, so the engine needs no Node type package), cuts out the Style section, parses the two tables, and asserts: the colour key list equals `STYLE_COLOR_KEYS` as a set and in order; each documented default equals the value in `DEFAULT_STYLE` for that key; the line style key list equals `STYLE_LINE_KEYS`; each documented width and dash equals the `LineStyle` in `DEFAULT_STYLE` (a missing dash is written `none` in the table). It also asserts that every key of `DEFAULT_STYLE` is reachable from some listed key, so adding a field to `DEFAULT_STYLE` without a key fails the test. A failing assertion names the key and the two values, so the document or the code is fixed at once; the test is never loosened.
+
+`resolveStyle` walks every key `DEFAULT_STYLE` defines; for each, if the map's `StyleData` has a usable value (a colour text that passes `isUsableColor`, or a line style whose width/dash values are finite and in range) it is kept, otherwise the default is used and a `Notice` naming the key is appended (Requirement 4.4/4.8). `contrastRatio` is exported so `tests/views/style-contrast.test.ts` can assert Requirement 4.5/4.6/4.7 directly against `DEFAULT_STYLE`'s own values, and so the demo page's palette file (one per application, per the brief) can self-check later.
 
 ### `layers.ts`
 
-Exports one `drawX(canvas, resolvedStyle, visibleItems, camera, ...)` function per layer, called in the exact fixed order of Requirement 6.1 (ground, blocked areas, flat props, road outlines, road fills, blocked-road marks, route line, destination marker, place markers, place labels, player marker) from each View's `draw()`. Keeping the order as a single ordered list of function calls in each View (rather than a generic "layer registry") makes Requirement 6.5's layer-order property a direct, readable assertion against `RecordingCanvas.getCalls()` grouped by which `drawX` call produced them. The Road layers (outlines, fills, Blocked_Road marks, one-way arrowheads) delegate to `road-batching.ts`.
+Exports one `drawX(canvas, resolvedStyle, visibleItems, camera, ...)` function per layer, called in the exact fixed order of Requirement 6.1 with the background picture of Requirement 24.6 inserted directly after the ground (ground, background picture, blocked areas, flat props, road outlines, road fills, blocked-road marks, route line, destination marker, place markers, place labels, player marker) from each View's `draw()`. Keeping the order as a single ordered list of function calls in each View (rather than a generic "layer registry") makes Requirement 6.5's layer-order property a direct, readable assertion against `RecordingCanvas.getCalls()` grouped by which `drawX` call produced them. The Road layers (outlines, fills, Blocked_Road marks, one-way arrowheads) delegate to `road-batching.ts`.
+
+### `image-lookup.ts` and pictures in the layers (Requirement 24)
+
+```ts
+function pictureRefOfKind(kind: string): string | undefined;   // text after "picture:" or "upload:"; undefined if kind has neither prefix
+function resolvePicture(images: ImageLookup | undefined, ref: string):
+  { entry: ImageEntry } | { missing: Notice | undefined };
+```
+
+`pictureRefOfKind` strips exactly one prefix (`picture:` or `upload:`), so `picture:a:b` has the reference `a:b` (Requirement 24.3). An empty result is a valid return (`""`); the caller treats it as the empty-reference case of 24.16.
+
+`resolvePicture` is the only place that touches the lookup, and it never throws. It returns `{ entry }` only when all of these hold: `images` is given; the lookup (object property read or function call) returns an object without throwing; the entry has an `image` that is not `undefined` or `null`; and `width` and `height` are finite and above 0. Otherwise it returns `{ missing }` with a Notice that names the reference:
+
+| Case | Result | Requirement |
+|---|---|---|
+| `images` absent, or no entry for the reference | `missing`, no Notice here (the caller adds its own: placeholder Notice for a prop, background Notice for the background) | 24.5, 24.7 |
+| entry with `width` or `height` not finite or not above 0 | `missing`, Notice naming the reference | 24.14 |
+| entry without an `image` | `missing`, Notice naming the reference | 24.15 |
+| the lookup throws | `missing`, Notice naming the reference; the drawing of the frame goes on | 24.15 |
+
+For an object lookup the entry is read with an own-property check, so a reference such as `constructor` or `__proto__` finds nothing. A caller-supplied function is called at most once per reference per frame; `resolvePicture` results are held in a per-frame `Map` by `drawMapLayers` so several props with the same reference make one lookup and one Notice. The Notice texts are plain words, for example `The picture "clinic-floor" has no usable size, so it is treated as missing.`
+
+**Picture_Props (`layers-areas.ts`, `drawFlatProps`).** `drawFlatProps` receives the lookup and the per-frame resolver. For a prop whose kind has a picture prefix:
+
+1. Reference empty: draw the labelled placeholder rectangle and add a Notice naming the Prop identifier (24.16).
+2. `resolvePicture` gives `{ entry }`: in the same `save`, `translate(prop.x, prop.y)`, `rotate(prop.rotationDegrees)` that the plain rectangle uses, call `drawImage(entry.image, ...)` with the destination rectangle that the plain rectangle of an unknown kind uses (so the picture lies where the placeholder would), width `prop.width`, height `prop.height` (24.4). The prop's own validity rules of Requirement 6.7 apply first, so a bad width, height or rotation draws nothing and reports the Requirement 6.7 Notice.
+3. `{ missing }`: draw the placeholder, that is the rectangle of an unknown Prop kind, plus its label. The label is the full Prop kind (`picture:clinic-floor`), drawn with `drawText` at the rectangle centre, centred, in the existing 11 px label font, counter-scaled by `1 / zoom` inside the same `save` so it stays 11 CSS pixels. Add a Notice naming the Prop identifier and the missing reference (24.5). Any Notice that `resolvePicture` produced for the reference is added too.
+
+The existing code already treats the two prefixes as placeholders; this change replaces that fixed behaviour by the three cases above. Only props in `visible.propIds` are drawn, so a picture outside the Visible_Region costs no call (24.9). The picture is in the flat-prop layer, so it lies above the ground, background and blocked areas and below the roads, and a Picture_Prop is never in `RAISED_KINDS`, so the Tilted_View draws it through the same function, flat (24.10, 12.17). A `blockHeight` on a picture kind is ignored for the same reason.
+
+**Background_Picture layer (`layers-areas.ts`, new `drawBackgroundPicture`).**
+
+```ts
+function drawBackgroundPicture(canvas: CanvasInterface, background: BackgroundPictureData | undefined,
+  resolve: (ref: string) => ResolvedPicture, region: WorldRegion): Notice[];
+```
+
+- No `background`: return at once, no call, no Notice (24.8).
+- `scale` not finite or not above 0, or `opacity` not finite or outside 0 to 1: draw nothing and return one Notice naming the field and its range (`scale` must be a finite number above 0; `opacity` must be a finite number from 0 to 1), before any lookup (24.13). The loader already enforces this for a loaded map, so this guards a Map built in code.
+- Picture missing: draw nothing and return a Notice that names the reference and states that the background picture is not drawn (24.7), plus the `resolvePicture` Notice when there is one.
+- Otherwise the destination size in world units is `width = image.width * scale`, `height = image.height * scale`, and the rectangle runs from the world point (0, 0) to `(width, height)`. If this rectangle does not overlap `region` (the Visible_Region of the frame), return without a call (24.9). The Visible_Set stays a set of indexed items; the background is one rectangle, so it is tested against the same region directly and is not put in the spatial index.
+- Draw: `save()`, `setGlobalAlpha(opacity)`, `drawImage(image, 0, 0, width, height)`, `restore()`. The `restore` returns the alpha to its earlier value (24.6). The call is made under the camera transform that `drawMapLayers` has set, so the destination is in world units and the recorded call converts through the transform of the call (24.18).
+
+`opacity` 0 still makes the call (with alpha 0), because the rule draws for every `opacity` in 0 to 1 and a test checks the boundary; skipping it would be a silent difference between the boundary values.
+
+**Place in `drawMapLayers`.** `LAYER_ORDER` gains `"backgroundPicture"` between `"ground"` and `"blockedAreas"`, `DrawMapLayersInput` gains `images?: ImageLookup`, and `drawMapLayers` marks and draws the new layer right after the ground:
+
+```ts
+mark("ground");            notices.push(...drawGround(canvas, style, region));
+mark("backgroundPicture"); notices.push(...drawBackgroundPicture(canvas, map.backgroundPicture, resolve, region));
+mark("blockedAreas");      ...
+```
+
+`resolve` is the per-frame memoising wrapper of `resolvePicture`, created once at the top of `drawMapLayers` (and in the Tilted_View's own draw function) so the Notices of one reference appear once per frame. The layer-order property (Property 5) now has twelve layers; the tests that read `LAYER_ORDER` (which are Views tests, not engine-core tests) are updated in the same commit as the code.
+
+**Tilted_View.** The Tilted_View draws its ground-plane layers under a ground transform built only from `translate`, `rotate` and `scale`, with the forward axis compressed by `sin(Tilt_Angle)`: `translate(viewport centre)`, `rotate(camera rotation)`, `scale(zoom, zoom * sin(tilt))`, `translate(-centre)`. This is the same transform the ground and flat props use, so it calls `drawBackgroundPicture` right after its ground, with that transform set, and the picture lies on the ground plane (Requirement 24.10). It calls the same `drawFlatProps` for Picture_Props. No Raised_Block or depth sort is involved.
+
+**Pictures never affect routing, hit testing or labels (Requirement 24.11).** `drawMapLayers` takes the lookup only for the two functions above. `label-placement.ts`, `hit-test.ts`, `visible-set.ts` and the Engine do not import `image-lookup.ts`; a static test asserts that, in the same way as the browser-global test.
+
+**Where the lookup comes from (Requirements 21.20 to 21.22, 24.1).** Every Draw_Function and View `draw()` input has an optional `images`. `mount.ts` accepts `images` in `BaseMountOptions` and keeps it for the Frame_Loop, which passes it on every frame and uses it for `imagesSignature`. Mount-time validation: `images` that is neither an object nor a function (including `null`, a number or a text) is a View_Error that names the option `images` and says it must be an object or a function that gives, for a picture reference, an entry with an image and a width and height above 0. For an object, every own entry is checked at mount, and an entry with a width or height that is not finite or not above 0 gives the same View_Error naming the reference; the View_Error is returned before any listener, observer or frame request exists (Requirement 21.15). A function cannot be enumerated, so its entries are checked only when drawn (24.14 Notice). An absent `images` equals an empty lookup (21.20).
 
 ### `road-batching.ts`
 
@@ -334,6 +459,7 @@ Batches are ordered by kind then width so output is deterministic. Because a bat
 interface FrameInputs {
   mapVersion: number; routeVersion: number; positionVersion: number;
   cameraVersion: number; viewportVersion: number; styleVersion: number;
+  imagesSignature: string;   // see "Image changes" below (Requirement 24.12)
   settling: boolean; canvasVisible: boolean;
 }
 class FrameGate {
@@ -342,6 +468,8 @@ class FrameGate {
 ```
 
 `shouldDraw` returns true when any version differs from the one remembered at the last drawn frame, or when `settling` is true, or when the previous call reported settling and this one does not (one final frame at rest, Requirement 22.7). It returns false when `canvasVisible` is false (hidden or CSS size 0, Requirement 22.10), without remembering the versions, so the first frame with a valid size draws again. Versions are counters that the View increments in its setters (`setMap`, route change detected by the Engine's route identity, `setPosition`, Camera mutations, `resize`, `setStyle`). Under Reduced_Motion a Camera target is applied in one step, so `settling` is false in the same frame (Requirement 22.9). The gate never reads a clock. Each View's `draw()` calls the gate first and returns before touching the Canvas_Interface when it says no, which gives Requirements 14.4, 14.9, 14.10 and 22.6-22.8.
+
+**Image changes (Requirement 24.12).** The Image_Lookup may be a plain object the application fills while pictures load, so a version counter set by a setter would miss the change. Before asking the gate, the Frame_Loop builds `imagesSignature` from the distinct picture references of the Map (every Picture_Prop reference and the Background_Picture `ref`, collected once per `setMap`, so no Visible_Set is computed on an idle frame): for each reference, the handle identity (an index from a small `Map` of handles seen so far), width and height of the resolved entry, or `missing`. A Map with no pictures has the empty signature and no lookup is made. A lookup that throws counts as `missing` here, and its Notice is reported only when the frame is drawn. A signature that differs from the last drawn one makes `shouldDraw` true, so a picture that arrives is drawn no later than the next animation frame, and an unchanged lookup keeps the zero-call frame of Property 19. A Draw_Function draws on every call and needs no signature.
 
 ### `block-height.ts`
 
@@ -436,7 +564,7 @@ interface MountServices {                       // defaults to the real browser 
   matchReducedMotion(): { matches: boolean; addListener(cb: () => void): void; removeListener(cb: () => void): void };
   devicePixelRatio(): number;
 }
-interface BaseMountOptions { smoothingDurationMs?: number; services?: MountServices; onNotice?(n: Notice): void }
+interface BaseMountOptions { smoothingDurationMs?: number; services?: MountServices; onNotice?(n: Notice): void; images?: ImageLookup }
 interface MinimapOptions extends BaseMountOptions { minZoom?: number; maxZoom?: number; zoom?: number }
 interface FullMapOptions extends BaseMountOptions { minZoom?: number; maxZoom?: number; onSelect?(s: Selection): void }
 interface TiltedViewOptions extends BaseMountOptions { tiltAngleDegrees?: number; heightFactors?: Record<string, number> }
@@ -451,13 +579,40 @@ interface MountHandle { destroy(): void }
 // TiltedViewHandle: setTiltAngle, setHeightFactor
 ```
 
-Mounting order (so a failure leaves nothing behind, Requirement 21.15): (1) validate canvas, Engine functions the View reads (`getMap`, `getPosition`-side reads, `getRoute`, `getRemainingRoute`, `getGuidance`, `getGuidanceSentence`, `getLastNoWayResult`; `setDestination` for the Full_Map), options ranges, and that the canvas is not already mounted (a module-level `WeakSet` of mounted canvases); (2) create the `CanvasAdapter` (a `View_Error` here also stops the mount); (3) only then register side effects: size and Device_Pixel_Ratio set per Requirement 14, `ResizeObserver`, Reduced_Motion listener, `input-binding` for the Full_Map, `aria-live` guidance element and canvas name/description, and finally the first `requestFrame`.
+Mounting order (so a failure leaves nothing behind, Requirement 21.15): (1) validate canvas, Engine functions the View reads (`getMap`, `getPosition`-side reads, `getRoute`, `getRemainingRoute`, `getGuidance`, `getGuidanceSentence`, `getLastNoWayResult`; `setDestination` for the Full_Map), options ranges, the `images` option (Requirement 21.21, see "`image-lookup.ts`" above), and that the canvas is not already mounted (a module-level `WeakSet` of mounted canvases); (2) create the `CanvasAdapter` (a `View_Error` here also stops the mount); (3) only then register side effects: size and Device_Pixel_Ratio set per Requirement 14, `ResizeObserver`, Reduced_Motion listener, `input-binding` for the Full_Map, `aria-live` guidance element and canvas name/description, and finally the first `requestFrame`.
 
 Frame_Loop, per animation frame: read the Position, Route, remaining Route, Guidance and Map from the Engine; bump the View's version counters for anything whose identity changed; call `draw(canvas, state, timestampMs)` (which consults the `FrameGate`); then schedule the next frame, keeping exactly one pending request. The timestamp is the frame's own, passed through to Smoothing; no clock is read in the pure logic (Requirements 13.7, 21.6). The application only feeds Positions to the Engine (Requirement 21.5).
 
 `destroy()` cancels the pending frame, removes every listener this mount added (input, Reduced_Motion, canvas), disconnects the resize observer, removes the canvas from the mounted set and sets a `destroyed` flag. A second call does nothing and returns no error (Requirement 21.9). After `destroy()` every control returns a View_Error stating the view has been destroyed (Requirement 21.10). Mount_Handle controls call the same validating setters as the View classes, so their View_Errors are the ones already specified in Requirements 9, 10, 11 and 12.
 
 All three validate their `Position`/`Route`/`Map` inputs per Requirement 7.9/7.10/3.11 before touching drawing state, consistent with the engine core's "guard before mutating" pattern (`engine.ts`'s own methods).
+
+### Smoke test allowlist (Requirement 19 criteria 19 to 24)
+
+`kit/engine/tests/smoke.test.ts` today scans every file under `src/**` for `/\b(window|document|HTMLCanvasElement)\b/` with no exception, so any file that names a browser global fails it. Three files must name them (the adapter, the input binding and `mount.ts`), so the scan gets an allowlist of exactly those three paths. The logic moves into a pure helper so it can be tested with a stand-in file list:
+
+```ts
+// tests/helpers/browser-global-scan.ts
+export const BROWSER_GLOBAL_ALLOWLIST: readonly string[] = [
+  "src/views/canvas-adapter.ts",
+  "src/views/input-binding.ts",
+  "src/views/mount.ts",
+];
+export const BROWSER_GLOBAL_PATTERN = /\b(window|document|HTMLCanvasElement)\b/;
+/** files: path (as the glob gives it, e.g. "../src/views/mount.ts") -> text. Returns plain-worded problems. */
+export function checkBrowserGlobals(files: Record<string, string>, allowlist: readonly string[]): string[];
+```
+
+`checkBrowserGlobals` strips the leading `../` from each path and then does two things, in this order:
+
+1. For each allowlisted path with no matching file, it adds `The allowlisted path "src/views/mount.ts" does not exist under kit/engine/src, so the allowlist is out of date.` (Requirement 19.21).
+2. For each file whose path is not in the allowlist and whose text matches the pattern, it adds `src/x.ts mentions a browser global` (Requirement 19.22, the message the test gives today). An allowlisted file is not scanned. The match is on the exact path: no directory, no pattern, no prefix (Requirement 19.20), so `src/views/mount.test.ts` or `src/views/mount-extra.ts` are scanned.
+
+`smoke.test.ts` keeps its other tests as they are. Its one test "uses no browser global in any source file" becomes `expect(checkBrowserGlobals(sources, BROWSER_GLOBAL_ALLOWLIST)).toEqual([])`, which keeps the same pattern, scans the same glob and makes the same kind of failure message. This is the one permitted edit of an engine-core test (Requirement 19.23); it changes only the scan rule and adds the existence check.
+
+`tests/smoke-allowlist.test.ts` (Requirement 19.24) tests `checkBrowserGlobals` with stand-in file lists: (a) an allowlist path missing from the list fails and the message names it; (b) an extra file that mentions `window` and is not on the allowlist fails and the message names the file; (c) an allowlisted file that mentions `document` passes; (d) a file with a name that only extends an allowlisted name (`src/views/mount-extra.ts`) is still scanned; (e) with all three allowlisted files present and clean, the result is empty.
+
+**Commit order.** The three allowlisted files do not all exist at the same time, and the existence check fails while one is missing. So the commit that edits `smoke.test.ts` and adds the helper and `smoke-allowlist.test.ts` is the commit that adds the last of the three files, which is `mount.ts` (Requirement 19.23: "together with the change that needs it"). The Canvas_Adapter and the input binding are written first against structural types and the injected `services`, so that neither names a browser global in its source text before the edit (the old scan still passes). If either of them needs to name one, the order is changed so the edit lands with the last of the three files to exist. The commit leaves the whole engine-core Default_Suite green.
 
 ## Data Models
 
@@ -498,6 +653,15 @@ interface ResolvedStyle {
   roadLineStyles: Record<RoadKind, { dash?: number[]; widthPx: number }>;
   // ... one width/dash entry per drawn line kind named in Requirement 4.3
 }
+// Every colour field is a text of the form #rgb, #rrggbb or #rrggbbaa (Requirement 4.9).
+// DEFAULT_STYLE holds only #rgb and #rrggbb values (Requirement 4.11).
+
+// views/draw-map-layers.ts (additions, Requirement 24)
+type LayerName = "ground" | "backgroundPicture" | "blockedAreas" | "flatProps" | "roadOutlines"
+  | "roadFills" | "blockedRoadMarks" | "routeLine" | "destinationMarker" | "placeMarkers"
+  | "placeLabels" | "playerMarker";
+interface DrawMapLayersInput { /* existing fields */ images?: ImageLookup }
+// The map's own backgroundPicture ({ ref, scale, opacity }) is read from `map`.
 
 // views/visible-set.ts
 interface VisibleRegion { minX: number; minY: number; maxX: number; maxY: number }
@@ -543,8 +707,18 @@ interface RoadBatch { kind: RoadKind; widthPx: number; roadIds: string[] }
 interface FrameInputs {
   mapVersion: number; routeVersion: number; positionVersion: number;
   cameraVersion: number; viewportVersion: number; styleVersion: number;
+  imagesSignature: string;
   settling: boolean; canvasVisible: boolean;
 }
+
+// views/canvas-interface.ts, views/image-lookup.ts (Requirements 1.10, 24.1)
+declare const imageHandleBrand: unique symbol;
+interface ImageHandle { readonly [imageHandleBrand]: never }   // opaque: no member to read
+interface ImageEntry { image: ImageHandle; width: number; height: number } // image pixels, each > 0
+type ImageLookup =
+  | Readonly<Record<string, ImageEntry | undefined>>
+  | ((ref: string) => ImageEntry | undefined);
+function asImageHandle(source: unknown): ImageHandle;  // identity; the caller's loaded image
 
 // views/mount.ts (options and handles as in "mount.ts" above)
 interface MountHandle { destroy(): void }
@@ -557,7 +731,7 @@ interface MountHandle { destroy(): void }
 
 *A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-PBT is appropriate for nearly all of the Views' logic: cameras, visibility, label placement, hit testing, tilted projection, smoothing and input reduction are all pure functions over structured data (points, rectangles, event sequences) with large input spaces and clear universal invariants, in the same style as the engine core. Drawing itself is checked through the `RecordingCanvas`'s call log rather than pixels, which keeps even the layer-order and route-line properties expressible as PBT over the call log. The properties below map to the required list in Requirement 19.3 (Properties 1 to 16) and to the properties added by Requirements 12, 21, 22 and 23 (Properties 17 to 22), each traced back to the acceptance criterion it was adapted from; property reflection notes at the end record where closely related criteria were folded into one property, matching the engine-core design's own reflection practice.
+PBT is appropriate for nearly all of the Views' logic: cameras, visibility, label placement, hit testing, tilted projection, smoothing and input reduction are all pure functions over structured data (points, rectangles, event sequences) with large input spaces and clear universal invariants, in the same style as the engine core. Drawing itself is checked through the `RecordingCanvas`'s call log rather than pixels, which keeps even the layer-order and route-line properties expressible as PBT over the call log. The properties below map to the required list in Requirement 19.3 (Properties 1 to 16) and to the properties added by Requirements 4, 12, 21, 22, 23 and 24 (Properties 17 to 25), each traced back to the acceptance criterion it was adapted from; property reflection notes at the end record where closely related criteria were folded into one property, matching the engine-core design's own reflection practice.
 
 ### Property 1: Transform round trip (world to screen to world)
 
@@ -585,9 +759,9 @@ For all generated Maps (including the whole-map-extent camera case) and Cameras,
 
 ### Property 5: Layer order
 
-For all generated Maps and Cameras, the ordered calls recorded by the Recording_Canvas, grouped by which layer-drawing function produced them, show every call of a later layer in Requirement 6.1's fixed order strictly after every call of an earlier layer, within the same drawn frame.
+For all generated Maps and Cameras, including Maps with a Background_Picture and an Image_Lookup that holds its image, the ordered calls recorded by the Recording_Canvas, grouped by which layer-drawing function produced them, show every call of a later layer in Requirement 6.1's fixed order (with the background picture directly after the ground, Requirement 24.6) strictly after every call of an earlier layer, within the same drawn frame.
 
-**Validates: Requirements 6.5**
+**Validates: Requirements 6.5, 24.6**
 
 ### Property 6: Route line lies on the remaining route
 
@@ -669,9 +843,9 @@ For all generated Maps with N Usable_Roads of one kind and one width, all in the
 
 ### Property 19: An unchanged frame makes zero drawing calls
 
-For all generated Maps, Cameras, Positions and Routes, and for all View kinds, drawing a View twice with no change of Map, Route, Position, Camera, Viewport or Style between the draws, and no Camera Settling, leaves the second draw with zero calls recorded on the Recording_Canvas.
+For all generated Maps (with and without pictures), Cameras, Positions, Routes and Image_Lookups, and for all View kinds, drawing a View twice with no change of Map, Route, Position, Camera, Viewport, Style or Image_Lookup entries between the draws, and no Camera Settling, leaves the second draw with zero calls recorded on the Recording_Canvas. A change of an Image_Lookup entry (a picture that arrives, or a changed size) between two draws makes the next draw non-empty.
 
-**Validates: Requirements 14.4, 14.9, 14.10, 22.6**
+**Validates: Requirements 14.4, 14.9, 14.10, 22.6, 24.12**
 
 ### Property 20: Raised block top lies above its footprint by the block height
 
@@ -691,7 +865,28 @@ For all generated Maps whose Props may carry `blockHeight`, mirroring the Map le
 
 **Validates: Requirements 23.8**
 
+### Property 23: A Picture_Prop is an image or a placeholder, never nothing
+
+For all generated Maps with Picture_Props (kinds with the prefix `picture:` or `upload:`, including an empty reference) and for all Image_Lookups that hold any subset of the references (with valid entries), the number of `drawImage` calls made for Picture_Props on the Recording_Canvas equals the number of visible Picture_Props that have a non-empty reference with an entry in the lookup, and every other visible Picture_Prop is drawn as a placeholder rectangle with its Prop kind as label. A Picture_Prop entirely outside the Visible_Region makes no call. The property runs on the Full_Map, the Minimap and the Tilted_View.
+
+**Validates: Requirements 24.4, 24.5, 24.9, 24.16, 24.17**
+
+### Property 24: The background picture is drawn at its scale and opacity, before every later layer
+
+For all generated Background_Pictures with `scale` above 0 and `opacity` from 0 to 1, image sizes above 0 and Cameras that show part of the picture, the `drawImage` call of the Background_Picture on the Recording_Canvas is recorded with the global alpha equal to `opacity`, a destination of width image width times `scale` and height image height times `scale` from the world point (0, 0) (read through the transform of the call), and before every call of a later layer; the global alpha after the call equals the alpha before it.
+
+**Validates: Requirements 24.6, 24.18**
+
+### Property 25: The hex colour rule accepts exactly `#rgb`, `#rrggbb` and `#rrggbbaa`
+
+For all generated texts (built from `#`, hex digits of both cases, non-hex letters and other characters, with lengths from 0 to 12) and for all generated non-text values, `isUsableColor` is true if and only if the value is a text that starts with `#`, has 3, 6 or 8 further characters, and has only hexadecimal digits among them, as decided by an independent model in test code that shares no code with `style.ts`. For every value that is not usable, `resolveStyle` returns the Default_Style colour for the key and one Notice that names the key and the default colour.
+
+**Validates: Requirements 4.9, 4.10**
+
 **Property reflection notes:**
+- Requirements 4.16 (the named accept and reject examples) stay example tests in `style-colour-rule.test.ts`; Property 25 is the "if and only if" of 4.9, and the examples pin the named values and the Notice text. Requirement 4.15 (document against `DEFAULT_STYLE`) is an example-style test, not a property: it has one fixed input, the document.
+- Requirement 24.18 (background) and 24.17 (picture or placeholder) are Properties 24 and 23. Requirements 24.13 to 24.15 (bad `scale`/`opacity`, bad entry size, entry without image, throwing lookup) and 24.19 (named boundary values) are example tests, because each has a short fixed list of bad values that the generators of Properties 23 and 24 are not made to produce.
+- Requirement 19.24 (the allowlist check) is an example test with a stand-in file list; the scan itself runs over the real source files in `smoke.test.ts`.
 - Requirements 22.3, 22.4, 22.7, 22.8, 22.10 and 22.12 are example tests, not properties: arrowhead batching, draw order of batches, the one-final-frame rule, the per-change-type frame count and the hidden-canvas rule each have a small fixed set of cases that the generators of Properties 18 and 19 would not add coverage to. Requirement 21.9 to 21.14 are error examples.
 - Requirement 5.10 and 5.11 are folded into Property 18 with 22.1, 22.2 and 22.5, since they state the same batching invariant.
 - Requirements 12.15 to 12.18 (default heights, fallback, factor, margin) are example tests in `block-height.test.ts`; 12.19 is Property 20 and subsumes the lift part of 12.15/12.17.
@@ -708,6 +903,8 @@ For all generated Maps whose Props may carry `blockHeight`, mirroring the Map le
 - **Drawing never throws for bad data.** Every View validates its `Camera`, `Position`, `Route`, `Map` item and Style input before it reaches a `CanvasInterface` call; a `View_Error` is returned (and the previous state kept) for a rejected setter call (`createCamera`, `setZoom`, `setDestination`'s selection path, `resize`), while a per-item problem inside an otherwise-drawable Map (a bad Road width, a degenerate Blocked_Area polygon, a non-finite Prop field, an empty Place name) produces a `Notice` and that one item is skipped, matching the glossary's View_Error-vs-Notice split and the engine core's own `LoadResult`-style "never throw for caller-supplied data" rule.
 - **Non-finite numbers never reach the Canvas_Interface.** `layers.ts` checks every coordinate it is about to pass to a draw call; on a non-finite value it skips the call and appends a Notice naming the operation (Requirement 1.8), the same discipline `camera.ts` applies to its own inputs before computing.
 - **Mount_Functions validate before they touch anything.** A non-canvas first argument, an Engine missing a function the View reads, an options value outside its range, or a canvas that already has a View returns a `View_Error` (Requirements 21.11 to 21.14) before any listener, observer, frame request or canvas size change; a `View_Error` from the adapter step also unwinds anything already done (Requirement 21.15). Controls on a destroyed Mount_Handle return "the view has been destroyed" and change nothing; a second `destroy()` is silent (Requirements 21.9, 21.10).
+- **A missing or bad picture is a Notice and a fallback, never an error.** A Picture_Prop without a usable image is drawn as the placeholder rectangle; a Background_Picture without a usable image, or with a bad `scale` or `opacity`, is not drawn. An entry without a handle, an entry with a bad size and a lookup that throws are all treated as missing, each with a Notice that names the picture reference, and the rest of the frame is drawn (Requirements 24.5, 24.7, 24.13 to 24.16). A `drawImage` call with a number that is not finite or a size not above 0 is skipped by `SafeCanvas` with a Notice naming `drawImage` (Requirement 1.13). Only an `images` option of the wrong type, or an object lookup with a bad entry size, is a View_Error, and only at mount, before anything is registered (Requirement 21.21).
+- **A bad colour falls back, with its default named.** A Style colour that fails the hex rule gets the Default_Style colour and a Notice naming the key and the default colour; the Engine loader still accepts any colour text (Requirements 4.10, 4.12).
 - **Drawing is skipped, not faked, when the canvas cannot be drawn on.** A hidden or 0-size canvas makes zero Canvas_Interface calls and the version counters are kept unchanged, so the first frame with a valid size draws (Requirement 22.10).
 - **`blockHeight` errors stop the load.** The loader returns an `EngineError` naming the Prop identifier and `blockHeight` ("a finite number of 0 or more") and loads no Map (Requirement 23.5). Inside the Views, a Raised_Block whose computed height is non-finite or negative (for example from a bad height factor that slipped through) is drawn flat with a Notice naming the Prop (Requirement 12.14); a bad height factor passed to a setter is a `View_Error` (Requirement 12.13).
 - **The Canvas_Adapter fails fast on an unusable canvas.** `CanvasAdapter.mount` returns a `View_Error` and mounts nothing when `getContext("2d")` is `null` (Requirement 1.9), rather than deferring the failure to the first draw call.
@@ -716,7 +913,7 @@ For all generated Maps whose Props may carry `blockHeight`, mirroring the Map le
 
 ## Testing Strategy
 
-**Dual approach**, matching the engine core: property-based tests (Vitest + fast-check, the same library already a devDependency, no new dependency added) cover the 16 properties above; example-based unit tests cover the fixed scenarios and error/notice cases the requirements name; a separate Playwright suite (outside the Default_Suite, per Requirement 18.1/20.5) covers the Frame_Benchmark and the Gate.
+**Dual approach**, matching the engine core: property-based tests (Vitest + fast-check, the same library already a devDependency, no new dependency added) cover the 25 properties above; example-based unit tests cover the fixed scenarios and error/notice cases the requirements name; a separate Playwright suite (outside the Default_Suite, per Requirement 18.1/20.5) covers the Frame_Benchmark and the Gate.
 
 **Property test configuration.**
 - Each property test runs at least 100 generated cases (`fc.assert(fc.property(...), { numRuns: 100 })` or higher where the input space is larger, e.g. Property 4's map/camera combinations).
@@ -732,6 +929,15 @@ For all generated Maps whose Props may carry `blockHeight`, mirroring the Map le
 - `style-contrast.test.ts`: asserts `DEFAULT_STYLE`'s label text/background contrast is ≥4.5:1 and its Route_Line contrast against every Road kind colour and the ground colour is ≥3:1, using `contrastRatio` (Requirement 4.5/4.6/4.7).
 - `example-town-map.test.ts`: draws the Town_Map on the Recording_Canvas with each View and asserts the presence of road, Blocked_Area, Prop, Route_Line, Player_Marker, Destination_Marker and Place_Label calls (Requirement 19.8).
 - `view-error-messages.test.ts`: one case per named View_Error and Notice in Requirements 1-18, asserting the message is plain-worded, names the input, and contains no coordinates where the requirement forbids them (Requirement 19.15), plus boundary-value cases (lower bound, upper bound, just below, just above, `NaN`, `+Infinity`, `-Infinity`) for every numeric input with a stated range (Requirement 19.16).
+- `canvas-interface-draw-image.test.ts`: a `drawImage` on the Recording_Canvas is recorded in order with the stand-in handle, destination, size, transform and global alpha (Requirement 1.11); `SafeCanvas` skips `drawImage` with NaN, +Infinity, -Infinity, a width or height of 0 and a negative one, adds one Notice that names `drawImage` and passes nothing on (1.13); the Canvas_Adapter, given a stand-in 2D context, calls the context's `drawImage` with the same handle object and the four numbers, and never reads a member of the handle (a handle whose every property getter throws is used as the test double) (1.12).
+- `image-lookup.test.ts`: `pictureRefOfKind` for `picture:a`, `upload:b`, `picture:` (empty), `picture:a:b`, a kind with no prefix; `resolvePicture` for an absent lookup, a missing reference, an object lookup and a function lookup, an entry with a bad size (0, negative, NaN, +Infinity), an entry without an image (`undefined`, `null`), a function that throws, and the reference `constructor` on an object lookup (24.3, 24.14, 24.15).
+- `picture-props.test.ts`: with a stand-in handle, a visible Picture_Prop with an image gives one `drawImage` at the Prop's translate and rotate; without one it gives the placeholder rectangle, the kind as label and a Notice naming the Prop and the reference; an empty reference gives the placeholder and a Notice naming the Prop (24.4, 24.5, 24.16); a prop outside the Visible_Region gives no call (24.9). Property 23 lives in this file.
+- `background-picture.test.ts`: no background gives no `drawImage` and no Notice (24.8); a missing image gives no call and a Notice that names the reference (24.7); `opacity` 0 and 1 (alpha recorded, alpha restored afterwards), `scale` 0, a negative value, NaN and +Infinity (nothing drawn, Notice names `scale` and its range), `opacity` just below 0, just above 1 and NaN (24.13); the call comes after the ground and before the blocked areas on each of the three Views (24.6, 24.19); a background wholly outside the Visible_Region gives no call (24.9). Property 24 lives in this file.
+- `tilted-pictures.test.ts`: on the Tilted_View a Picture_Prop is drawn flat even with a `blockHeight`, and the background `drawImage` is recorded under the ground transform (the same recorded transform as the ground fill) (24.10).
+- `style-colour-rule.test.ts`: the accept list `#abc`, `#aabbcc`, `#aabbccdd`, `#AABBCC` and the reject list `#abcd`, `#abcde`, `#aabbccd`, `abc`, `#ggg`, `red`, `rgb(0,0,0)`, the empty text and a number, each run through `resolveStyle` and through a draw of each View, with the key and the default colour in the Notice checked for each rejected value (Requirement 4.16). Property 25 lives in this file.
+- `style-doc-drift.test.ts`: described under "`style.ts`" above (Requirement 4.15).
+- `smoke-allowlist.test.ts`: described under "Smoke test allowlist" above (Requirement 19.24).
+- `mount-errors.test.ts` also gets: `images` as a number, a text and `null` (View_Error naming `images`); an object lookup with an entry of width 0, of height NaN and of a negative width (View_Error, nothing left behind); a function lookup that returns a bad entry only when drawn (Notice, not a View_Error) (21.21).
 - `label-placement-example.test.ts`: asserts the Destination place's label is included among the placed labels when its marker and label both fit in the Viewport (the non-PBT guarantee noted in the property reflection above).
 - `mount-functions.test.ts` and `mount-errors.test.ts` run `mount.ts` in Node with the stand-ins of `helpers/stand-ins.ts` (canvas, animation frame scheduler, resize observer, Reduced_Motion listener, Engine). Examples cover a valid mount of each View, the Frame_Loop reading Position/Route/Guidance each frame, listener/observer counts added and removed (Requirement 21.8), the second `destroy()` (21.9), controls after `destroy()` (21.10), and one example for each `View_Error` of 21.11 to 21.14 plus nothing left behind (21.15).
 - `road-batching-path-count.test.ts` includes the example with 5,000 Roads of one kind and width against 1 Road (Requirement 22.11); `road-batching-order.test.ts` checks outlines before fills, one dashed path for Blocked_Roads and one arrowhead path per kind per pass. `frame-gate-changes.test.ts` has one example per change type (Map, Route, Position, Camera, Viewport, Style) asserting exactly one more frame and then zero calls (Requirement 22.12), the final frame after Settling, Reduced_Motion at rest in the same frame, and a hidden or 0-size canvas.
@@ -745,7 +951,7 @@ For all generated Maps whose Props may carry `blockHeight`, mirroring the Map le
 
 **Commit discipline note (per the project's commit rules).** Each module above (`camera.ts`, `visible-set.ts`, `style.ts`, `layers.ts`, `road-batching.ts`, `frame-gate.ts`, `block-height.ts`, `label-placement.ts`, `hit-test.ts`, `tilted-projection.ts`, `smoothing.ts`, `input-state-machine.ts`, the Canvas_Interface/Recording_Canvas/Canvas_Adapter trio, `mount.ts`, each of the three View classes, the Engine-side additions (`getMap()`, the `snapToRoad` export, and the five `blockHeight` steps of gap 3), and the demo page's pieces) is sized to land in its own commit together with its own tests, so "a piece of code and its tests go in one commit" holds task by task; no module's production code and its property/example tests are split across commits, and the task list that follows this design will keep each task to one such module.
 
-**Task ordering constraints for the task list.** (1) All Engine-side tasks (`getMap()`, `snapToRoad` export, the five `blockHeight` steps) come first and each ends green on the unedited engine-core suite; no View file that reads `getMap()`, `snapToRoad` or `blockHeight` is built before its Engine-side task. (2) `road-batching.ts` and `frame-gate.ts` land before the View classes that call them. (3) `mount.ts` lands after the three View classes and before the demo page, which uses only the Mount_Functions. (4) `views-api.md` entries, including one usage example per Mount_Function, are written in the task of the code they document. (5) The Gate stays the last task.
+**Task ordering constraints for the task list.** (1) All Engine-side tasks (`getMap()`, `snapToRoad` export, the five `blockHeight` steps) come first and each ends green on the unedited engine-core suite; no View file that reads `getMap()`, `snapToRoad` or `blockHeight` is built before its Engine-side task. (2) `road-batching.ts` and `frame-gate.ts` land before the View classes that call them. (3) `mount.ts` lands after the three View classes and before the demo page, which uses only the Mount_Functions. (4) `views-api.md` entries, including one usage example per Mount_Function, are written in the task of the code they document; the Image_Lookup, `ImageHandle`, the reference rule, the background placement and each picture Notice are documented in the pictures task (Requirement 24.20), and the `images` option with an example in which the application loads the image is documented with the Mount_Functions (21.23). (5) The Gate stays the last task. (6) `drawImage` lands first, as one commit across `canvas-interface.ts`, `recording-canvas.ts`, `draw-safe.ts` and `canvas-adapter.ts` if the adapter exists by then (otherwise the adapter's `drawImage` lands with the adapter), then `image-lookup.ts`, then the Picture_Prop change, then the background layer with its place in `drawMapLayers`, then `images` in the Mount_Functions and the frame gate signature. Each is its own commit with its tests. (7) The colour rule change in `style.ts` (widening to `#rrggbbaa`, removing `trim()`, the new Notice text) with its tests is one commit. The key lists and the format document tables, with the drift test, are a second commit, so the document and the test that guards it land together. (8) The smoke test edit is made in the commit that adds `mount.ts` (see "Smoke test allowlist") and is the only edit of an engine-core test in this spec.
 
 **Coverage summary against Requirement 19.3's required property list:**
 
@@ -771,3 +977,6 @@ For all generated Maps whose Props may carry `blockHeight`, mirroring the Map le
 | block-height (Req 12.19) | Property 20 |
 | save/load round trip with blockHeight (Req 23.7) | Property 21 |
 | mirror keeps blockHeight (Req 23.8) | Property 22 |
+| picture or placeholder (Req 24.17) | Property 23 |
+| background picture (Req 24.18) | Property 24 |
+| hex colour rule (Req 4.9, 4.10) | Property 25 |
