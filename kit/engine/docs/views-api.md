@@ -11,7 +11,7 @@ the input and its allowed range. A rejected call changes nothing.
 ## Mounting
 
 Every Mount_Function takes a canvas element, an Engine and an options object, and returns a
-Mount_Handle or a `ViewError`. The Engine must have a map loaded. The application only feeds
+Mount_Handle or a `ViewError`. The Engine may have no map yet. The application only feeds
 positions to the engine with `feedPosition`; the mounted View reads the position, the remaining
 route and the guidance from the engine on every animation frame.
 
@@ -19,8 +19,32 @@ Mounting order: the inputs are checked first, then the View and the canvas adapt
 and only then are the observer, the listeners and the first frame request added. When a mount
 returns a `ViewError`, no listener, observer, frame request or canvas size is left behind.
 
-The View reads the map from the engine once, when it is mounted. To show a map loaded later,
-destroy the View and mount again.
+### Map version and maps that arrive later
+
+The engine offers `getMapVersion()`. It returns a whole number that is 0 before any map is
+loaded and rises by exactly 1 on every successful `loadMap`; a failed `loadMap` leaves it
+unchanged. It does not copy the map, so it is cheap to read on every frame. Every Mount_Function
+needs it: an engine without a function `getMapVersion` is refused with a `ViewError` that names
+the `engine` argument and `getMapVersion`, and nothing is mounted.
+
+A mounted View reads `getMapVersion()` on every animation frame and calls `getMap()` only when
+the version is above 0 and differs from the one it handled before. A mount on an engine at
+version 0 succeeds (the waiting mount): while the version is 0 the View makes no drawing call and
+reports nothing, and the first `loadMap` builds the View and draws it no later than the next
+frame. A later map replaces the earlier one and keeps the zoom limits, zoom, tilt angle, height
+factors, `images` option and smoothing duration you set. A Full_Map fits its first map and keeps
+its camera for later maps (call `fit()` to fit again). A map the View refuses gives one notice,
+the previous map stays on the screen, and `getMap()` is not called again until the version changes.
+
+An application mounts a View once and loads maps into the engine. It does not call `destroy()`
+and mount again when the map changes.
+
+While a View has no map, the handle controls that need a map (`select`, `selectPlace`, `fit`,
+`follow`, `pan` and `zoomAt`) return a `ViewError` that says no map has been loaded yet, and
+change nothing. The controls that only hold a setting (`setZoomLimits`, `setZoom`,
+`setTiltAngle` and `setHeightFactor`) check their value as always and keep it for the View that
+is built when the first map arrives. A Full_Map ignores pointer, wheel, touch and key input
+without an error while it has no map.
 
 ### `mountMinimap`
 
@@ -30,12 +54,12 @@ heading points up the screen, with the route line, the markers and the place nam
 - Inputs: `mountMinimap(canvas, engine, options?)`.
   - `canvas`: a canvas element with a 2D context and a CSS size of 1 to 16384 pixels each way.
     A canvas can hold one View at a time.
-  - `engine`: an `Engine` with a map loaded (it must offer `getMap`, `getPosition`,
-    `getRemainingRoute` and `getGuidanceSentence`).
+  - `engine`: an `Engine`, with or without a map loaded (it must offer `getMapVersion`,
+    `getMap`, `getPosition`, `getRemainingRoute` and `getGuidanceSentence`).
   - `options`: see "Options" below.
 - Outputs: a `MinimapHandle`, or a `ViewError`.
 - Errors: a first argument that is not a canvas element; an engine that lacks a function the
-  View reads or has no map; options that are not an object; a zoom, zoom limit or smoothing
+  View reads, including `getMapVersion`; options that are not an object; a zoom, zoom limit or smoothing
   duration outside its range; a minimum zoom that is not below the maximum; a first zoom
   outside the zoom limits; an `images` option that is not an object or a function, or an
   `images` entry with a width or height that is not above 0; a canvas that already has a View;
@@ -75,7 +99,7 @@ selection goes to the engine as a destination; the view finds no route itself.
 - Inputs: `mountFullMap(canvas, engine, options?)`.
   - `canvas`: as for `mountMinimap`, and it must also take input (`getBoundingClientRect`, a
     `style`, pointer, wheel, touch and key events). A real canvas element does.
-  - `engine`: an `Engine` with a map loaded. It must offer the four functions of `mountMinimap`
+  - `engine`: an `Engine`, with or without a map loaded. It must offer the four functions of `mountMinimap`
     and `setDestination`.
   - `options`: see "Options" below. `liveRegion` should be given so that a screen reader hears
     the guidance sentence and the place focus announcements.
@@ -214,7 +238,8 @@ After `destroy()` every control returns a `ViewError` that says the view has bee
 | --- | --- |
 | first argument is not a canvas element | `canvas` and "canvas element" |
 | engine lacks a function | `engine` and the function |
-| engine has no map | `engine` and "no map" |
+| engine lacks `getMapVersion` | `engine` and `getMapVersion` |
+| a control that needs a map, used before the first map | `engine` and "no map has been loaded yet" |
 | options is not an object | `options` |
 | option outside its range | the option and its range |
 | `images` not an object or a function | `images` |

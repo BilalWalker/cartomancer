@@ -98,11 +98,9 @@ describe("a View mounted before any map", () => {
     }
   });
 
-  it("answers a control that needs a map with a plain error until the map arrives", () => {
+  it("accepts a setting-only control and remembers it until the map arrives (Requirement 25.13)", () => {
     const { handle } = waiting();
-    const result = handle.setZoom(2);
-    expect(isViewError(result)).toBe(true);
-    if (isViewError(result)) expect(result.message).toContain("No map has been loaded yet");
+    expect(handle.setZoom(2)).toBeUndefined();
   });
 });
 

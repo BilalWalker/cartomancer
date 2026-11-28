@@ -94,10 +94,10 @@ export function missingEngineFunction(name: string): ViewError {
   );
 }
 
-/** A control that needs a map was used before the first map was loaded. */
-export function noMapLoadedYet(): ViewError {
+/** A control that needs a map was used before the first map was loaded. The control is named. */
+export function noMapYet(control: string): ViewError {
   return error(
-    "No map has been loaded yet, so this control has nothing to act on. Load a map first.",
+    `No map has been loaded yet, so ${control} has nothing to act on. Load a map into the engine first.`,
     "engine",
   );
 }

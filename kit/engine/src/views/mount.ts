@@ -47,7 +47,7 @@ import {
   isViewError,
   missingEngineFunction,
   noFrameService,
-  noMapLoadedYet,
+  noMapYet,
   notACanvas,
   outOfRange,
   serviceFailed,
@@ -454,13 +454,15 @@ interface ViewSpec<V extends CoreView, P> {
   checkCanvas?(canvas: unknown): ViewError | undefined;
 }
 
-interface MountCore<V> {
+interface MountCore<V, P> {
   /** The View, or undefined while no map has been loaded. */
   getView(): V | undefined;
   isDestroyed(): boolean;
   destroy(): void;
   /** Reads the CSS size of the canvas again and resizes the View. */
   applySize(): ViewError | undefined;
+  /** The settings the View is built with; a setting made before the first map is kept here. */
+  plan: P;
 }
 
 /**
@@ -473,7 +475,7 @@ function mountView<V extends CoreView, P>(
   engine: unknown,
   options: unknown,
   spec: ViewSpec<V, P>,
-): MountCore<V> | ViewError {
+): MountCore<V, P> | ViewError {
   // 1. Validate.
   if (!isMountableCanvas(canvas)) return notACanvas();
   const engineError = checkEngine(engine, spec.engineFunctions);
@@ -703,6 +705,7 @@ function mountView<V extends CoreView, P>(
       teardown();
     },
     applySize,
+    plan,
   };
 }
 
@@ -752,12 +755,30 @@ export function mountMinimap(
   return {
     destroy: core.destroy,
     setZoom: (zoom) => {
+      if (isDestroyed()) return destroyed();
       const view = getView();
-      return isDestroyed() ? destroyed() : view === undefined ? noMapLoadedYet() : view.setZoom(zoom);
+      if (view !== undefined) return view.setZoom(zoom);
+      // No map yet: check as the View does and keep the value for the first map.
+      const { plan } = core;
+      if (!zoomInRange(zoom) || zoom < plan.min || zoom > plan.max) {
+        return outOfRange("zoom", `a number from ${plan.min} to ${plan.max}`);
+      }
+      plan.zoom = zoom;
+      return undefined;
     },
     setZoomLimits: (min, max) => {
+      if (isDestroyed()) return destroyed();
       const view = getView();
-      return isDestroyed() ? destroyed() : view === undefined ? noMapLoadedYet() : view.setZoomLimits(min, max);
+      if (view !== undefined) return view.setZoomLimits(min, max);
+      const rule = `a number from ${ZOOM_RANGE_MIN} to ${ZOOM_RANGE_MAX}`;
+      if (!zoomInRange(min)) return outOfRange("minimum zoom", rule);
+      if (!zoomInRange(max)) return outOfRange("maximum zoom", rule);
+      if (!(min < max)) return outOfRange("minimum zoom", "below the maximum zoom");
+      const { plan } = core;
+      plan.min = min;
+      plan.max = max;
+      if (plan.zoom !== undefined) plan.zoom = Math.min(Math.max(plan.zoom, min), max);
+      return undefined;
     },
     resize: () => (isDestroyed() ? destroyed() : core.applySize()),
   };
@@ -824,10 +845,10 @@ export function mountFullMap(
   if (isViewError(core)) return core;
   const { getView, isDestroyed } = core;
   /** Runs a control on the View; a destroyed handle or a missing first map is a ViewError. */
-  const withView = <R>(run: (view: FullMap) => R): R | ViewError => {
+  const withView = <R>(control: string, run: (view: FullMap) => R): R | ViewError => {
     if (isDestroyed()) return destroyed();
     const view = getView();
-    return view === undefined ? noMapLoadedYet() : run(view);
+    return view === undefined ? noMapYet(control) : run(view);
   };
 
   const change = (result: FullMapChange | ViewError): ViewError | undefined => {
@@ -844,12 +865,12 @@ export function mountFullMap(
 
   return {
     destroy: core.destroy,
-    pan: (dx, dy) => withView((view) => change(view.pan(dx, dy))),
-    zoomAt: (anchor, factor) => withView((view) => change(view.zoomAt(anchor, factor))),
-    fit: () => withView((view) => change(view.fit())),
-    follow: () => withView((view) => change(view.follow())),
-    select: (screenPoint) => withView((view) => view.select(screenPoint)),
-    selectPlace: (placeId) => withView((view) => view.selectPlace(placeId)),
+    pan: (dx, dy) => withView("pan", (view) => change(view.pan(dx, dy))),
+    zoomAt: (anchor, factor) => withView("zoomAt", (view) => change(view.zoomAt(anchor, factor))),
+    fit: () => withView("fit", (view) => change(view.fit())),
+    follow: () => withView("follow", (view) => change(view.follow())),
+    select: (screenPoint) => withView("select", (view) => view.select(screenPoint)),
+    selectPlace: (placeId) => withView("selectPlace", (view) => view.selectPlace(placeId)),
     resize: () => (isDestroyed() ? destroyed() : core.applySize()),
   };
 }
@@ -900,12 +921,25 @@ export function mountTiltedView(
   return {
     destroy: core.destroy,
     setTiltAngle: (degrees) => {
+      if (isDestroyed()) return destroyed();
       const view = getView();
-      return isDestroyed() ? destroyed() : view === undefined ? noMapLoadedYet() : view.setTiltAngle(degrees);
+      if (view !== undefined) return view.setTiltAngle(degrees);
+      const error = validateTilt(degrees);
+      if (error) return error;
+      core.plan.tilt = degrees;
+      return undefined;
     },
     setHeightFactor: (kind, factor) => {
+      if (isDestroyed()) return destroyed();
       const view = getView();
-      return isDestroyed() ? destroyed() : view === undefined ? noMapLoadedYet() : view.setHeightFactor(kind, factor);
+      if (view !== undefined) return view.setHeightFactor(kind, factor);
+      const error = validateHeightFactor(kind, factor);
+      if (error) return error;
+      const { factors } = core.plan;
+      const existing = factors.find(([name]) => name === kind);
+      if (existing) existing[1] = factor;
+      else factors.push([kind, factor]);
+      return undefined;
     },
     resize: () => (isDestroyed() ? destroyed() : core.applySize()),
   };

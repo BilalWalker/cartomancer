@@ -125,6 +125,20 @@ describe("views public exports", () => {
       }
     });
 
+    it("documents the map version, the waiting mount and the controls without a map (Requirement 25.19)", () => {
+      expect(doc).toContain("`getMapVersion()`");
+      expect(doc).toContain("the waiting mount");
+      expect(doc).toContain("An application mounts a View once and loads maps into the engine");
+      expect(doc).toContain("an engine without a function `getMapVersion` is refused");
+      for (const control of ["select", "selectPlace", "fit", "follow", "pan", "zoomAt"]) {
+        expect(doc, control).toContain(`\`${control}\``);
+      }
+      for (const setting of ["setZoomLimits", "setZoom", "setTiltAngle", "setHeightFactor"]) {
+        expect(doc, setting).toContain(`\`${setting}\``);
+      }
+      expect(doc).toContain("ignores pointer, wheel, touch and key input");
+    });
+
     it("has a usage example for each of the three mount functions", () => {
       for (const name of ["mountMinimap", "mountFullMap", "mountTiltedView"]) {
         const entry = entries.find((e) => e.names.includes(name));
