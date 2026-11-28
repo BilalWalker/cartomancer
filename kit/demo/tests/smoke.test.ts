@@ -51,6 +51,22 @@ describe("demo page layout", () => {
   });
 });
 
+describe("demo start instructions", () => {
+  const readme = readText("README.md");
+  const config = readText("vite.config.ts");
+
+  it("README states the start command and the address", () => {
+    expect(readme).toContain("npm run dev");
+    expect(readme).toContain("kit/demo");
+    expect(readme).toContain("http://localhost:5173/");
+  });
+
+  it("vite config fixes port 5173 with strictPort", () => {
+    expect(config).toMatch(/port:\s*5173/);
+    expect(config).toMatch(/strictPort:\s*true/);
+  });
+});
+
 describe("demo package scaffold", () => {
   it("has no dependencies field", () => {
     const pkg = readJson("package.json");
