@@ -3,7 +3,7 @@
 // `zoom` converts the CSS pixel widths of the style into world units.
 // Props play no part in routes or guidance.
 
-import type { BlockedAreaData, PropData } from "../types.js";
+import type { BackgroundPictureData, BlockedAreaData, PropData } from "../types.js";
 import type { CanvasInterface } from "./canvas-interface.js";
 import type { LineStyle, ResolvedStyle } from "./style.js";
 import {
@@ -65,6 +65,52 @@ export function drawGround(
   canvas.lineTo(region.minX, region.maxY);
   canvas.closePath();
   canvas.fill();
+  return [];
+}
+
+/**
+ * Draws the background picture with its top left corner at the world origin,
+ * at its scale and opacity. Draws nothing without a background, and nothing
+ * when the picture lies outside the visible region.
+ */
+export function drawBackgroundPicture(
+  canvas: CanvasInterface,
+  background: BackgroundPictureData | undefined,
+  resolve: PictureResolver,
+  region: WorldRegion,
+): Notice[] {
+  if (background === undefined) return [];
+  const { scale, opacity, ref } = background;
+  if (!Number.isFinite(scale) || scale <= 0) {
+    return [
+      notice(
+        'The background picture field "scale" must be a finite number above 0, so it was not drawn.',
+      ),
+    ];
+  }
+  if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) {
+    return [
+      notice(
+        'The background picture field "opacity" must be a number from 0 to 1, so it was not drawn.',
+      ),
+    ];
+  }
+  const found = resolve(ref);
+  if (!("entry" in found)) {
+    const notices: Notice[] = [];
+    if (found.missing !== undefined) notices.push(found.missing);
+    notices.push(
+      notice(`The background picture "${ref}" is missing, so it was not drawn.`),
+    );
+    return notices;
+  }
+  const w = found.entry.width * scale;
+  const h = found.entry.height * scale;
+  if (region.maxX < 0 || region.minX > w || region.maxY < 0 || region.minY > h) return [];
+  canvas.save();
+  canvas.setGlobalAlpha(opacity);
+  canvas.drawImage(found.entry.image, 0, 0, w, h);
+  canvas.restore();
   return [];
 }
 

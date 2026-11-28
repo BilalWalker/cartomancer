@@ -10,7 +10,12 @@ import type { EngineMap, Position, Route } from "../types.js";
 import { validateCamera, type Camera } from "./camera.js";
 import type { CanvasInterface } from "./canvas-interface.js";
 import { createPictureResolver, type ImageLookup } from "./image-lookup.js";
-import { drawBlockedAreas, drawFlatProps, drawGround } from "./layers-areas.js";
+import {
+  drawBackgroundPicture,
+  drawBlockedAreas,
+  drawFlatProps,
+  drawGround,
+} from "./layers-areas.js";
 import { drawPlaceLabels, drawPlaceMarkers } from "./layers-places.js";
 import {
   drawBlockedRoadMarks,
@@ -25,6 +30,7 @@ import { visibleRegion, type VisibleSet } from "./visible-set.js";
 /** The layers, in the order they are drawn. */
 export const LAYER_ORDER = [
   "ground",
+  "backgroundPicture",
   "blockedAreas",
   "flatProps",
   "roadOutlines",
@@ -83,6 +89,8 @@ export function drawMapLayers(canvas: CanvasInterface, input: DrawMapLayersInput
   applyCameraTransform(canvas, camera);
   mark("ground");
   notices.push(...drawGround(canvas, style, region));
+  mark("backgroundPicture");
+  notices.push(...drawBackgroundPicture(canvas, map.backgroundPicture, resolve, region));
   mark("blockedAreas");
   notices.push(...drawBlockedAreas(canvas, style, areas, camera.zoom));
   mark("flatProps");

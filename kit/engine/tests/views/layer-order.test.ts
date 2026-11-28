@@ -7,6 +7,7 @@ import {
   LAYER_ORDER,
   type LayerName,
 } from "../../src/views/draw-map-layers.js";
+import { asImageHandle } from "../../src/views/image-lookup.js";
 import { RecordingCanvas, type RecordedCall } from "../../src/views/recording-canvas.js";
 import { DEFAULT_STYLE } from "../../src/views/style.js";
 import type { VisibleSet } from "../../src/views/visible-set.js";
@@ -32,6 +33,13 @@ const sceneArb = fc.record({
   roads: fc.array(roadArb, { maxLength: 8 }),
   placeNames: fc.array(fc.string({ minLength: 1, maxLength: 6 }), { maxLength: 4 }),
   propKinds: fc.array(fc.constantFrom("house", "tree", "marker", "box"), { maxLength: 4 }),
+  background: fc.option(
+    fc.record({
+      scale: fc.double({ min: 0.1, max: 3, noNaN: true }),
+      opacity: fc.double({ min: 0, max: 1, noNaN: true }),
+    }),
+    { nil: undefined },
+  ),
   areaCount: fc.integer({ min: 0, max: 2 }),
   routeLength: fc.integer({ min: 0, max: 3 }),
   camera: fc.record({
@@ -89,6 +97,9 @@ function build(scene: Scene): { map: EngineMap; visible: VisibleSet; route: Rout
       height: 6,
       rotationDegrees: 0,
     })),
+    ...(scene.background === undefined
+      ? {}
+      : { backgroundPicture: { ref: "plan", ...scene.background } }),
     style: { colors: {}, lineStyles: {} },
     usableRoadIds: new Set(roads.filter((_, i) => scene.roads[i]!.usable).map((r) => r.id)),
     blockedRoads: [],
@@ -133,6 +144,7 @@ function drawScene(scene: Scene): {
     remainingRoute: route,
     position,
     destinationPlaceId: map.places[0]?.id,
+    images: { plan: { image: asImageHandle({ name: "plan" }), width: 1000, height: 1000 } },
     onLayer: (layer) => starts.push({ layer, at: rec.getCalls().length }),
   });
   return { rec, starts };
@@ -164,6 +176,14 @@ describe("drawMapLayers", () => {
         const firstFill = calls.findIndex((c) => c.op === "fill");
         expect(calls[firstFill]!.state.fillColor).toBe(DEFAULT_STYLE.groundColor);
         expect(firstFill).toBeLessThan(starts[1]!.at);
+        // The background picture comes right after the ground and before every later layer.
+        expect(starts.map((s) => s.layer).slice(0, 2)).toEqual(["ground", "backgroundPicture"]);
+        const images = calls.filter((c) => c.op === "drawImage");
+        const backgroundCalls = segmentOf(calls, starts, "backgroundPicture");
+        expect(backgroundCalls.filter((c) => c.op === "drawImage")).toHaveLength(
+          scene.background === undefined ? 0 : 1,
+        );
+        expect(images).toHaveLength(scene.background === undefined ? 0 : 1);
         // Text is drawn by the label layer only (no picture props are generated).
         for (const layer of LAYER_ORDER) {
           const texts = segmentOf(calls, starts, layer).filter((c) => c.op === "drawText");
