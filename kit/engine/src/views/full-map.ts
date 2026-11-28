@@ -114,7 +114,19 @@ export interface FullMapDraw {
 /** The result of a camera operation that worked. */
 export interface FullMapChange {
   notices: Notice[];
+  /** Plain text for a live region, set by the place focus commands. */
+  announcement?: string;
 }
+
+/** The result of a place focus command: the text to announce and, for Enter, the selection. */
+export interface FocusAnnouncement {
+  text: string;
+  /** The result of the selection, set only when a focused place was activated. */
+  result?: FullMapSelectResult | ViewError;
+}
+
+/** The radius of the focus ring around a place marker, in CSS pixels. */
+export const FOCUS_RING_RADIUS_PX = 11;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -174,6 +186,7 @@ export class FullMap {
   private lastPosition: Position | undefined;
   private lastRoute: Route | undefined;
   private lastDestination: string | undefined;
+  private focusedPlaceId: string | undefined;
 
   private mapVersion = 0;
   private routeVersion = 0;
@@ -301,6 +314,59 @@ export class FullMap {
     return { message: found.message, field: found.field ?? "selection" };
   }
 
+  /** The identifier of the place that has keyboard focus, if any. */
+  getFocusedPlaceId(): string | undefined {
+    return this.focusedPlaceId;
+  }
+
+  /** Moves focus to the next place in identifier order, wrapping at the end. */
+  focusNextPlace(): FocusAnnouncement {
+    return this.moveFocus(1);
+  }
+
+  /** Moves focus to the previous place in identifier order, wrapping at the start. */
+  focusPreviousPlace(): FocusAnnouncement {
+    return this.moveFocus(-1);
+  }
+
+  /** Sets the focused place as the destination, as a click on its marker would. */
+  activateFocusedPlace(): FocusAnnouncement {
+    const id = this.focusedPlaceId;
+    const place = id === undefined ? undefined : this.map.places.find((p) => p.id === id);
+    if (place === undefined) {
+      this.focusedPlaceId = undefined;
+      return { text: "No place is selected. Press ] or [ to choose a place first." };
+    }
+    const result = this.selectPlace(place.id);
+    if (isViewError(result)) return { text: result.message, result };
+    if (result.noWayMessage !== undefined) return { text: result.noWayMessage, result };
+    return { text: `Destination set to ${placeName(place.name, place.id)}.`, result };
+  }
+
+  private moveFocus(step: 1 | -1): FocusAnnouncement {
+    const ordered = [...this.map.places].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    if (ordered.length === 0) {
+      this.setFocus(undefined);
+      return { text: "The map has no places to focus." };
+    }
+    const at = ordered.findIndex((p) => p.id === this.focusedPlaceId);
+    const next =
+      at < 0
+        ? step === 1
+          ? 0
+          : ordered.length - 1
+        : (at + step + ordered.length) % ordered.length;
+    const place = ordered[next];
+    this.setFocus(place.id);
+    return { text: `Focused place: ${placeName(place.name, place.id)}. Press Enter to go there.` };
+  }
+
+  private setFocus(id: string | undefined): void {
+    if (this.focusedPlaceId === id) return;
+    this.focusedPlaceId = id;
+    this.cameraVersion++;
+  }
+
   /** The notices found when the map was taken (empty map, no usable road, style keys). */
   getNotices(): Notice[] {
     return [...this.notices];
@@ -331,6 +397,9 @@ export class FullMap {
     this.extent = extentOf(this.index);
     this.style = resolved.resolved;
     this.notices = [...inspected.notices, ...resolved.notices];
+    if (this.focusedPlaceId !== undefined && !map.places.some((p) => p.id === this.focusedPlaceId)) {
+      this.focusedPlaceId = undefined;
+    }
     this.refreshDefaultLimits();
     this.setCamera({ ...this.camera, zoom: clamp(this.camera.zoom, this.zoomMin, this.zoomMax) });
     this.mapVersion++;
@@ -448,7 +517,8 @@ export class FullMap {
   /**
    * Applies a command of the input reducer. Commands with a fraction of the
    * viewport (`panFraction`) and a zoom with a null anchor (the viewport
-   * centre) are turned into pixel values here. Selection and place focus
+   * centre) are turned into pixel values here. The place focus commands move
+   * or use the focus and return their text in `announcement`. Selection
    * commands are not handled by the camera and change nothing.
    */
   applyCommand(command: InputCommand): FullMapChange | ViewError {
@@ -470,6 +540,12 @@ export class FullMap {
         return this.fit();
       case "follow":
         return this.follow();
+      case "focusNextPlace":
+        return { notices: [], announcement: this.focusNextPlace().text };
+      case "focusPreviousPlace":
+        return { notices: [], announcement: this.focusPreviousPlace().text };
+      case "activateFocusedPlace":
+        return { notices: [], announcement: this.activateFocusedPlace().text };
       default:
         return { notices: [] };
     }
@@ -607,7 +683,7 @@ export class FullMap {
     const region = visibleRegion(camera, 0);
     if (isViewError(region)) return [notice(`${region.message} Nothing was drawn.`)];
     const visible = computeVisibleSet(this.index, region);
-    return drawMapLayers(canvas, {
+    const notices = drawMapLayers(canvas, {
       map: this.map,
       style: this.style,
       camera,
@@ -617,5 +693,32 @@ export class FullMap {
       destinationPlaceId: state.destinationPlaceId,
       images: this.images,
     });
+    this.drawFocusRing(canvas, camera);
+    return notices;
   }
+
+  /** A two-colour ring around the focused place, in screen coordinates. */
+  private drawFocusRing(canvas: CanvasInterface, camera: Camera): void {
+    const place = this.map.places.find((p) => p.id === this.focusedPlaceId);
+    if (place === undefined) return;
+    const screen = worldToScreen(camera, { x: place.x, y: place.y });
+    if (isViewError(screen)) return;
+    canvas.save();
+    canvas.setLineDash([]);
+    canvas.setStrokeColor(this.style.placeLabelBackgroundColor);
+    canvas.setLineWidth(5);
+    canvas.beginPath();
+    canvas.arc(screen.x, screen.y, FOCUS_RING_RADIUS_PX, 0, Math.PI * 2);
+    canvas.stroke();
+    canvas.setStrokeColor(this.style.rimColor);
+    canvas.setLineWidth(3);
+    canvas.beginPath();
+    canvas.arc(screen.x, screen.y, FOCUS_RING_RADIUS_PX, 0, Math.PI * 2);
+    canvas.stroke();
+    canvas.restore();
+  }
+}
+
+function placeName(name: string, id: string): string {
+  return typeof name === "string" && name.trim() !== "" ? name : id;
 }
