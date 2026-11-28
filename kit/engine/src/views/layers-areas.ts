@@ -6,6 +6,12 @@
 import type { BlockedAreaData, PropData } from "../types.js";
 import type { CanvasInterface } from "./canvas-interface.js";
 import type { LineStyle, ResolvedStyle } from "./style.js";
+import {
+  createPictureResolver,
+  pictureRefOfKind,
+  type PictureResolver,
+  type ResolvedPicture,
+} from "./image-lookup.js";
 import { notice, type Notice } from "./view-errors.js";
 
 /** A rectangle of the world, in world units. */
@@ -116,6 +122,7 @@ export function drawFlatProps(
   style: ResolvedStyle,
   props: readonly PropData[],
   zoom: number,
+  resolve: PictureResolver = createPictureResolver(undefined),
 ): Notice[] {
   if (!Number.isFinite(zoom) || zoom <= 0) return [zoomNotice()];
   const notices: Notice[] = [];
@@ -142,6 +149,27 @@ export function drawFlatProps(
     }
     const w = prop.width;
     const h = prop.height;
+    const pictureRef = pictureRefOfKind(prop.kind);
+    if (pictureRef !== undefined) {
+      const found: ResolvedPicture =
+        pictureRef === "" ? { missing: undefined } : resolve(pictureRef);
+      if ("entry" in found) {
+        canvas.save();
+        canvas.translate(prop.x, prop.y);
+        canvas.rotate((prop.rotationDegrees * Math.PI) / 180);
+        canvas.drawImage(found.entry.image, -w / 2, -h / 2, w, h);
+        canvas.restore();
+        continue;
+      }
+      if (found.missing !== undefined) notices.push(found.missing);
+      notices.push(
+        notice(
+          pictureRef === ""
+            ? `The prop "${prop.id}" has an empty picture reference, so a placeholder is drawn.`
+            : `The prop "${prop.id}" uses the picture "${pictureRef}", which is missing, so a placeholder is drawn.`,
+        ),
+      );
+    }
     canvas.save();
     canvas.translate(prop.x, prop.y);
     canvas.rotate((prop.rotationDegrees * Math.PI) / 180);

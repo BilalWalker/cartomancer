@@ -42,6 +42,26 @@ function isUsableSize(value: unknown): boolean {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+/** A resolver that looks up each reference at most once per frame. */
+export type PictureResolver = (ref: string) => ResolvedPicture;
+
+/**
+ * Makes a per-frame resolver over `resolvePicture`. The first call for a
+ * reference makes the one lookup and returns its Notice; later calls for the
+ * same reference return the same answer without the Notice, so one frame
+ * reports one Notice per reference.
+ */
+export function createPictureResolver(images: ImageLookup | undefined): PictureResolver {
+  const memo = new Map<string, ResolvedPicture>();
+  return (ref) => {
+    const seen = memo.get(ref);
+    if (seen !== undefined) return "entry" in seen ? seen : { missing: undefined };
+    const result = resolvePicture(images, ref);
+    memo.set(ref, result);
+    return result;
+  };
+}
+
 /**
  * Finds the picture for a reference. Never throws. Returns an entry only when
  * the lookup gives an object with an image and a finite size above 0.

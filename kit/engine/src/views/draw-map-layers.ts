@@ -9,6 +9,7 @@
 import type { EngineMap, Position, Route } from "../types.js";
 import { validateCamera, type Camera } from "./camera.js";
 import type { CanvasInterface } from "./canvas-interface.js";
+import { createPictureResolver, type ImageLookup } from "./image-lookup.js";
 import { drawBlockedAreas, drawFlatProps, drawGround } from "./layers-areas.js";
 import { drawPlaceLabels, drawPlaceMarkers } from "./layers-places.js";
 import {
@@ -48,6 +49,8 @@ export interface DrawMapLayersInput {
   remainingRoute?: Route;
   position: Position;
   destinationPlaceId?: string;
+  /** Loaded pictures for picture props; without it they are drawn as placeholders. */
+  images?: ImageLookup;
   /** Called just before each layer is drawn; tests use it to split the call log by layer. */
   onLayer?: (layer: LayerName) => void;
 }
@@ -71,6 +74,7 @@ export function drawMapLayers(canvas: CanvasInterface, input: DrawMapLayersInput
   if ("message" in region) return [notice(`${region.message} Nothing was drawn.`)];
 
   const notices: Notice[] = [];
+  const resolve = createPictureResolver(input.images);
   const areas = map.blockedAreas.filter((a) => visible.blockedAreaIds.has(a.id));
   const props = map.props.filter((p) => visible.propIds.has(p.id));
   const places = map.places.filter((p) => visible.placeIds.has(p.id));
@@ -82,7 +86,7 @@ export function drawMapLayers(canvas: CanvasInterface, input: DrawMapLayersInput
   mark("blockedAreas");
   notices.push(...drawBlockedAreas(canvas, style, areas, camera.zoom));
   mark("flatProps");
-  notices.push(...drawFlatProps(canvas, style, props, camera.zoom));
+  notices.push(...drawFlatProps(canvas, style, props, camera.zoom, resolve));
   mark("roadOutlines");
   notices.push(...drawRoadOutlines(canvas, map, visible.roadIds, camera, style));
   mark("roadFills");
