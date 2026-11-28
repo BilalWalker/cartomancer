@@ -386,7 +386,7 @@ const rotationDegrees = headingUpRotation(90); // -180
 
 #### `northMarkFor`
 
-The corner points of the north mark on the rim of the minimap for a given camera.
+The tick and the letter of the north mark on the rim of the minimap for a given camera.
 
 - Inputs: `camera` (a valid `Camera`), `radius` in px (finite, above 0).
 - Outputs: a `NorthMark`, or a `ViewError`.
@@ -394,7 +394,7 @@ The corner points of the north mark on the rim of the minimap for a given camera
 
 ```ts
 const mark = northMarkFor(camera, 100);
-if (!isViewError(mark)) console.log(mark.tip.x, mark.tip.y);
+if (!isViewError(mark)) console.log(mark.tickOuter.x, mark.tickOuter.y);
 ```
 
 ### Draw functions
@@ -976,8 +976,9 @@ const engineForMap: FullMapEngine = new Engine();
 
 Options of `new Minimap` (`width`, `height` in px 1 to 16384; `zoom`; `smoothingDurationMs`;
 `reducedMotion`; `images`), the state for a frame (`position`, optional `remainingRoute` and
-`destinationPlaceId`), the result of `draw` (`{ drew, notices }`), and the north mark (`tip`,
-`baseLeft`, `baseRight` points and `directionDegrees`).
+`destinationPlaceId`), the result of `draw` (`{ drew, notices }`), and the north mark
+(`directionDegrees`, the `tickInner` and `tickOuter` points, the `letterCentre` point and
+`showLetter`, false when the rim radius is under 42 px).
 
 - Inputs: none (types).
 - Outputs: none.

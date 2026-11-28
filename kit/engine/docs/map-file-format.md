@@ -153,7 +153,7 @@ default.
 | `placeLabelText` | `#1a1a1a` |
 | `placeLabelBackground` | `#ffffff` |
 | `rim` | `#3a3a3a` |
-| `northMark` | `#b3261e` |
+| `northMark` | `#08203a` |
 
 ### Line style keys
 

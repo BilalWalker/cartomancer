@@ -264,9 +264,11 @@ describe("picture props on every view", () => {
             // On the Tilted_View a picture is drawn in 1 to 43 depth bands, one call per band,
             // so a run of calls with one handle and one prop placement counts as one picture.
             const images = index === 2 ? pictureRuns(rec) : rec.findCalls("drawImage").length;
-            const drawn = images + rec.findCalls("drawText").length;
+            // The Minimap also draws the letter N of its North_Mark (Requirement 27), which is not a prop.
+            const texts = rec.findCalls("drawText").filter((c) => !(index === 1 && c.args[0] === "N"));
+            const drawn = images + texts.length;
             expect(drawn).toBe(props.length);
-            for (const call of rec.findCalls("drawText")) {
+            for (const call of texts) {
               expect(props.map((p) => p.kind)).toContain(call.args[0]);
             }
           });

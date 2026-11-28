@@ -64,7 +64,7 @@ export const DEFAULT_STYLE: ResolvedStyle = {
   placeLabelTextColor: "#1a1a1a",
   placeLabelBackgroundColor: "#ffffff",
   rimColor: "#3a3a3a",
-  northMarkColor: "#b3261e",
+  northMarkColor: "#08203a",
   roadLineStyles: {
     main: { widthPx: 1 },
     side: { widthPx: 1 },

@@ -47,10 +47,20 @@ const ZOOM_RANGE_MAX = 1000;
 /** Below this viewport side, in CSS pixels, no circle is drawn. */
 const MIN_MINIMAP_SIZE_PX = 40;
 
-/** Size of the North_Mark triangle along the radius, in CSS pixels. */
-const NORTH_MARK_LENGTH_PX = 12;
-/** Half the width of the North_Mark triangle base, in CSS pixels. */
-const NORTH_MARK_HALF_BASE_PX = 5;
+/** The tick starts this far inside the rim radius, in CSS pixels. */
+const NORTH_TICK_INSIDE_PX = 6.5;
+/** The tick ends this far outside the rim radius (the outer edge of a 3 px rim). */
+const NORTH_TICK_OUTSIDE_PX = 1.5;
+/** The letter N is centred this far inside the rim radius. */
+const NORTH_LETTER_INSIDE_PX = 19;
+/** Radius of the disc behind the letter N. */
+const NORTH_LETTER_DISC_PX = 10;
+/** Below this rim radius the letter N is not drawn, only the tick. */
+const NORTH_LETTER_MIN_RADIUS_PX = 42;
+/** Width of the tick, in CSS pixels. */
+const NORTH_TICK_WIDTH_PX = 3;
+/** Font of the letter N (cap height about 13 CSS pixels). */
+const NORTH_LETTER_FONT = "bold 18px sans-serif";
 
 /**
  * The camera rotation that turns a heading up the screen. A heading is in
@@ -62,14 +72,18 @@ export function headingUpRotation(headingDegrees: number): number {
   return -90 - headingDegrees;
 }
 
-/** The corner points of the North_Mark and the direction it points, in CSS pixels. */
+/** The tick and the letter of the North_Mark and the direction they lie in, in CSS pixels. */
 export interface NorthMark {
-  /** The point on the rim, at the tip of the mark. */
-  tip: Point;
-  baseLeft: Point;
-  baseRight: Point;
   /** Screen direction of world north (0, -1), in degrees clockwise from the screen's positive x axis. */
   directionDegrees: number;
+  /** The inner end of the tick, 6.5 px inside the rim radius. */
+  tickInner: Point;
+  /** The outer end of the tick, 1.5 px outside the rim radius. */
+  tickOuter: Point;
+  /** The centre of the letter N, 19 px inside the rim radius. */
+  letterCentre: Point;
+  /** False when the rim radius is under 42 px and only the tick is drawn. */
+  showLetter: boolean;
 }
 
 /**
@@ -90,12 +104,13 @@ export function northMarkFor(camera: Camera, radius: number): NorthMark | ViewEr
   const uy = -Math.cos(radians);
   const cx = camera.viewportWidth / 2;
   const cy = camera.viewportHeight / 2;
-  const inner = Math.max(radius - NORTH_MARK_LENGTH_PX, 0);
+  const at = (r: number): Point => ({ x: cx + ux * r, y: cy + uy * r });
   return {
-    tip: { x: cx + ux * radius, y: cy + uy * radius },
-    baseLeft: { x: cx + ux * inner + uy * NORTH_MARK_HALF_BASE_PX, y: cy + uy * inner - ux * NORTH_MARK_HALF_BASE_PX },
-    baseRight: { x: cx + ux * inner - uy * NORTH_MARK_HALF_BASE_PX, y: cy + uy * inner + ux * NORTH_MARK_HALF_BASE_PX },
     directionDegrees: (Math.atan2(uy, ux) * 180) / Math.PI,
+    tickInner: at(radius - NORTH_TICK_INSIDE_PX),
+    tickOuter: at(radius + NORTH_TICK_OUTSIDE_PX),
+    letterCentre: at(radius - NORTH_LETTER_INSIDE_PX),
+    showLetter: radius >= NORTH_LETTER_MIN_RADIUS_PX,
   };
 }
 
@@ -417,13 +432,24 @@ export class Minimap {
     const mark = northMarkFor(camera, radius);
     if (!isViewError(mark)) {
       canvas.setLineDash([]);
+      canvas.setLineCap("butt");
       canvas.beginPath();
-      canvas.moveTo(mark.tip.x, mark.tip.y);
-      canvas.lineTo(mark.baseLeft.x, mark.baseLeft.y);
-      canvas.lineTo(mark.baseRight.x, mark.baseRight.y);
-      canvas.closePath();
-      canvas.setFillColor(this.style.northMarkColor);
-      canvas.fill();
+      canvas.moveTo(mark.tickInner.x, mark.tickInner.y);
+      canvas.lineTo(mark.tickOuter.x, mark.tickOuter.y);
+      canvas.setStrokeColor(this.style.northMarkColor);
+      canvas.setLineWidth(NORTH_TICK_WIDTH_PX);
+      canvas.stroke();
+      if (mark.showLetter) {
+        canvas.beginPath();
+        canvas.arc(mark.letterCentre.x, mark.letterCentre.y, NORTH_LETTER_DISC_PX, 0, Math.PI * 2);
+        canvas.closePath();
+        canvas.setFillColor(this.style.placeLabelBackgroundColor);
+        canvas.fill();
+        canvas.setFillColor(this.style.northMarkColor);
+        canvas.drawText("N", mark.letterCentre.x, mark.letterCentre.y, NORTH_LETTER_FONT, "center");
+      } else {
+        notices.push(notice("The minimap is too small to show the letter N, so only the tick on the rim is drawn."));
+      }
     }
     canvas.restore();
     return notices;
